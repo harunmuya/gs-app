@@ -15,10 +15,6 @@ export const metadata = {
     title: 'Genuine Sugar Mummies - Find Your Match',
     description: 'Kenya\'s leading dating app for genuine sugar mummy connections. Swipe, match, and connect with verified profiles.',
     manifest: '/manifest.json',
-    icons: {
-        icon: '/icons/icon-192.png',
-        apple: '/icons/icon-512.png',
-    },
     appleWebApp: {
         capable: true,
         statusBarStyle: 'black-translucent',
