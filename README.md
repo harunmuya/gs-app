@@ -23,6 +23,8 @@ NEXT_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
 NEXT_PUBLIC_WP_API_URL=https://genuinesugarmummies.co.ke/wp-json/wp/v2
 ```
+> [!IMPORTANT]
+> When deploying to **Vercel**, make sure to add these exact keys in the **Environment Variables** section of your project settings.
 
 ### 4. Run the App
 ```bash
@@ -101,10 +103,14 @@ src/
 ## 🌐 Deployment
 
 ### Vercel (Recommended)
-1. Push to GitHub
-2. Connect to [vercel.com](https://vercel.com)
-3. Add environment variables
-4. Deploy
+1. Push your latest changes to GitHub: `git push origin master`
+2. Go to [vercel.com](https://vercel.com) and click **"Add New" → "Project"**
+3. Import this repository
+4. Expand **"Environment Variables"** and add:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `NEXT_PUBLIC_WP_API_URL`
+5. Click **"Deploy"**
 
 ### Replit
 1. Upload project files
