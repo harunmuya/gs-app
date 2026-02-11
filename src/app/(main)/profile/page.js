@@ -5,10 +5,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     User, Camera, Navigation, ChevronRight, LogOut, Trash2,
     Bookmark, Settings, Shield, HelpCircle, Phone, Eye, EyeOff,
-    Bell, MapPin, Lock, Mail, X, Plus, ArrowLeft, Globe, Heart
+    Bell, MapPin, Lock, Mail, X, Plus, ArrowLeft, Globe, Heart, Sun, Moon
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useGeolocation } from '@/hooks/useGeolocation';
+import UserAvatar from '@/components/UserAvatar';
 import Logo from '@/components/Logo';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -25,6 +27,7 @@ export default function ProfilePage() {
         signOut, updateProfile, updateSettings, addPhoto, removePhoto, deleteAccount
     } = useAuth();
     const { location, requestLocation, loading: geoLoading } = useGeolocation();
+    const { theme, toggleTheme } = useTheme();
     const router = useRouter();
     const fileInputRef = useRef(null);
 
@@ -54,7 +57,7 @@ export default function ProfilePage() {
                 <div className="w-24 h-24 rounded-full bg-surface flex items-center justify-center mb-2">
                     <User size={40} className="text-text-muted" />
                 </div>
-                <h2 className="text-2xl font-bold text-white">Guest Mode</h2>
+                <h2 className="text-2xl font-bold text-text-primary">Guest Mode</h2>
                 <p className="text-text-secondary">Sign in to create your profile and save matches.</p>
                 <Link href="/auth/login" className="w-full max-w-xs py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 text-center block">
                     Sign In / Create Account
@@ -92,7 +95,7 @@ export default function ProfilePage() {
             <button onClick={onBack} className="w-9 h-9 rounded-full bg-surface flex items-center justify-center">
                 <ArrowLeft size={18} className="text-text-secondary" />
             </button>
-            <h2 className="text-lg font-bold text-white">{title}</h2>
+            <h2 className="text-lg font-bold text-text-primary">{title}</h2>
         </div>
     );
 
@@ -298,9 +301,14 @@ export default function ProfilePage() {
     // ---- MAIN PROFILE VIEW ----
     return (
         <div className="px-4 pt-4 pb-24 max-w-lg mx-auto">
-            <div className="flex items-center gap-2 mb-5">
-                <User size={22} className="text-primary" />
-                <h1 className="text-xl font-bold text-text-primary">Account</h1>
+            <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-2">
+                    <User size={22} className="text-primary" />
+                    <h1 className="text-xl font-bold text-text-primary">Account</h1>
+                </div>
+                <button onClick={toggleTheme} className="w-10 h-10 rounded-full bg-surface flex items-center justify-center hover:bg-surface-light transition-colors" title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
+                    {theme === 'dark' ? <Sun size={18} className="text-gold" /> : <Moon size={18} className="text-text-secondary" />}
+                </button>
             </div>
 
             {/* Profile Card */}
@@ -310,11 +318,11 @@ export default function ProfilePage() {
                         {profile?.avatar_url ? (
                             <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
                         ) : (
-                            <User size={32} className="text-primary" />
+                            <UserAvatar name={profile?.display_name || 'U'} size={80} />
                         )}
                     </div>
                     <div className="min-w-0">
-                        <h2 className="text-lg font-bold text-white truncate">{profile?.display_name || 'User'}</h2>
+                        <h2 className="text-lg font-bold text-text-primary truncate">{profile?.display_name || 'User'}</h2>
                         <p className="text-xs text-text-muted truncate">{profile?.email}</p>
                         {profile?.bio && <p className="text-xs text-text-secondary mt-1 line-clamp-2">{profile.bio}</p>}
                     </div>
@@ -381,6 +389,11 @@ export default function ProfilePage() {
                     </motion.div>
                 </div>
             )}
+
+            {/* App Version */}
+            <p className="text-center text-[10px] text-text-muted mt-6 pb-4">
+                Genuine Sugar Mummies · v2.1.0
+            </p>
         </div>
     );
 }

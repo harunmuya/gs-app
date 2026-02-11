@@ -1,11 +1,33 @@
 @import "tailwindcss";
 
-@theme {
+/* ---- Light Theme (Default) ---- */
+:root,
+[data-theme="light"] {
   --color-primary: #e11d48;
   --color-primary-light: #fb7185;
   --color-primary-dark: #be123c;
   --color-secondary: #f43f5e;
   --color-accent: #ec4899;
+  --color-bg-dark: #f8f9fb;
+  --color-bg-card: #ffffff;
+  --color-bg-input: #f1f3f5;
+  --color-surface: #eef0f3;
+  --color-surface-light: #e4e7eb;
+  --color-text-primary: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-muted: #9ca3af;
+  --color-gold: #d97706;
+  --color-success: #059669;
+  --color-danger: #dc2626;
+  --color-border: rgba(0, 0, 0, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(0, 0, 0, 0.06);
+  --shadow-color: rgba(0, 0, 0, 0.08);
+  --overlay-gradient: linear-gradient(180deg, transparent 0%, rgba(255, 255, 255, 0.4) 30%, rgba(0, 0, 0, 0.7) 100%);
+}
+
+/* ---- Dark Theme ---- */
+[data-theme="dark"] {
   --color-bg-dark: #0f0d15;
   --color-bg-card: #1a1625;
   --color-bg-input: #251f33;
@@ -17,6 +39,30 @@
   --color-gold: #fbbf24;
   --color-success: #10b981;
   --color-danger: #ef4444;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(26, 22, 37, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --overlay-gradient: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.3) 30%, rgba(0, 0, 0, 0.85) 100%);
+}
+
+@theme {
+  --color-primary: #e11d48;
+  --color-primary-light: #fb7185;
+  --color-primary-dark: #be123c;
+  --color-secondary: #f43f5e;
+  --color-accent: #ec4899;
+  --color-bg-dark: var(--color-bg-dark);
+  --color-bg-card: var(--color-bg-card);
+  --color-bg-input: var(--color-bg-input);
+  --color-surface: var(--color-surface);
+  --color-surface-light: var(--color-surface-light);
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-muted: var(--color-text-muted);
+  --color-gold: var(--color-gold);
+  --color-success: var(--color-success);
+  --color-danger: var(--color-danger);
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
@@ -40,9 +86,13 @@
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background 0.3s ease, color 0.3s ease;
   }
 
-  input, textarea, select, button {
+  input,
+  textarea,
+  select,
+  button {
     font-family: inherit;
   }
 
@@ -75,14 +125,14 @@
   }
 
   .gradient-overlay {
-    background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.8) 100%);
+    background: var(--overlay-gradient);
   }
 
   .glass {
-    background: rgba(26, 22, 37, 0.8);
+    background: var(--glass-bg);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--glass-border);
   }
 
   .glass-light {
@@ -92,11 +142,16 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
   }
 
+  [data-theme="light"] .glass-light {
+    background: rgba(0, 0, 0, 0.03);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+  }
+
   .card-shadow {
     box-shadow:
-      0 4px 6px -1px rgba(0, 0, 0, 0.3),
-      0 10px 15px -3px rgba(0, 0, 0, 0.2),
-      0 20px 25px -5px rgba(0, 0, 0, 0.15);
+      0 4px 6px -1px var(--shadow-color),
+      0 10px 15px -3px var(--shadow-color),
+      0 20px 25px -5px var(--shadow-color);
   }
 
   .card-glow {
@@ -113,19 +168,22 @@
   }
 
   .shimmer {
-    background: linear-gradient(
-      90deg,
-      var(--color-surface) 0%,
-      var(--color-surface-light) 50%,
-      var(--color-surface) 100%
-    );
+    background: linear-gradient(90deg,
+        var(--color-surface) 0%,
+        var(--color-surface-light) 50%,
+        var(--color-surface) 100%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
   }
 
   @keyframes shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+    0% {
+      background-position: 200% 0;
+    }
+
+    100% {
+      background-position: -200% 0;
+    }
   }
 
   .animate-slide-up {
@@ -137,6 +195,7 @@
       opacity: 0;
       transform: translateY(20px);
     }
+
     to {
       opacity: 1;
       transform: translateY(0);
@@ -148,8 +207,13 @@
   }
 
   @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
   }
 
   .animate-pulse-soft {
@@ -157,37 +221,25 @@
   }
 
   @keyframes pulseSoft {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
+
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.7;
+    }
   }
 
-  .swipe-stamp {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%) rotate(-15deg);
-    font-size: 3rem;
-    font-weight: 900;
-    letter-spacing: 4px;
-    padding: 0.5rem 1.5rem;
-    border-radius: 12px;
-    border: 4px solid;
-    opacity: 0;
-    pointer-events: none;
-    z-index: 10;
-    text-transform: uppercase;
+  /* Light theme card borders */
+  [data-theme="light"] .border-white\/5,
+  [data-theme="light"] .border-white\/10 {
+    border-color: rgba(0, 0, 0, 0.06) !important;
   }
 
-  .swipe-stamp-like {
-    right: 2rem;
-    color: #10b981;
-    border-color: #10b981;
-    text-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
-  }
-
-  .swipe-stamp-nope {
-    left: 2rem;
-    color: #ef4444;
-    border-color: #ef4444;
-    text-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+  /* Light theme override for overlay text on images */
+  .profile-overlay-text {
+    color: white !important;
   }
 }

@@ -59,39 +59,48 @@ const LOCATION_COORDS = {
 
 /**
  * Extract the person's name from a WordPress post title
- * E.g., "Caroline Nduta Sugar Mummy..." → "Caroline Nduta"
- * E.g., "Mary a sugar mummy in Nakuru..." → "Mary"
+ * Handles: "Name Sugar Mummy", "Name a sugar mummy in...", "Name, 35",
+ * "Meet Name", "Name - Sugar Mummy", "Rich Name from...", etc.
  */
+const STOP_WORDS = new Set(['Sugar', 'Mummy', 'From', 'The', 'For', 'And', 'With', 'Wants', 'Needs', 'Looking', 'Is', 'In', 'A', 'An', 'Her', 'His', 'She', 'He', 'Who', 'That', 'This', 'Rich', 'Hot', 'Meet', 'Available', 'Seeking', 'Mature', 'Beautiful', 'Wealthy', 'Single', 'Lonely']);
+
 export function extractName(title) {
     if (!title) return 'Unknown';
 
     // Clean HTML entities
-    const clean = title.replace(/&#8217;/g, "'").replace(/&#8211;/g, "–").replace(/&amp;/g, '&').trim();
+    let clean = title.replace(/&#8217;/g, "'").replace(/&#8211;/g, "–").replace(/&amp;/g, '&').replace(/<[^>]+>/g, '').trim();
 
-    // Common patterns:
-    // 1. "Name Name Sugar Mummy..." or "Name Name Sugarmummy..."
-    const sugarPattern = /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:Sugar\s*[Mm]umm|sugar\s*[Mm]umm|Sugarmumm|sugarmumm|from|a\s+sugar|is\s+|wants|needs|looking)/i;
+    // Remove leading fillers: "Meet ", "Hot ", "Rich "
+    clean = clean.replace(/^(?:Meet|Hot|Rich|Beautiful|Wealthy|Mature|Available|Lonely|Single)\s+/i, '');
+
+    // Pattern 1: "Name Name Sugar Mummy..." or "Name - Sugar Mummy"
+    const sugarPattern = /^([A-Z][a-z]+(?:[\s-]+[A-Z][a-z]+)?)\s*[-–,]?\s*(?:Sugar\s*[Mm]umm|sugar\s*[Mm]umm|Sugarmumm|sugarmumm|from|a\s+sugar|is\s+|wants|needs|looking|seeking)/i;
     const match1 = clean.match(sugarPattern);
-    if (match1) return match1[1].trim();
+    if (match1) return match1[1].replace(/[-–]/g, ' ').trim();
 
-    // 2. First name pattern: "Name, age,..." or "Name age..."
-    const commaPattern = /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*[,\s]+\d/;
+    // Pattern 2: "Name, 35 years..." or "Name 35..."
+    const commaPattern = /^([A-Z][a-z]+(?:[\s-]+[A-Z][a-z]+)?)\s*[,\s]+\d/;
     const match2 = clean.match(commaPattern);
-    if (match2) return match2[1].trim();
+    if (match2) return match2[1].replace(/[-–]/g, ' ').trim();
 
-    // 3. Just take the first 1-2 capitalized words
-    const words = clean.split(/\s+/);
+    // Pattern 3: "Name Name ..." — take first 1-2 proper nouns
+    const words = clean.split(/[\s,;–-]+/);
     const nameWords = [];
     for (const word of words) {
-        if (/^[A-Z][a-z]+$/.test(word) && !['Sugar', 'Mummy', 'From', 'The', 'For', 'And', 'With', 'Wants', 'Needs', 'Looking', 'Is', 'In', 'A'].includes(word)) {
-            nameWords.push(word);
+        const w = word.replace(/[^a-zA-Z']/g, '');
+        if (!w) continue;
+        if (/^[A-Z][a-z]{1,}$/.test(w) && !STOP_WORDS.has(w)) {
+            nameWords.push(w);
             if (nameWords.length >= 2) break;
         } else if (nameWords.length > 0) {
             break;
         }
     }
 
-    return nameWords.length > 0 ? nameWords.join(' ') : clean.split(/\s+/).slice(0, 2).join(' ');
+    if (nameWords.length > 0) return nameWords.join(' ');
+
+    // Fallback: first 2 words, title-cased
+    return clean.split(/\s+/).slice(0, 2).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 }
 
 /**
@@ -201,18 +210,18 @@ export function parseProfile(post) {
     const bio = extractBio(excerpt, content);
     const coords = getLocationCoords(location);
 
-    // View count: estimate based on post age + seeded randomness for consistency
-    const postDate = post.date ? new Date(post.date) : new Date();
-    const daysSincePost = Math.max(1, Math.floor((Date.now() - postDate.getTime()) / (1000 * 60 * 60 * 24)));
-    const seed = post.id % 97; // Consistent per-post seed
-    const baseViews = daysSincePost * (38 + seed);
-    const views = baseViews + Math.floor(seed * 7.3);
-
-    // Comment count from WP API (real-time)
-    const commentCount = post.comment_count || (post._embedded?.replies?.[0]?.length) || 0;
+    // Real comment count from WordPress API
+    const commentCount = post.comment_count || 0;
+    // Also count embedded replies if available (more accurate)
+    const embeddedReplies = post._embedded?.replies?.[0];
+    const realCommentCount = embeddedReplies ? embeddedReplies.length : commentCount;
 
     // Clean excerpt text
     const excerptText = excerpt.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&#8217;/g, "'").replace(/&hellip;/g, '...').replace(/continue\s+reading.*$/i, '').trim();
+
+    // Post date for recency
+    const postDate = post.date ? new Date(post.date) : new Date();
+    const daysSincePost = Math.max(1, Math.floor((Date.now() - postDate.getTime()) / (1000 * 60 * 60 * 24)));
 
     return {
         wpId: post.id,
@@ -227,8 +236,8 @@ export function parseProfile(post) {
         date: post.date || '',
         postDate: post.date || '',
         coords,
-        views,
-        commentCount,
+        commentCount: realCommentCount,
+        daysSincePost,
     };
 }
 
