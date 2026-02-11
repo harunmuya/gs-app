@@ -21,7 +21,7 @@ export default function ContactButtons({ profileName }) {
             <div className="grid grid-cols-2 gap-2 p-3">
                 {/* Telegram - Recommended */}
                 <a
-                    href="https://t.me/+2547338871048"
+                    href="https://t.me/+254738871048"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="group flex items-center gap-2.5 px-3.5 py-3 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
@@ -38,7 +38,7 @@ export default function ContactButtons({ profileName }) {
 
                 {/* SMS - Recommended */}
                 <a
-                    href="sms:+2547338871048"
+                    href="sms:+254738871048"
                     className="group flex items-center gap-2.5 px-3.5 py-3 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                     style={{ backgroundColor: '#34B7F1', color: 'white' }}
                 >
@@ -53,7 +53,7 @@ export default function ContactButtons({ profileName }) {
 
                 {/* Phone Call */}
                 <a
-                    href="tel:+2547338871048"
+                    href="tel:+254738871048"
                     className="group flex items-center gap-2.5 px-3.5 py-3 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                     style={{ backgroundColor: '#2ECC71', color: 'white' }}
                 >
