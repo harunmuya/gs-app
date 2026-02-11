@@ -8,22 +8,26 @@
   --color-primary-dark: #be123c;
   --color-secondary: #f43f5e;
   --color-accent: #ec4899;
-  --color-bg-dark: #f8f9fb;
+  --color-bg-dark: #f5f5f7;
   --color-bg-card: #ffffff;
-  --color-bg-input: #f1f3f5;
-  --color-surface: #eef0f3;
-  --color-surface-light: #e4e7eb;
-  --color-text-primary: #111827;
-  --color-text-secondary: #4b5563;
-  --color-text-muted: #9ca3af;
-  --color-gold: #d97706;
-  --color-success: #059669;
+  --color-bg-input: #edeef1;
+  --color-surface: #e8e9ed;
+  --color-surface-light: #dcdde2;
+  --color-text-primary: #000000;
+  /* Pure Black */
+  --color-text-secondary: #0f172a;
+  /* Very Dark Blue/Grey (almost black) */
+  --color-text-muted: #374151;
+  /* Dark Grey (readable) */
+  --color-gold: #b45309;
+  --color-success: #047857;
   --color-danger: #dc2626;
-  --color-border: rgba(0, 0, 0, 0.08);
-  --glass-bg: rgba(255, 255, 255, 0.85);
-  --glass-border: rgba(0, 0, 0, 0.06);
-  --shadow-color: rgba(0, 0, 0, 0.08);
-  --overlay-gradient: linear-gradient(180deg, transparent 0%, rgba(255, 255, 255, 0.4) 30%, rgba(0, 0, 0, 0.7) 100%);
+  --color-border: rgba(0, 0, 0, 0.12);
+  --glass-bg: rgba(255, 255, 255, 0.9);
+  --glass-border: rgba(0, 0, 0, 0.1);
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --overlay-gradient: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.15) 30%, rgba(0, 0, 0, 0.8) 100%);
+  --card-border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 /* ---- Dark Theme ---- */
@@ -34,16 +38,17 @@
   --color-surface: #1e1a2a;
   --color-surface-light: #2a2440;
   --color-text-primary: #f8fafc;
-  --color-text-secondary: #a1a1aa;
-  --color-text-muted: #6b7280;
+  --color-text-secondary: #c4c4cc;
+  --color-text-muted: #8b8b99;
   --color-gold: #fbbf24;
   --color-success: #10b981;
   --color-danger: #ef4444;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --glass-bg: rgba(26, 22, 37, 0.8);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --shadow-color: rgba(0, 0, 0, 0.3);
+  --color-border: rgba(255, 255, 255, 0.1);
+  --glass-bg: rgba(26, 22, 37, 0.85);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --shadow-color: rgba(0, 0, 0, 0.4);
   --overlay-gradient: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.3) 30%, rgba(0, 0, 0, 0.85) 100%);
+  --card-border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 @theme {
@@ -94,6 +99,7 @@
   select,
   button {
     font-family: inherit;
+    color: inherit;
   }
 
   ::selection {
@@ -136,22 +142,17 @@
   }
 
   .glass-light {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--glass-bg);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-  }
-
-  [data-theme="light"] .glass-light {
-    background: rgba(0, 0, 0, 0.03);
-    border: 1px solid rgba(0, 0, 0, 0.06);
+    border: 1px solid var(--glass-border);
   }
 
   .card-shadow {
     box-shadow:
-      0 4px 6px -1px var(--shadow-color),
-      0 10px 15px -3px var(--shadow-color),
-      0 20px 25px -5px var(--shadow-color);
+      0 1px 3px 0 var(--shadow-color),
+      0 4px 8px -1px var(--shadow-color),
+      0 10px 20px -3px var(--shadow-color);
   }
 
   .card-glow {
@@ -232,14 +233,13 @@
     }
   }
 
-  /* Light theme card borders */
-  [data-theme="light"] .border-white\/5,
-  [data-theme="light"] .border-white\/10 {
-    border-color: rgba(0, 0, 0, 0.06) !important;
-  }
-
-  /* Light theme override for overlay text on images */
+  /* Profile overlay text — always white on images */
   .profile-overlay-text {
     color: white !important;
+  }
+
+  /* Theme-aware borders for cards */
+  .theme-border {
+    border: var(--card-border);
   }
 }

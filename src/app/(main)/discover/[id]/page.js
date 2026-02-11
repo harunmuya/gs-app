@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Heart, Bookmark, MapPin, MessageCircle, Share2, Star, Clock, TrendingUp, Award, Activity, Globe } from 'lucide-react';
+import { ArrowLeft, Heart, Bookmark, MapPin, MessageCircle, Share2, Star, Clock, TrendingUp, Award, Activity, Globe, User } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ContactButtons from '@/components/ContactButtons';
@@ -23,6 +23,8 @@ export default function SingleProfilePage({ params }) {
     const [loading, setLoading] = useState(true);
     const [showComment, setShowComment] = useState(false);
     const [liked, setLiked] = useState(false);
+    const [comments, setComments] = useState([]);
+    const [loadingComments, setLoadingComments] = useState(true);
 
     useEffect(() => {
         async function loadProfile() {
@@ -42,6 +44,22 @@ export default function SingleProfilePage({ params }) {
             }
         }
         if (profileId) loadProfile();
+    }, [profileId]);
+
+    // Fetch real WordPress comments
+    useEffect(() => {
+        async function loadComments() {
+            try {
+                const res = await fetch(`/api/comments?post=${profileId}`);
+                const data = await res.json();
+                setComments(data.comments || []);
+            } catch (err) {
+                console.error('Failed to load comments:', err);
+            } finally {
+                setLoadingComments(false);
+            }
+        }
+        if (profileId) loadComments();
     }, [profileId]);
 
     const handleLike = () => {
@@ -65,15 +83,24 @@ export default function SingleProfilePage({ params }) {
         try { await navigator.share({ title: profile.name, text: `Check out ${profile.name} on Genuine Sugar Mummies`, url: window.location.href }); } catch { }
     };
 
+    const handleCommentClose = () => {
+        setShowComment(false);
+        // Refresh comments after posting
+        fetch(`/api/comments?post=${profileId}`)
+            .then(r => r.json())
+            .then(d => setComments(d.comments || []))
+            .catch(() => { });
+    };
+
     if (loading) {
         return (
-            <div className="min-h-dvh bg-bg-dark">
+            <div className="min-h-dvh" style={{ background: 'var(--color-bg-dark)' }}>
                 <div className="animate-pulse">
-                    <div className="h-[50vh] bg-surface" />
+                    <div className="h-[50vh]" style={{ background: 'var(--color-surface)' }} />
                     <div className="p-5 space-y-4">
-                        <div className="h-8 w-48 bg-surface rounded-lg" />
-                        <div className="h-4 w-32 bg-surface rounded" />
-                        <div className="h-20 bg-surface rounded-xl" />
+                        <div className="h-8 w-48 rounded-lg" style={{ background: 'var(--color-surface)' }} />
+                        <div className="h-4 w-32 rounded" style={{ background: 'var(--color-surface)' }} />
+                        <div className="h-20 rounded-xl" style={{ background: 'var(--color-surface)' }} />
                     </div>
                 </div>
             </div>
@@ -92,21 +119,22 @@ export default function SingleProfilePage({ params }) {
 
     const isSaved = isProfileSaved(profile.wpId);
 
-    // ---- Computed Labels ----
+    // Computed Labels
     const demandLevel = profile.commentCount >= 10 ? 'High' : profile.commentCount >= 3 ? 'Medium' : 'Low';
     const demandColor = demandLevel === 'High' ? 'text-primary' : demandLevel === 'Medium' ? 'text-gold' : 'text-text-muted';
     const availabilityStatus = profile.daysSincePost < 7 ? 'Available Now' : profile.daysSincePost < 30 ? 'Recently Active' : 'Occasional';
     const availabilityColor = profile.daysSincePost < 7 ? 'text-success' : profile.daysSincePost < 30 ? 'text-gold' : 'text-text-muted';
     const rankingScore = Math.min(99, 50 + profile.commentCount * 3 + (profile.daysSincePost < 30 ? 20 : 0) + (profile.imageUrl ? 10 : 0) + (profile.age ? 5 : 0));
+    const freshLabel = profile.daysSincePost < 3 ? 'Newly Available' : profile.daysSincePost <= 14 ? 'Featured' : null;
 
     return (
-        <div className="min-h-dvh bg-bg-dark pb-8">
+        <div className="min-h-dvh pb-8" style={{ background: 'var(--color-bg-dark)' }}>
             {/* Hero */}
             <div className="relative" style={{ height: '55vh', minHeight: '350px' }}>
                 {profile.imageUrl ? (
                     <img src={profile.imageUrl} alt={profile.name} className="absolute inset-0 w-full h-full object-cover" />
                 ) : (
-                    <div className="absolute inset-0 bg-surface flex items-center justify-center">
+                    <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'var(--color-surface)' }}>
                         <UserAvatar name={profile.name} size={120} />
                     </div>
                 )}
@@ -117,11 +145,10 @@ export default function SingleProfilePage({ params }) {
                 </button>
 
                 <div className="absolute top-4 right-4 flex gap-2 z-10">
-                    {profile.daysSincePost < 3 && (
-                        <span className="flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-success text-white shadow-lg">🆕 Newly Available</span>
-                    )}
-                    {profile.daysSincePost >= 3 && profile.daysSincePost <= 14 && (
-                        <span className="flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-gold text-white shadow-lg">⭐ Featured</span>
+                    {freshLabel && (
+                        <span className={`flex items-center px-3 py-1.5 rounded-full text-xs font-bold text-white shadow-lg ${freshLabel === 'Newly Available' ? 'bg-success' : 'bg-gold'}`}>
+                            {freshLabel === 'Newly Available' ? '🆕' : '⭐'} {freshLabel}
+                        </span>
                     )}
                     <button onClick={handleShare} className="w-10 h-10 rounded-full glass flex items-center justify-center">
                         <Share2 size={18} className="text-white" />
@@ -164,15 +191,15 @@ export default function SingleProfilePage({ params }) {
                         {liked ? 'Liked ✓' : 'Like'}
                     </motion.button>
                     <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowComment(true)}
-                        className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-text-primary bg-surface-light border transition-all"
-                        style={{ borderColor: 'var(--color-border)' }}>
+                        className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-text-primary shadow-lg transition-all"
+                        style={{ background: 'var(--color-surface-light)', border: 'var(--card-border)' }}>
                         <MessageCircle size={20} />
-                        Message
+                        Comment
                     </motion.button>
                 </div>
 
                 {/* Profile About */}
-                <div className="bg-bg-card rounded-3xl p-5" style={{ border: '1px solid var(--color-border)' }}>
+                <div className="rounded-3xl p-5" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                     <h2 className="text-lg font-bold text-text-primary mb-3 flex items-center gap-2">
                         <Star size={18} className="text-gold" />
                         Profile About
@@ -190,25 +217,25 @@ export default function SingleProfilePage({ params }) {
                 </div>
 
                 {/* Details Grid */}
-                <div className="bg-bg-card rounded-3xl p-5 space-y-3" style={{ border: '1px solid var(--color-border)' }}>
+                <div className="rounded-3xl p-5 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                     <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Details</h3>
                     <div className="grid grid-cols-2 gap-3">
                         {profile.location && (
-                            <div className="bg-surface rounded-xl p-3">
+                            <div className="rounded-xl p-3" style={{ background: 'var(--color-surface)' }}>
                                 <p className="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">Location</p>
                                 <p className="text-sm font-semibold text-text-primary">{profile.location}</p>
                             </div>
                         )}
-                        <div className="bg-surface rounded-xl p-3">
+                        <div className="rounded-xl p-3" style={{ background: 'var(--color-surface)' }}>
                             <p className="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">Status</p>
                             <p className="text-sm font-semibold text-success">✓ Verified</p>
                         </div>
-                        <div className="bg-surface rounded-xl p-3">
+                        <div className="rounded-xl p-3" style={{ background: 'var(--color-surface)' }}>
                             <p className="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">Comments</p>
                             <p className="text-sm font-semibold text-text-primary">{profile.commentCount}</p>
                         </div>
                         {profile.date && (
-                            <div className="bg-surface rounded-xl p-3">
+                            <div className="rounded-xl p-3" style={{ background: 'var(--color-surface)' }}>
                                 <p className="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">Joined</p>
                                 <p className="text-sm font-semibold text-text-primary">
                                     {new Date(profile.date).toLocaleDateString('en-KE', { month: 'short', year: 'numeric' })}
@@ -221,8 +248,8 @@ export default function SingleProfilePage({ params }) {
                 {/* Contact buttons after main content */}
                 <ContactButtons profileName={profile.name} />
 
-                {/* ---- Profile Labels: Availability, Demand, Ranking, Region ---- */}
-                <div className="bg-bg-card rounded-3xl p-5 space-y-3" style={{ border: '1px solid var(--color-border)' }}>
+                {/* Profile Labels */}
+                <div className="rounded-3xl p-5 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                     <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
                         <Award size={15} className="text-gold" /> Profile Insights
                     </h3>
@@ -237,10 +264,60 @@ export default function SingleProfilePage({ params }) {
                     </div>
                 </div>
 
+                {/* ---- Real WordPress Comments ---- */}
+                <div className="rounded-3xl p-5 space-y-4" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
+                            <MessageCircle size={15} className="text-primary" />
+                            Comments ({comments.length})
+                        </h3>
+                        <button onClick={() => setShowComment(true)} className="text-xs font-semibold text-primary hover:underline">
+                            + Add Comment
+                        </button>
+                    </div>
+
+                    {loadingComments ? (
+                        <div className="space-y-3">
+                            {[1, 2, 3].map(i => (
+                                <div key={i} className="flex gap-3 animate-pulse">
+                                    <div className="w-9 h-9 rounded-full" style={{ background: 'var(--color-surface)' }} />
+                                    <div className="flex-1 space-y-2">
+                                        <div className="h-3 w-24 rounded" style={{ background: 'var(--color-surface)' }} />
+                                        <div className="h-3 w-full rounded" style={{ background: 'var(--color-surface)' }} />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : comments.length === 0 ? (
+                        <div className="text-center py-6">
+                            <MessageCircle size={28} className="text-text-muted mx-auto mb-2" />
+                            <p className="text-sm text-text-muted">No comments yet</p>
+                            <p className="text-xs text-text-muted mt-1">Be the first to comment on this profile!</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {comments.map(comment => (
+                                <div key={comment.id} className="flex gap-3 py-3 border-b last:border-b-0" style={{ borderColor: 'var(--color-border)' }}>
+                                    <UserAvatar name={comment.author} src={comment.avatarUrl} size={36} />
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-xs font-bold text-text-primary">{comment.author}</span>
+                                            <span className="text-[10px] text-text-muted">
+                                                {formatCommentDate(comment.date)}
+                                            </span>
+                                        </div>
+                                        <p className="text-sm text-text-secondary leading-relaxed">{comment.content}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
                 {/* Leave Comment */}
                 <button onClick={() => setShowComment(true)}
-                    className="w-full py-3.5 rounded-2xl text-sm font-semibold text-text-secondary bg-bg-card transition-colors flex items-center justify-center gap-2"
-                    style={{ border: '1px solid var(--color-border)' }}>
+                    className="w-full py-3.5 rounded-2xl text-sm font-semibold text-text-secondary transition-colors flex items-center justify-center gap-2"
+                    style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                     💬 Leave a Comment on this Profile
                 </button>
 
@@ -251,7 +328,7 @@ export default function SingleProfilePage({ params }) {
             </div>
 
             {showComment && (
-                <CommentForm profile={{ wpId: profile.wpId, name: profile.name, imageUrl: profile.imageUrl }} onClose={() => setShowComment(false)} />
+                <CommentForm profile={{ wpId: profile.wpId, name: profile.name, imageUrl: profile.imageUrl }} onClose={handleCommentClose} />
             )}
         </div>
     );
@@ -267,4 +344,20 @@ function LabelRow({ icon: Icon, label, value, valueColor }) {
             <span className={`text-sm font-semibold ${valueColor}`}>{value}</span>
         </div>
     );
+}
+
+function formatCommentDate(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' });
 }

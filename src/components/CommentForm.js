@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Send } from 'lucide-react';
+import { X, Send, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function CommentForm({ profile, onClose }) {
@@ -43,9 +43,8 @@ export default function CommentForm({ profile, onClose }) {
 
             setSent(true);
             logMessageSent(profile.name, profile.imageUrl);
-            setTimeout(() => onClose?.(), 2000);
         } catch (err) {
-            setError(err.message || 'Failed to send message');
+            setError(err.message || 'Failed to send comment. Please try again.');
         } finally {
             setSending(false);
         }
@@ -65,8 +64,8 @@ export default function CommentForm({ profile, onClose }) {
                     animate={{ y: 0, opacity: 1 }}
                     exit={{ y: 300, opacity: 0 }}
                     transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                    className="w-full max-w-md bg-bg-card rounded-t-3xl p-6 pb-8"
-                    style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}
+                    className="w-full max-w-md rounded-t-3xl p-6 pb-8"
+                    style={{ background: 'var(--color-bg-card)', borderTop: 'var(--card-border)' }}
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Handle bar */}
@@ -75,17 +74,17 @@ export default function CommentForm({ profile, onClose }) {
                     {/* Header */}
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-bold text-text-primary">
-                            Message {profile?.name || 'Profile'}
+                            Comment on {profile?.name || 'Profile'}
                         </h3>
-                        <button onClick={onClose} className="p-2 rounded-full hover:bg-surface-light transition-colors">
+                        <button onClick={onClose} className="p-2 rounded-full transition-colors" style={{ background: 'var(--color-surface)' }}>
                             <X size={20} className="text-text-muted" />
                         </button>
                     </div>
 
                     {/* Show who is commenting */}
-                    <div className="flex items-center gap-2 mb-4 py-2 px-3 rounded-xl bg-surface/50 border border-white/5">
+                    <div className="flex items-center gap-2 mb-4 py-2 px-3 rounded-xl" style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }}>
                         <span className="text-xs text-text-muted">Posting as:</span>
-                        <span className="text-xs font-semibold text-text-primary">{authorName}</span>
+                        <span className="text-xs font-bold text-text-primary">{authorName}</span>
                         <span className="text-xs text-text-muted">({authorEmail})</span>
                     </div>
 
@@ -93,32 +92,41 @@ export default function CommentForm({ profile, onClose }) {
                         <motion.div
                             initial={{ scale: 0.8, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
-                            className="text-center py-8"
+                            className="text-center py-8 space-y-3"
                         >
-                            <div className="text-4xl mb-3">✅</div>
-                            <p className="text-success font-semibold">Message sent!</p>
-                            <p className="text-text-secondary text-sm mt-1">
-                                It will appear on the website after approval
+                            <CheckCircle size={48} className="text-success mx-auto" />
+                            <h4 className="text-lg font-bold text-text-primary">Comment Sent for Moderation</h4>
+                            <p className="text-text-secondary text-sm leading-relaxed max-w-xs mx-auto">
+                                Your comment has been submitted to the website and is <strong>awaiting admin approval</strong>.
+                                Once approved, it will appear publicly on the profile page.
                             </p>
+                            <button onClick={onClose}
+                                className="mt-3 px-6 py-2.5 rounded-xl text-sm font-semibold text-white gradient-primary">
+                                Done
+                            </button>
                         </motion.div>
                     ) : (
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <textarea
                                 value={content}
                                 onChange={(e) => setContent(e.target.value)}
-                                placeholder="Write a thoughtful message..."
+                                placeholder="Write your comment... This will be posted on the website after admin approval."
                                 maxLength={1000}
                                 rows={4}
-                                className="w-full bg-bg-input rounded-2xl p-4 text-text-primary placeholder:text-text-muted resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                                className="w-full rounded-2xl p-4 text-text-primary placeholder:text-text-muted resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                                style={{ background: 'var(--color-bg-input)', border: 'var(--card-border)' }}
                             />
                             <div className="flex items-center justify-between">
                                 <span className="text-xs text-text-muted">
                                     {content.length}/1000
                                 </span>
                                 {error && (
-                                    <span className="text-xs text-danger">{error}</span>
+                                    <span className="text-xs text-danger font-medium">{error}</span>
                                 )}
                             </div>
+                            <p className="text-[10px] text-text-muted leading-relaxed">
+                                💡 Comments are sent to the website for moderation. An admin will review and approve your comment before it appears publicly.
+                            </p>
                             <button
                                 type="submit"
                                 disabled={!content.trim() || sending}
@@ -129,7 +137,7 @@ export default function CommentForm({ profile, onClose }) {
                                 ) : (
                                     <>
                                         <Send size={18} />
-                                        Send Message
+                                        Submit Comment
                                     </>
                                 )}
                             </button>

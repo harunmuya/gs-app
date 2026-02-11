@@ -186,7 +186,7 @@ export default function ProfilePage() {
                 ) : (
                     <div className="space-y-3">
                         {saved.map(s => (
-                            <Link key={s.wpId} href={`/discover/${s.wpId}`} className="flex items-center gap-3 p-3 rounded-2xl bg-bg-card border border-white/5 hover:bg-surface transition-colors">
+                            <Link key={s.wpId} href={`/discover/${s.wpId}`} className="flex items-center gap-3 p-3 rounded-2xl bg-bg-card border border-black/10 dark:border-white/10 hover:bg-surface transition-colors">
                                 <div className="w-14 h-14 rounded-xl overflow-hidden bg-surface shrink-0">
                                     {s.imageUrl ? <img src={s.imageUrl} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><User size={20} className="text-text-muted" /></div>}
                                 </div>
@@ -225,15 +225,15 @@ export default function ProfilePage() {
             <div className="px-4 pt-4 pb-24 max-w-lg mx-auto">
                 <SectionHeader title="Privacy & Security" onBack={() => setActiveSection(null)} />
                 <div className="space-y-4">
-                    <div className="bg-bg-card rounded-2xl p-4 border border-white/5 space-y-3">
-                        <h3 className="text-sm font-bold text-white flex items-center gap-2"><Shield size={16} className="text-primary" /> Data Privacy</h3>
+                    <div className="bg-bg-card rounded-2xl p-4 border border-black/10 dark:border-white/10 space-y-3">
+                        <h3 className="text-sm font-bold text-text-primary flex items-center gap-2"><Shield size={16} className="text-primary" /> Data Privacy</h3>
                         <p className="text-xs text-text-secondary leading-relaxed">Your data is stored locally on your device. We do not share your personal information with third parties.</p>
                     </div>
-                    <div className="bg-bg-card rounded-2xl p-4 border border-white/5 space-y-3">
+                    <div className="bg-bg-card rounded-2xl p-4 border border-black/10 dark:border-white/10 space-y-3">
                         <h3 className="text-sm font-bold text-white flex items-center gap-2"><Lock size={16} className="text-gold" /> Account Security</h3>
                         <p className="text-xs text-text-secondary leading-relaxed">Your account is secured with your email. Keep your email address private and don&apos;t share it with strangers.</p>
                     </div>
-                    <div className="bg-bg-card rounded-2xl p-4 border border-white/5 space-y-3">
+                    <div className="bg-bg-card rounded-2xl p-4 border border-black/10 dark:border-white/10 space-y-3">
                         <h3 className="text-sm font-bold text-white flex items-center gap-2"><EyeOff size={16} className="text-accent" /> Profile Visibility</h3>
                         <p className="text-xs text-text-secondary leading-relaxed">Toggle your profile to private in Account Settings to hide from other users. Only matched users can see private profiles.</p>
                     </div>
@@ -257,7 +257,7 @@ export default function ProfilePage() {
                         { q: 'How do I save a profile?', a: 'Tap the bookmark icon when viewing a profile. Saved profiles appear in your Account tab.' },
                         { q: 'Is my data safe?', a: 'Yes! Your data is stored locally on your device. We don\'t store passwords or sensitive data on servers.' },
                     ].map((faq, i) => (
-                        <details key={i} className="bg-bg-card rounded-2xl border border-white/5 group">
+                        <details key={i} className="bg-bg-card rounded-2xl border border-black/10 dark:border-white/10 group">
                             <summary className="p-4 text-sm font-semibold text-white cursor-pointer list-none flex items-center justify-between">
                                 {faq.q}
                                 <ChevronRight size={16} className="text-text-muted transition-transform group-open:rotate-90 shrink-0" />
@@ -276,20 +276,20 @@ export default function ProfilePage() {
             <div className="px-4 pt-4 pb-24 max-w-lg mx-auto">
                 <SectionHeader title="Contact Us" onBack={() => setActiveSection(null)} />
                 <div className="space-y-4">
-                    <div className="bg-bg-card rounded-2xl p-5 border border-white/5 text-center space-y-3">
+                    <div className="bg-bg-card rounded-2xl p-5 border border-black/10 dark:border-white/10 text-center space-y-3">
                         <Logo size={50} />
                         <h3 className="text-lg font-bold text-white">Genuine Sugar Mummies</h3>
                         <p className="text-sm text-text-secondary">Kenya&apos;s #1 dating app for real connections</p>
                     </div>
-                    <a href="tel:+254738871048" className="flex items-center gap-3 p-4 rounded-2xl bg-bg-card border border-white/5 hover:bg-surface transition-colors">
+                    <a href="tel:+254738871048" className="flex items-center gap-3 p-4 rounded-2xl bg-bg-card border border-black/10 dark:border-white/10 hover:bg-surface transition-colors">
                         <div className="w-10 h-10 rounded-full bg-success/20 flex items-center justify-center"><Phone size={18} className="text-success" /></div>
                         <div><p className="text-sm font-semibold text-white">Call Us</p><p className="text-xs text-text-muted">+254 738 871 048</p></div>
                     </a>
-                    <a href="sms:+254738871048" className="flex items-center gap-3 p-4 rounded-2xl bg-bg-card border border-white/5 hover:bg-surface transition-colors">
+                    <a href="sms:+254738871048" className="flex items-center gap-3 p-4 rounded-2xl bg-bg-card border border-black/10 dark:border-white/10 hover:bg-surface transition-colors">
                         <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center"><Mail size={18} className="text-blue-400" /></div>
                         <div><p className="text-sm font-semibold text-white">SMS</p><p className="text-xs text-text-muted">+254 738 871 048</p></div>
                     </a>
-                    <a href="https://t.me/+254738871048" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-4 rounded-2xl bg-bg-card border border-white/5 hover:bg-surface transition-colors">
+                    <a href="https://t.me/+254738871048" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-4 rounded-2xl bg-bg-card border border-black/10 dark:border-white/10 hover:bg-surface transition-colors">
                         <div className="w-10 h-10 rounded-full bg-[#26A5E4]/20 flex items-center justify-center"><span className="text-lg">✈</span></div>
                         <div><p className="text-sm font-semibold text-white">Telegram</p><p className="text-xs text-text-muted">@MaryG Admin</p></div>
                     </a>
@@ -312,7 +312,7 @@ export default function ProfilePage() {
             </div>
 
             {/* Profile Card */}
-            <div className="bg-bg-card rounded-3xl p-5 border border-white/5 mb-5">
+            <div className="bg-bg-card rounded-3xl p-5 border border-black/10 dark:border-white/10 mb-5">
                 <div className="flex items-center gap-4 mb-4">
                     <div className="w-20 h-20 rounded-full bg-surface flex items-center justify-center ring-2 ring-primary/30 overflow-hidden shrink-0">
                         {profile?.avatar_url ? (
@@ -330,15 +330,15 @@ export default function ProfilePage() {
 
                 {/* Stats */}
                 <div className="flex items-center gap-2">
-                    <div className="flex-1 bg-surface/60 rounded-xl py-2.5 text-center border border-white/5">
+                    <div className="flex-1 bg-surface/60 rounded-xl py-2.5 text-center border border-black/10 dark:border-white/10">
                         <p className="text-xl font-bold text-gradient">{likes?.length || 0}</p>
                         <p className="text-[10px] text-text-muted">Likes</p>
                     </div>
-                    <div className="flex-1 bg-surface/60 rounded-xl py-2.5 text-center border border-white/5">
+                    <div className="flex-1 bg-surface/60 rounded-xl py-2.5 text-center border border-black/10 dark:border-white/10">
                         <p className="text-xl font-bold text-gradient">{matches?.length || 0}</p>
                         <p className="text-[10px] text-text-muted">Matches</p>
                     </div>
-                    <div className="flex-1 bg-surface/60 rounded-xl py-2.5 text-center border border-white/5">
+                    <div className="flex-1 bg-surface/60 rounded-xl py-2.5 text-center border border-black/10 dark:border-white/10">
                         <p className="text-xl font-bold text-gradient">{saved?.length || 0}</p>
                         <p className="text-[10px] text-text-muted">Saved</p>
                     </div>
@@ -358,7 +358,7 @@ export default function ProfilePage() {
 
             {/* Location */}
             <button onClick={requestLocation} disabled={geoLoading}
-                className="w-full flex items-center justify-between py-3.5 px-4 rounded-2xl bg-bg-card border border-white/5 hover:bg-surface transition-colors mb-6">
+                className="w-full flex items-center justify-between py-3.5 px-4 rounded-2xl bg-bg-card border border-black/10 dark:border-white/10 hover:bg-surface transition-colors mb-6">
                 <div className="flex items-center gap-2">
                     <Navigation size={16} className={location ? 'text-blue-400' : 'text-text-muted'} />
                     <span className="text-sm text-text-primary">{geoLoading ? 'Locating...' : location ? `📍 Location enabled` : 'Enable Location'}</span>
@@ -368,7 +368,7 @@ export default function ProfilePage() {
 
             {/* Logout/Delete */}
             <div className="space-y-2.5">
-                <button onClick={signOut} className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-surface border border-white/5 text-text-secondary hover:bg-surface-light font-medium transition-colors">
+                <button onClick={signOut} className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-surface border border-black/10 dark:border-white/10 text-text-secondary hover:bg-surface-light font-medium transition-colors">
                     <LogOut size={16} /> Sign Out
                 </button>
                 <button onClick={() => setShowDeleteConfirm(true)} className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-danger/70 hover:bg-danger/10 hover:text-danger font-medium transition-colors">
@@ -401,7 +401,7 @@ export default function ProfilePage() {
 // ---- Reusable Components ----
 function MenuItem({ icon: Icon, label, desc, onClick }) {
     return (
-        <button onClick={onClick} className="w-full flex items-center gap-3.5 py-3.5 px-4 rounded-2xl bg-bg-card border border-white/5 hover:bg-surface transition-colors group text-left">
+        <button onClick={onClick} className="w-full flex items-center gap-3.5 py-3.5 px-4 rounded-2xl bg-bg-card border border-black/10 dark:border-white/10 hover:bg-surface transition-colors group text-left">
             <div className="w-10 h-10 rounded-full bg-surface flex items-center justify-center shrink-0 group-hover:bg-primary/10 transition-colors">
                 <Icon size={18} className="text-text-secondary group-hover:text-primary transition-colors" />
             </div>
@@ -416,7 +416,7 @@ function MenuItem({ icon: Icon, label, desc, onClick }) {
 
 function ToggleItem({ icon: Icon, label, desc, value, onChange }) {
     return (
-        <div className="flex items-center gap-3.5 py-3.5 px-4 rounded-2xl bg-bg-card border border-white/5">
+        <div className="flex items-center gap-3.5 py-3.5 px-4 rounded-2xl bg-bg-card border border-black/10 dark:border-white/10">
             <div className="w-10 h-10 rounded-full bg-surface flex items-center justify-center shrink-0">
                 <Icon size={18} className="text-text-secondary" />
             </div>

@@ -16,7 +16,7 @@ export default function BottomNav() {
     const pathname = usePathname();
 
     return (
-        <nav className="fixed bottom-0 left-0 right-0 z-50 glass" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+        <nav className="fixed bottom-0 left-0 right-0 z-50 glass" style={{ borderTop: 'var(--card-border)' }}>
             <div className="max-w-md mx-auto flex items-center justify-around py-2 px-4">
                 {navItems.map((item) => {
                     const isActive = pathname?.startsWith(item.href);
