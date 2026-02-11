@@ -117,6 +117,12 @@ export default function SingleProfilePage({ params }) {
                 </button>
 
                 <div className="absolute top-4 right-4 flex gap-2 z-10">
+                    {profile.daysSincePost < 3 && (
+                        <span className="flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-success text-white shadow-lg">🆕 Newly Available</span>
+                    )}
+                    {profile.daysSincePost >= 3 && profile.daysSincePost <= 14 && (
+                        <span className="flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-gold text-white shadow-lg">⭐ Featured</span>
+                    )}
                     <button onClick={handleShare} className="w-10 h-10 rounded-full glass flex items-center justify-center">
                         <Share2 size={18} className="text-white" />
                     </button>

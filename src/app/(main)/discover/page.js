@@ -212,9 +212,17 @@ export default function DiscoverPage() {
 
                         {/* Top badges */}
                         <div className="absolute top-3 left-3 right-3 flex justify-between items-start">
-                            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] glass">
-                                <MessageCircle size={12} className="text-white/70" />
-                                <span className="text-white/80 font-medium profile-overlay-text">{currentProfile.commentCount} comments</span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                                {currentProfile.daysSincePost < 3 && (
+                                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-success text-white shadow-lg">🆕 Newly Available</span>
+                                )}
+                                {currentProfile.daysSincePost >= 3 && currentProfile.daysSincePost <= 14 && (
+                                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-gold text-white shadow-lg">⭐ Featured</span>
+                                )}
+                                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] glass">
+                                    <MessageCircle size={12} className="text-white/70" />
+                                    <span className="text-white/80 font-medium profile-overlay-text">{currentProfile.commentCount} comments</span>
+                                </div>
                             </div>
                             <div className="px-2.5 py-1 rounded-full text-xs font-bold glass">
                                 <span className="text-gold">{currentProfile.matchScore || 85}%</span>
