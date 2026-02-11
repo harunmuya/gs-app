@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, MapPin, MessageCircle, Eye } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,11 +8,10 @@ import CommentForm from '@/components/CommentForm';
 import ContactButtons from '@/components/ContactButtons';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import Logo from '@/components/Logo';
+import Link from 'next/link';
 
 export default function MatchesPage() {
-    const { user, guest, signOut } = useAuth();
-    const [matches, setMatches] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const { user, guest, matches } = useAuth();
     const [commentProfile, setCommentProfile] = useState(null);
 
     // Guest view
@@ -28,33 +27,15 @@ export default function MatchesPage() {
                         Sign in to save your matches and chat with sugar mummies.
                     </p>
                 </div>
-                <button
-                    onClick={signOut}
-                    className="w-full max-w-xs py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20"
+                <Link
+                    href="/auth/login"
+                    className="w-full max-w-xs py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 text-center block"
                 >
                     Sign In / Create Account
-                </button>
+                </Link>
             </div>
         );
     }
-
-    useEffect(() => {
-        if (user) {
-            fetchMatches();
-        }
-    }, [user]);
-
-    const fetchMatches = async () => {
-        try {
-            const res = await fetch('/api/matches');
-            const data = await res.json();
-            setMatches(data.matches || []);
-        } catch (error) {
-            console.error('Error fetching matches:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
 
     return (
         <div className="px-5 pt-4">
@@ -67,13 +48,7 @@ export default function MatchesPage() {
                 </span>
             </div>
 
-            {loading ? (
-                <div className="space-y-4">
-                    {[1, 2, 3].map((i) => (
-                        <div key={i} className="rounded-2xl overflow-hidden h-72 shimmer" />
-                    ))}
-                </div>
-            ) : matches.length === 0 ? (
+            {matches.length === 0 ? (
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -90,7 +65,7 @@ export default function MatchesPage() {
                     <AnimatePresence>
                         {matches.map((match, index) => (
                             <motion.div
-                                key={match.id}
+                                key={match.wpId}
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: index * 0.05 }}
@@ -99,10 +74,10 @@ export default function MatchesPage() {
                             >
                                 {/* Profile image + info */}
                                 <div className="relative" style={{ aspectRatio: '4/3' }}>
-                                    {match.profile_image ? (
+                                    {match.imageUrl ? (
                                         <img
-                                            src={match.profile_image}
-                                            alt={match.profile_name}
+                                            src={match.imageUrl}
+                                            alt={match.name}
                                             className="absolute inset-0 w-full h-full object-cover"
                                             loading="lazy"
                                         />
@@ -117,7 +92,7 @@ export default function MatchesPage() {
 
                                     {/* Score badge */}
                                     <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full text-xs font-bold glass">
-                                        <span className="text-gold">{match.score}% Match</span>
+                                        <span className="text-gold">{match.score || 85}% Match</span>
                                     </div>
 
                                     {/* View count badge */}
@@ -131,13 +106,13 @@ export default function MatchesPage() {
                                     {/* Info overlay */}
                                     <div className="absolute bottom-0 left-0 right-0 p-4 space-y-1">
                                         <h3 className="text-lg font-bold text-white flex items-center gap-1.5">
-                                            {match.profile_name || 'Unknown'}
+                                            {match.name || 'Unknown'}
                                             <VerifiedBadge size={16} />
                                         </h3>
-                                        {match.profile_location && (
+                                        {match.location && (
                                             <div className="flex items-center gap-1 text-white/70">
                                                 <MapPin size={12} />
-                                                <span className="text-xs">{match.profile_location}</span>
+                                                <span className="text-xs">{match.location}</span>
                                             </div>
                                         )}
                                     </div>
@@ -153,8 +128,8 @@ export default function MatchesPage() {
                                     </button>
                                     <button
                                         onClick={() => setCommentProfile({
-                                            wpId: match.profile_wp_id,
-                                            name: match.profile_name,
+                                            wpId: match.wpId,
+                                            name: match.name,
                                         })}
                                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-text-secondary bg-surface hover:bg-surface-light transition-colors"
                                     >
@@ -165,7 +140,7 @@ export default function MatchesPage() {
 
                                 {/* Contact buttons */}
                                 <div className="p-3 pt-0">
-                                    <ContactButtons profileName={match.profile_name} />
+                                    <ContactButtons profileName={match.name} />
                                 </div>
                             </motion.div>
                         ))}

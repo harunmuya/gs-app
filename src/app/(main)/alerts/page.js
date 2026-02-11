@@ -1,36 +1,54 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, Heart, Eye, MessageCircle, ChevronRight, Check } from 'lucide-react';
+import { Bell, Heart, Eye, MessageCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
-import SkeletonCard from '@/components/SkeletonCard'; // Not ideal for list, create custom skeleton later
 
 export default function AlertsPage() {
-    const { user, guest } = useAuth();
-    const [alerts, setAlerts] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const { user, guest, likes, matches } = useAuth();
 
-    useEffect(() => {
-        if (user) {
-            fetchAlerts();
-        } else {
-            setLoading(false);
-        }
-    }, [user]);
+    // Generate alerts from localStorage data
+    const alerts = useMemo(() => {
+        const notifications = [];
 
-    const fetchAlerts = async () => {
-        try {
-            const res = await fetch('/api/alerts');
-            const data = await res.json();
-            setAlerts(data.alerts || []);
-        } catch (error) {
-            console.error('Error fetching alerts:', error);
-        } finally {
-            setLoading(false);
+        // Add match notifications
+        if (matches && matches.length > 0) {
+            matches.forEach(match => {
+                notifications.push({
+                    id: `match-${match.wpId}`,
+                    type: 'match',
+                    title: 'New Match! 💖',
+                    message: `You matched with ${match.name || 'Someone'}`,
+                    image: match.imageUrl,
+                    time: match.matchedAt || new Date().toISOString(),
+                    read: false,
+                });
+            });
         }
-    };
+
+        // Add like notifications
+        if (likes && likes.length > 0) {
+            likes.forEach(like => {
+                // Don't duplicate if already a match
+                if (matches?.find(m => m.wpId === like.wpId)) return;
+                notifications.push({
+                    id: `like-${like.wpId}`,
+                    type: 'like',
+                    title: 'You Liked 💘',
+                    message: `You liked ${like.name || 'a profile'}`,
+                    image: like.imageUrl,
+                    time: like.likedAt || new Date().toISOString(),
+                    read: true,
+                });
+            });
+        }
+
+        // Sort by time
+        notifications.sort((a, b) => new Date(b.time) - new Date(a.time));
+        return notifications;
+    }, [likes, matches]);
 
     if (guest && !user) {
         return (
@@ -41,12 +59,12 @@ export default function AlertsPage() {
                 <div className="space-y-2">
                     <h2 className="text-2xl font-bold text-white">Activity Alerts</h2>
                     <p className="text-text-secondary">
-                        Sign in to see who likes you, who viewed your profile, and your new matches.
+                        Sign in to see your likes, matches, and activity.
                     </p>
                 </div>
                 <Link
                     href="/auth/login"
-                    className="w-full max-w-xs py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 block"
+                    className="w-full max-w-xs py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 block text-center"
                 >
                     Sign In to Unlock
                 </Link>
@@ -62,25 +80,15 @@ export default function AlertsPage() {
                     <Bell size={24} className="text-primary" />
                     <h1 className="text-xl font-bold text-text-primary">Alerts</h1>
                 </div>
-                <button className="text-xs text-primary font-medium">Mark all read</button>
+                <span className="text-xs text-text-muted bg-surface rounded-full px-2.5 py-0.5">
+                    {alerts.filter(a => !a.read).length} new
+                </span>
             </div>
 
-            {loading ? (
-                <div className="space-y-3">
-                    {[1, 2, 3, 4, 5].map((i) => (
-                        <div key={i} className="flex items-center gap-4 p-4 rounded-2xl bg-surface/50 animate-pulse">
-                            <div className="w-12 h-12 rounded-full bg-white/10" />
-                            <div className="flex-1 space-y-2">
-                                <div className="h-4 w-3/4 bg-white/10 rounded" />
-                                <div className="h-3 w-1/2 bg-white/10 rounded" />
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            ) : alerts.length === 0 ? (
+            {alerts.length === 0 ? (
                 <div className="text-center py-16 space-y-4">
                     <div className="text-5xl opacity-50">🔕</div>
-                    <p className="text-text-secondary">No new alerts yet.</p>
+                    <p className="text-text-secondary">No alerts yet. Start swiping to get alerts!</p>
                 </div>
             ) : (
                 <div className="space-y-3">
@@ -102,13 +110,12 @@ export default function AlertsPage() {
                                             <img src={alert.image} alt="" className="w-full h-full object-cover" />
                                         ) : (
                                             <div className="w-full h-full flex items-center justify-center bg-surface">
-                                                <User size={20} className="text-text-muted" />
+                                                <Heart size={20} className="text-text-muted" />
                                             </div>
                                         )}
                                     </div>
                                     <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center border-2 border-bg-card ${alert.type === 'like' ? 'bg-primary' :
-                                        alert.type === 'match' ? 'bg-gold' :
-                                            'bg-accent'
+                                        alert.type === 'match' ? 'bg-gold' : 'bg-accent'
                                         }`}>
                                         {alert.type === 'like' && <Heart size={12} fill="white" className="text-white" />}
                                         {alert.type === 'match' && <MessageCircle size={12} fill="white" className="text-white" />}
@@ -148,7 +155,7 @@ function formatTime(isoString) {
     if (!isoString) return '';
     const date = new Date(isoString);
     const now = new Date();
-    const diff = (now - date) / 1000; // seconds
+    const diff = (now - date) / 1000;
 
     if (diff < 60) return 'Just now';
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;

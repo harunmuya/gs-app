@@ -7,18 +7,18 @@ import Logo from '@/components/Logo';
 import { motion } from 'framer-motion';
 
 export default function HomePage() {
-    const { user, loading } = useAuth();
+    const { user, guest, loading } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
         if (!loading) {
-            if (user) {
+            if (user || guest) {
                 router.replace('/discover');
             } else {
                 router.replace('/auth/login');
             }
         }
-    }, [user, loading, router]);
+    }, [user, guest, loading, router]);
 
     return (
         <div className="min-h-dvh flex flex-col items-center justify-center bg-bg-dark">

@@ -1,175 +1,162 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 
 const AuthContext = createContext({});
 
+const STORAGE_KEYS = {
+    USER: 'gsm_user',
+    LIKES: 'gsm_likes',
+    MATCHES: 'gsm_matches',
+    PASSES: 'gsm_passes',
+    GUEST: 'guest_mode',
+};
+
+function getStored(key, fallback = null) {
+    if (typeof window === 'undefined') return fallback;
+    try {
+        const val = localStorage.getItem(key);
+        return val ? JSON.parse(val) : fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+function setStored(key, value) {
+    if (typeof window === 'undefined') return;
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+    } catch { }
+}
+
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
-    const [profile, setProfile] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const supabase = createClient();
-
-    useEffect(() => {
-        const getSession = async () => {
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                setUser(session?.user ?? null);
-                if (session?.user) {
-                    await fetchProfile(session.user.id);
-                }
-            } catch (error) {
-                console.error('Session error:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        getSession();
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (event, session) => {
-                setUser(session?.user ?? null);
-                if (session?.user) {
-                    await fetchProfile(session.user.id);
-                } else {
-                    setProfile(null);
-                }
-                setLoading(false);
-            }
-        );
-
-        return () => subscription?.unsubscribe();
-    }, []);
-
-    async function fetchProfile(userId) {
-        try {
-            const { data } = await supabase
-                .from('users')
-                .select('*')
-                .eq('id', userId)
-                .single();
-            setProfile(data);
-        } catch (error) {
-            console.error('Profile fetch error:', error);
-        }
-    }
-
-    async function signUp(email, password, displayName) {
-        const { data, error } = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-                data: { full_name: displayName },
-            },
-        });
-        if (error) throw error;
-        return data;
-    }
-
-    async function signIn(email, password) {
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
-        if (error) throw error;
-        return data;
-    }
-
-    async function signInWithGoogle() {
-        const { data, error } = await supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: {
-                redirectTo: `${window.location.origin}/auth/callback`,
-            },
-        });
-        if (error) throw error;
-        return data;
-    }
-
-    async function signInWithOTP(phone) {
-        const { data, error } = await supabase.auth.signInWithOtp({
-            phone,
-        });
-        if (error) throw error;
-        return data;
-    }
-
-    async function verifyOTP(phone, token) {
-        const { data, error } = await supabase.auth.verifyOtp({
-            phone,
-            token,
-            type: 'sms',
-        });
-        if (error) throw error;
-        return data;
-    }
-
-    async function signOut() {
-        const { error } = await supabase.auth.signOut();
-        if (error) throw error;
-        setUser(null);
-        setProfile(null);
-    }
-
-    async function updateProfile(updates) {
-        if (!user) return;
-        const { data, error } = await supabase
-            .from('users')
-            .update({ ...updates, updated_at: new Date().toISOString() })
-            .eq('id', user.id)
-            .select()
-            .single();
-        if (error) throw error;
-        setProfile(data);
-        return data;
-    }
-
-    async function deleteAccount() {
-        if (!user) return;
-        // Delete user data
-        await supabase.from('matches').delete().eq('user_id', user.id);
-        await supabase.from('likes').delete().eq('user_id', user.id);
-        await supabase.from('passes').delete().eq('user_id', user.id);
-        await supabase.from('preferences').delete().eq('user_id', user.id);
-        await supabase.from('user_locations').delete().eq('user_id', user.id);
-        await supabase.from('users').delete().eq('id', user.id);
-        await signOut();
-    }
-
     const [guest, setGuest] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [likes, setLikes] = useState([]);
+    const [matches, setMatches] = useState([]);
+    const [passes, setPasses] = useState([]);
 
+    // Load from localStorage on mount
     useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const isGuest = localStorage.getItem('guest_mode') === 'true';
-            if (isGuest) setGuest(true);
-        }
+        const storedUser = getStored(STORAGE_KEYS.USER);
+        const storedGuest = getStored(STORAGE_KEYS.GUEST, false);
+        const storedLikes = getStored(STORAGE_KEYS.LIKES, []);
+        const storedMatches = getStored(STORAGE_KEYS.MATCHES, []);
+        const storedPasses = getStored(STORAGE_KEYS.PASSES, []);
+
+        if (storedUser) setUser(storedUser);
+        if (storedGuest) setGuest(true);
+        setLikes(storedLikes);
+        setMatches(storedMatches);
+        setPasses(storedPasses);
+        setLoading(false);
     }, []);
 
+    // Sign in with email + name
+    function signIn(email, displayName) {
+        const userData = {
+            id: btoa(email),
+            email,
+            display_name: displayName || email.split('@')[0],
+            avatar_url: '',
+            bio: '',
+            interests: [],
+            created_at: new Date().toISOString(),
+        };
+        setUser(userData);
+        setGuest(false);
+        setStored(STORAGE_KEYS.USER, userData);
+        setStored(STORAGE_KEYS.GUEST, false);
+        return userData;
+    }
+
+    // Skip login (guest)
     function skipLogin() {
         setGuest(true);
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('guest_mode', 'true');
-        }
+        setStored(STORAGE_KEYS.GUEST, true);
+    }
+
+    // Sign out
+    function signOut() {
+        setUser(null);
+        setGuest(false);
+        setStored(STORAGE_KEYS.USER, null);
+        setStored(STORAGE_KEYS.GUEST, false);
+    }
+
+    // Update profile
+    function updateProfile(updates) {
+        if (!user) return;
+        const updated = { ...user, ...updates };
+        setUser(updated);
+        setStored(STORAGE_KEYS.USER, updated);
+        return updated;
+    }
+
+    // Like a profile
+    const addLike = useCallback((profile) => {
+        setLikes(prev => {
+            if (prev.find(l => l.wpId === profile.wpId)) return prev;
+            const updated = [...prev, { ...profile, likedAt: new Date().toISOString() }];
+            setStored(STORAGE_KEYS.LIKES, updated);
+            return updated;
+        });
+    }, []);
+
+    // Add a match
+    const addMatch = useCallback((profile, score = 85) => {
+        setMatches(prev => {
+            if (prev.find(m => m.wpId === profile.wpId)) return prev;
+            const updated = [...prev, { ...profile, score, matchedAt: new Date().toISOString() }];
+            setStored(STORAGE_KEYS.MATCHES, updated);
+            return updated;
+        });
+    }, []);
+
+    // Pass on a profile
+    const addPass = useCallback((profileWpId) => {
+        setPasses(prev => {
+            if (prev.includes(profileWpId)) return prev;
+            const updated = [...prev, profileWpId];
+            setStored(STORAGE_KEYS.PASSES, updated);
+            return updated;
+        });
+    }, []);
+
+    // Check if profile was already swiped
+    const isProfileSwiped = useCallback((wpId) => {
+        return likes.some(l => l.wpId === wpId) || passes.includes(wpId);
+    }, [likes, passes]);
+
+    // Delete account
+    function deleteAccount() {
+        Object.values(STORAGE_KEYS).forEach(k => {
+            if (typeof window !== 'undefined') localStorage.removeItem(k);
+        });
+        setUser(null);
+        setGuest(false);
+        setLikes([]);
+        setMatches([]);
+        setPasses([]);
     }
 
     const value = {
         user,
         guest,
-        profile,
         loading,
-        signUp,
+        profile: user,
+        likes,
+        matches,
         signIn,
-        signInWithGoogle,
-        signInWithOTP,
-        skipLogin,
-        verifyOTP,
         signOut,
+        skipLogin,
         updateProfile,
+        addLike,
+        addMatch,
+        addPass,
+        isProfileSwiped,
         deleteAccount,
-        supabase,
-        refreshProfile: () => user && fetchProfile(user.id),
     };
 
     return (
