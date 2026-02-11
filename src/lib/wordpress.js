@@ -211,14 +211,20 @@ export function parseProfile(post) {
     // Comment count from WP API (real-time)
     const commentCount = post.comment_count || (post._embedded?.replies?.[0]?.length) || 0;
 
+    // Clean excerpt text
+    const excerptText = excerpt.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&#8217;/g, "'").replace(/&hellip;/g, '...').replace(/continue\s+reading.*$/i, '').trim();
+
     return {
         wpId: post.id,
         name,
         age,
         location,
         bio,
+        excerpt: excerptText,
+        content: content,
         imageUrl,
         wpUrl: post.link || '',
+        date: post.date || '',
         postDate: post.date || '',
         coords,
         views,
@@ -268,5 +274,24 @@ export async function fetchProfiles(page = 1, perPage = 20) {
     } catch (error) {
         console.error('Failed to fetch profiles:', error);
         return { profiles: [], totalPages: 0, totalPosts: 0, page };
+    }
+}
+
+/**
+ * Fetch a single profile by WordPress post ID
+ */
+export async function fetchSingleProfile(postId) {
+    try {
+        const url = `${WP_API_URL}/posts/${postId}?_embed`;
+        const res = await fetch(url, {
+            next: { revalidate: 300 },
+            headers: { 'Accept': 'application/json' },
+        });
+        if (!res.ok) return null;
+        const post = await res.json();
+        return parseProfile(post);
+    } catch (error) {
+        console.error('Failed to fetch single profile:', error);
+        return null;
     }
 }
