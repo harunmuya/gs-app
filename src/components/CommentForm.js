@@ -48,9 +48,9 @@ export default function CommentForm({ profile, onClose }) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    postId: profile.wpId,
-                    authorName: authorName.trim(),
-                    authorEmail: authorEmail.trim(),
+                    post_id: profile.wpId,
+                    author_name: authorName.trim(),
+                    author_email: authorEmail.trim(),
                     content: content.trim(),
                 }),
             });

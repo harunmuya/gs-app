@@ -1,10 +1,10 @@
 'use client';
 
 import { useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, Heart, Eye, MessageCircle, Bookmark, User, LogIn, Star, Flame, Zap, Phone, Send, BellOff, Sparkles, UserCheck } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import Link from 'next/link';
 
 const ICON_MAP = {
     like: { icon: Heart, color: 'bg-primary', fill: true },
@@ -33,6 +33,7 @@ function TelegramIcon({ size = 14, className = '' }) {
 
 export default function AlertsPage() {
     const { user, guest, activity, markActivityRead, requestConnection } = useAuth();
+    const router = useRouter();
 
     const unreadCount = useMemo(() => activity.filter(a => !a.read).length, [activity]);
 
@@ -44,9 +45,9 @@ export default function AlertsPage() {
                 </div>
                 <h2 className="text-2xl font-bold text-text-primary">Activity</h2>
                 <p className="text-text-secondary">Sign in to track your activity.</p>
-                <Link href="/auth/login" className="w-full max-w-xs py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 block text-center">
+                <button onClick={() => router.push('/auth/login')} className="w-full max-w-xs py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 block text-center">
                     Sign In
-                </Link>
+                </button>
             </div>
         );
     }
@@ -93,8 +94,15 @@ export default function AlertsPage() {
                             const telegramMsg = encodeURIComponent(`Hi, need a match connection with ${profileName}`);
                             const telegramLink = `https://t.me/GSADMINMARYGAGENCY?text=${telegramMsg}`;
 
-                            const alertContent = (
+                            const handleAlertClick = () => {
+                                if (hasProfile) {
+                                    router.push(`/discover/${item.profileId}`);
+                                }
+                            };
+
+                            return (
                                 <motion.div key={item.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(index * 0.03, 0.5) }}
+                                    onClick={handleAlertClick}
                                     className={`relative flex items-start gap-3.5 p-3.5 rounded-2xl transition-colors ${item.read ? 'bg-white' : 'bg-bg-card card-shadow'} ${hasProfile ? 'cursor-pointer hover:bg-surface/50' : ''}`}
                                     style={{ border: '1px solid rgba(0,0,0,0.06)' }}>
 
@@ -124,38 +132,26 @@ export default function AlertsPage() {
                                         </div>
                                         {item.message && <p className="text-xs text-text-muted truncate">{item.message}</p>}
 
-                                        {/* Request Connection button — opens Telegram */}
+                                        {/* Request Connection button — opens Telegram (uses button to avoid nested <a>) */}
                                         {isHookup && (
-                                            <a
-                                                href={telegramLink}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
+                                            <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     requestConnection?.(profileName, item.profileId);
+                                                    window.open(telegramLink, '_blank');
                                                 }}
                                                 className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-full text-[11px] font-semibold text-white shadow-sm hover:shadow-md transition-all active:scale-95"
                                                 style={{ background: '#26A5E4' }}
                                             >
                                                 <TelegramIcon size={12} />
                                                 Request Connection
-                                            </a>
+                                            </button>
                                         )}
                                     </div>
 
                                     {!item.read && <div className="w-2 h-2 rounded-full bg-primary shrink-0 animate-pulse mt-2" />}
                                 </motion.div>
                             );
-
-                            if (hasProfile) {
-                                return (
-                                    <Link key={item.id} href={`/discover/${item.profileId}`} className="block">
-                                        {alertContent}
-                                    </Link>
-                                );
-                            }
-
-                            return alertContent;
                         })}
                     </AnimatePresence>
                 </div>

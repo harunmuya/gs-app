@@ -100,7 +100,7 @@ export default function DiscoverPage() {
                 const batch = data.profiles || [];
                 if (batch.length === 0) break;
                 allFetched = [...allFetched, ...batch];
-                hasMore = batch.length >= 20 && (data.totalPages ? page < data.totalPages : true);
+                hasMore = data.totalPages ? page < data.totalPages : batch.length >= 25;
                 page++;
                 // Don't wait too long between pages
             }
