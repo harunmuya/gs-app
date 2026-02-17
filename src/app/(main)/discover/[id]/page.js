@@ -9,7 +9,7 @@ import ContactButtons from '@/components/ContactButtons';
 import CommentForm from '@/components/CommentForm';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
-import BlurImage from '@/components/BlurImage';
+
 
 // Deterministic match check (no randomness)
 function shouldMatchProfile(profile) {
@@ -163,7 +163,18 @@ export default function SingleProfilePage({ params }) {
             {/* Hero */}
             <div className="relative" style={{ height: '55vh', minHeight: '350px' }}>
                 {profile.imageUrl ? (
-                    <BlurImage src={profile.imageUrl} alt={profile.name} fill className="absolute inset-0 w-full h-full" />
+                    <img
+                        src={profile.imageUrl}
+                        alt={profile.name}
+                        loading="eager"
+                        style={{
+                            position: 'absolute',
+                            inset: 0,
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                        }}
+                    />
                 ) : (
                     <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'var(--color-surface)' }}>
                         <UserAvatar name={profile.name} size={120} />

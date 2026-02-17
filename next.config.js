@@ -62,7 +62,7 @@ const nextConfig = {
               "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://fonts.googleapis.com",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com",
-              "img-src 'self' data: blob: https: https://genuinesugarmummies.co.ke https://*.wp.com https://secure.gravatar.com https://lh3.googleusercontent.com https://tislsfajzqcctjcrmnlg.supabase.co",
+              "img-src 'self' data: blob: https:",
               "connect-src 'self' https://genuinesugarmummies.co.ke https://tislsfajzqcctjcrmnlg.supabase.co https://t.me",
               "frame-ancestors 'none'",
               "base-uri 'self'",
