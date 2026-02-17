@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, X, Star, MapPin, MessageCircle, RefreshCw, Search, Sparkles, Navigation, Database } from 'lucide-react';
+import { Heart, X, Star, MapPin, MessageCircle, RefreshCw, Sparkles, Navigation, Database } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import VerifiedBadge from '@/components/VerifiedBadge';
@@ -10,120 +10,154 @@ import UserAvatar from '@/components/UserAvatar';
 import BlurImage from '@/components/BlurImage';
 import Link from 'next/link';
 
-// ---- LocalStorage profile cache for instant loads ----
-const CACHE_KEY = 'gsm_profile_cache';
-const CACHE_TS_KEY = 'gsm_profile_cache_ts';
-const CACHE_TTL = 10 * 60 * 1000; // 10 mins
+// ---- Ultra-fast profile cache ----
+const CACHE_KEY = 'gsm_profiles_v2';
+const CACHE_TS = 'gsm_profiles_ts';
+const TTL = 10 * 60 * 1000; // 10 min
 
-function getCachedProfiles() {
+function getCache() {
     if (typeof window === 'undefined') return null;
     try {
-        const ts = localStorage.getItem(CACHE_TS_KEY);
-        if (ts && Date.now() - parseInt(ts) < CACHE_TTL) {
-            const data = localStorage.getItem(CACHE_KEY);
-            return data ? JSON.parse(data) : null;
+        const ts = localStorage.getItem(CACHE_TS);
+        if (ts && Date.now() - parseInt(ts) < TTL) {
+            const d = localStorage.getItem(CACHE_KEY);
+            return d ? JSON.parse(d) : null;
         }
     } catch { }
     return null;
 }
-
-function setCachedProfiles(profiles) {
+function setCache(profiles) {
     if (typeof window === 'undefined') return;
     try {
         localStorage.setItem(CACHE_KEY, JSON.stringify(profiles));
-        localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
+        localStorage.setItem(CACHE_TS, String(Date.now()));
     } catch { }
 }
 
-// ---- Scoring ----
-function calculateMatchScore(profile, userCoords) {
-    let score = 50;
-    if (profile.daysSincePost < 3) score += 25;
-    else if (profile.daysSincePost < 7) score += 20;
-    else if (profile.daysSincePost < 14) score += 15;
-    else if (profile.daysSincePost < 30) score += 10;
-    if (profile.commentCount >= 10) score += 15;
-    else if (profile.commentCount >= 5) score += 10;
-    else if (profile.commentCount >= 1) score += 5;
-    if (profile.imageUrl) score += 5;
-    if (profile.age) score += 5;
-    if (profile.location) score += 3;
-    if (profile.bio) score += 2;
-    if (userCoords && profile.coords) {
-        const dist = haversineDistance(userCoords, profile.coords);
-        if (dist < 10) score += 20;
-        else if (dist < 30) score += 15;
-        else if (dist < 50) score += 10;
-        else if (dist < 100) score += 5;
+// ---- Match scoring ----
+function matchScore(p, coords) {
+    let s = 50;
+    if (p.daysSincePost < 3) s += 25;
+    else if (p.daysSincePost < 7) s += 20;
+    else if (p.daysSincePost < 14) s += 15;
+    else if (p.daysSincePost < 30) s += 10;
+    if (p.commentCount >= 10) s += 15;
+    else if (p.commentCount >= 5) s += 10;
+    else if (p.commentCount >= 1) s += 5;
+    if (p.imageUrl) s += 5;
+    if (p.age) s += 5;
+    if (p.location) s += 3;
+    if (p.bio) s += 2;
+    if (coords && p.coords) {
+        const d = haversine(coords, p.coords);
+        if (d < 10) s += 20; else if (d < 30) s += 15; else if (d < 50) s += 10; else if (d < 100) s += 5;
     }
-    return Math.min(99, score);
+    return Math.min(99, s);
+}
+function haversine(c1, c2) {
+    const R = 6371, toR = Math.PI / 180;
+    const dLat = (c2.latitude - c1.latitude) * toR;
+    const dLon = (c2.longitude - c1.longitude) * toR;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(c1.latitude * toR) * Math.cos(c2.latitude * toR) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function haversineDistance(c1, c2) {
-    const R = 6371;
-    const dLat = (c2.latitude - c1.latitude) * Math.PI / 180;
-    const dLon = (c2.longitude - c1.longitude) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos(c1.latitude * Math.PI / 180) * Math.cos(c2.latitude * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+// ---- Fetch with timeout ----
+async function fetchWithTimeout(url, ms = 8000) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    try {
+        const res = await fetch(url, { signal: ctrl.signal });
+        clearTimeout(timer);
+        return res;
+    } catch (e) {
+        clearTimeout(timer);
+        throw e;
+    }
 }
 
 export default function DiscoverPage() {
     const { addLike, addMatch, addPass, isProfileSwiped, addSuperLike, clearSwipeHistory } = useAuth();
     const { location: userLocation, requestLocation } = useGeolocation();
 
-    const [allProfiles, setAllProfiles] = useState([]); // ALL profiles ever fetched
-    const [currentIndex, setCurrentIndex] = useState(0);
+    const [allProfiles, setAllProfiles] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [swipeDirection, setSwipeDirection] = useState(null);
+    const [swipeDir, setSwipeDir] = useState(null);
     const [viewedAll, setViewedAll] = useState(false);
     const [dbTotal, setDbTotal] = useState(0);
     const fetchingRef = useRef(false);
-    const loadedPagesRef = useRef(new Set());
 
-    // ---- Load ALL pages of profiles aggressively ----
-    const fetchAllProfiles = useCallback(async (resetSwipes = false) => {
+    // ---- FAST LOAD: cache → show instantly → background update ----
+    const loadProfiles = useCallback(async (forceRefresh = false) => {
         if (fetchingRef.current) return;
         fetchingRef.current = true;
 
         try {
-            let page = 1;
-            let allFetched = [];
-            let hasMore = true;
-            let totalPosts = 0;
-
-            while (hasMore) {
-                const res = await fetch(`/api/profiles?page=${page}&per_page=25`);
-                if (!res.ok) break;
-                const data = await res.json();
-                totalPosts = data.totalPosts || totalPosts;
-                const batch = data.profiles || [];
-                if (batch.length === 0) break;
-                allFetched = [...allFetched, ...batch];
-                hasMore = data.totalPages ? page < data.totalPages : batch.length >= 25;
-                page++;
-                // Don't wait too long between pages
+            // Step 1: Show cache INSTANTLY
+            if (!forceRefresh) {
+                const cached = getCache();
+                if (cached && cached.length > 0) {
+                    setAllProfiles(cached);
+                    setDbTotal(cached.length);
+                    setLoading(false);
+                }
             }
 
-            // Deduplicate by wpId
-            const seen = new Set();
-            const unique = allFetched.filter(p => {
-                if (seen.has(p.wpId)) return false;
-                seen.add(p.wpId);
-                return true;
-            });
+            // Step 2: Fetch page 1 FAST (show immediately if no cache)
+            const res1 = await fetchWithTimeout('/api/profiles?page=1&per_page=50', 10000);
+            if (!res1.ok) throw new Error('API failed');
+            const data1 = await res1.json();
+            const page1 = data1.profiles || [];
+            const totalPages = data1.totalPages || 1;
+            const totalPosts = data1.totalPosts || page1.length;
 
-            setAllProfiles(unique);
-            setDbTotal(totalPosts || unique.length);
-            setCachedProfiles(unique);
+            // Show page 1 immediately
+            if (page1.length > 0) {
+                setAllProfiles(page1);
+                setDbTotal(totalPosts);
+                setLoading(false);
+                setCache(page1);
+            }
 
-            // If resetting swipes (refresh after viewing all), start from 0
-            if (resetSwipes) {
-                setCurrentIndex(0);
-                setViewedAll(false);
+            // Step 3: Fetch remaining pages IN PARALLEL (background)
+            if (totalPages > 1) {
+                const promises = [];
+                for (let p = 2; p <= totalPages; p++) {
+                    promises.push(
+                        fetchWithTimeout(`/api/profiles?page=${p}&per_page=50`, 12000)
+                            .then(r => r.ok ? r.json() : { profiles: [] })
+                            .then(d => d.profiles || [])
+                            .catch(() => [])
+                    );
+                }
+                const results = await Promise.all(promises);
+                const moreProfiles = results.flat();
+
+                if (moreProfiles.length > 0) {
+                    const all = [...page1, ...moreProfiles];
+                    // Deduplicate
+                    const seen = new Set();
+                    const unique = all.filter(p => {
+                        if (seen.has(p.wpId)) return false;
+                        seen.add(p.wpId);
+                        return true;
+                    });
+                    setAllProfiles(unique);
+                    setDbTotal(totalPosts);
+                    setCache(unique);
+                }
             }
         } catch (err) {
-            console.error('Failed to fetch profiles:', err);
+            console.error('Profile load error:', err);
+            // If we have nothing, try cache one more time
+            if (allProfiles.length === 0) {
+                const cached = getCache();
+                if (cached && cached.length > 0) {
+                    setAllProfiles(cached);
+                    setDbTotal(cached.length);
+                }
+            }
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -131,96 +165,71 @@ export default function DiscoverPage() {
         }
     }, []);
 
-    // ---- INSTANT load from cache, then background refresh ----
-    useEffect(() => {
-        const cached = getCachedProfiles();
-        if (cached && cached.length > 0) {
-            setAllProfiles(cached);
-            setDbTotal(cached.length);
-            setLoading(false);
-            // Background refresh for fresh data
-            fetchAllProfiles(false);
-        } else {
-            fetchAllProfiles(false);
-        }
-    }, [fetchAllProfiles]);
+    // Mount: instant load
+    useEffect(() => { loadProfiles(); }, [loadProfiles]);
 
-    // ---- Filter to unswiped profiles (or all if viewedAll reset) ----
+    // Filter unswiped
     const displayProfiles = useMemo(() => {
         const unswiped = allProfiles.filter(p => !isProfileSwiped(p.wpId));
-
-        // Sort by match score (proximity + recency)
-        if (userLocation) {
-            return [...unswiped].sort((a, b) =>
-                calculateMatchScore(b, userLocation) - calculateMatchScore(a, userLocation)
-            );
+        if (userLocation && unswiped.length > 0) {
+            return [...unswiped].sort((a, b) => matchScore(b, userLocation) - matchScore(a, userLocation));
         }
         return unswiped;
     }, [allProfiles, userLocation, isProfileSwiped]);
 
-    // ---- Detect viewed all ----
+    // Detect viewed all
     useEffect(() => {
-        if (allProfiles.length > 0 && displayProfiles.length === 0 && !loading) {
-            setViewedAll(true);
-        }
+        if (allProfiles.length > 0 && displayProfiles.length === 0 && !loading) setViewedAll(true);
     }, [displayProfiles.length, allProfiles.length, loading]);
 
-    // ---- Swipe handler ----
-    const handleSwipe = useCallback((direction, profile) => {
+    // Swipe
+    const handleSwipe = useCallback((dir, profile) => {
         if (!profile) return;
-        setSwipeDirection(direction);
-
-        if (direction === 'right') {
+        setSwipeDir(dir);
+        if (dir === 'right') {
             addLike(profile);
-            const score = calculateMatchScore(profile, userLocation);
-            if (score >= 70) addMatch(profile, score);
-        } else if (direction === 'up') {
+            const s = matchScore(profile, userLocation);
+            if (s >= 70) addMatch(profile, s);
+        } else if (dir === 'up') {
             addSuperLike(profile);
-            const score = calculateMatchScore(profile, userLocation);
-            addMatch(profile, Math.min(99, score + 10));
+            addMatch(profile, Math.min(99, matchScore(profile, userLocation) + 10));
         } else {
             addPass(profile.wpId);
         }
-
-        setTimeout(() => {
-            setSwipeDirection(null);
-        }, 200);
+        setTimeout(() => setSwipeDir(null), 200);
     }, [addLike, addMatch, addPass, addSuperLike, userLocation]);
 
-    // ---- Refresh: re-fetch + allow re-viewing all profiles ----
+    // Refresh
     const handleRefresh = () => {
         setRefreshing(true);
         setViewedAll(false);
-        clearSwipeHistory(); // Reset passes so all profiles show again
-        fetchAllProfiles(true);
+        clearSwipeHistory();
+        loadProfiles(true);
     };
 
-    // The current profile to display (first unswiped)
     const currentProfile = displayProfiles[0];
     const nextProfile = displayProfiles[1];
 
-    // ---- LOADING state: only show briefly, profiles should be instant from cache ----
+    // ---- LOADING ----
     if (loading && allProfiles.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-4">
-                <div className="relative">
-                    <div className="w-16 h-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
-                </div>
+                <div className="w-16 h-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
                 <p className="text-sm text-text-muted">Loading profiles...</p>
             </div>
         );
     }
 
-    // ---- 0 profiles in database ----
+    // ---- EMPTY ----
     if (!loading && allProfiles.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center space-y-5">
                 <div className="w-20 h-20 rounded-full bg-surface flex items-center justify-center">
                     <Database size={36} className="text-text-muted" />
                 </div>
-                <h2 className="text-xl font-bold text-text-primary">0 Profiles in Database</h2>
+                <h2 className="text-xl font-bold text-text-primary">No Profiles Available</h2>
                 <p className="text-text-secondary text-sm leading-relaxed">
-                    No profiles are currently available. This may be due to a network issue. Check your connection and try again.
+                    Could not load profiles. Check your internet connection and try again.
                 </p>
                 <button onClick={handleRefresh} disabled={refreshing}
                     className="flex items-center gap-2 px-8 py-3.5 rounded-2xl gradient-primary text-white font-semibold shadow-lg shadow-primary/20 transition-all active:scale-95">
@@ -231,7 +240,7 @@ export default function DiscoverPage() {
         );
     }
 
-    // ---- Viewed ALL profiles ----
+    // ---- VIEWED ALL ----
     if (viewedAll || (!currentProfile && allProfiles.length > 0)) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center space-y-5">
@@ -240,8 +249,7 @@ export default function DiscoverPage() {
                 </div>
                 <h2 className="text-xl font-bold text-text-primary">You've Seen Everyone!</h2>
                 <p className="text-text-secondary text-sm leading-relaxed">
-                    You have viewed all {allProfiles.length} available profiles.<br />
-                    Refresh to see them again.
+                    You have viewed all {allProfiles.length} profiles.<br />Refresh to see them again.
                 </p>
                 <button onClick={handleRefresh} disabled={refreshing}
                     className="flex items-center gap-2 px-8 py-3.5 rounded-2xl gradient-primary text-white font-semibold shadow-lg shadow-primary/20 transition-all active:scale-95">
@@ -249,14 +257,14 @@ export default function DiscoverPage() {
                     {refreshing ? 'Loading...' : 'Refresh Profiles'}
                 </button>
                 <p className="text-[10px] text-text-muted">
-                    {dbTotal} profiles in database · Last updated {new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' })}
+                    {dbTotal} profiles in database
                 </p>
             </div>
         );
     }
 
-    const matchScore = calculateMatchScore(currentProfile, userLocation);
-    const isNearby = userLocation && currentProfile.coords && haversineDistance(userLocation, currentProfile.coords) < 30;
+    const score = matchScore(currentProfile, userLocation);
+    const isNearby = userLocation && currentProfile.coords && haversine(userLocation, currentProfile.coords) < 30;
 
     return (
         <div className="px-4 pt-2 pb-24">
@@ -283,7 +291,7 @@ export default function DiscoverPage() {
 
             {/* Card Stack */}
             <div className="relative w-full aspect-[3/4] max-h-[65vh] rounded-3xl overflow-hidden mb-4">
-                {/* Background (next card) */}
+                {/* Next card preview */}
                 {nextProfile && (
                     <div className="absolute inset-2 rounded-2xl overflow-hidden bg-surface" style={{ transform: 'scale(0.95)', opacity: 0.6 }}>
                         {nextProfile.imageUrl && <img src={nextProfile.imageUrl} alt="" className="w-full h-full object-cover" loading="eager" />}
@@ -295,7 +303,7 @@ export default function DiscoverPage() {
                     <motion.div
                         key={currentProfile.wpId}
                         initial={{ scale: 0.95, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1, x: swipeDirection === 'left' ? -300 : swipeDirection === 'right' ? 300 : 0, y: swipeDirection === 'up' ? -300 : 0, rotate: swipeDirection === 'left' ? -15 : swipeDirection === 'right' ? 15 : 0 }}
+                        animate={{ scale: 1, opacity: 1, x: swipeDir === 'left' ? -300 : swipeDir === 'right' ? 300 : 0, y: swipeDir === 'up' ? -300 : 0, rotate: swipeDir === 'left' ? -15 : swipeDir === 'right' ? 15 : 0 }}
                         transition={{ duration: 0.2 }}
                         className="absolute inset-0 rounded-3xl overflow-hidden card-shadow"
                     >
@@ -308,27 +316,26 @@ export default function DiscoverPage() {
                                 </div>
                             )}
 
-                            {/* Overlay gradient */}
                             <div className="absolute inset-0 gradient-overlay" />
 
                             {/* Swipe indicators */}
-                            {swipeDirection === 'right' && (
+                            {swipeDir === 'right' && (
                                 <div className="absolute top-8 left-6 px-4 py-2 rounded-xl border-3 border-success rotate-[-15deg] z-20">
                                     <span className="text-success text-2xl font-black">LIKE</span>
                                 </div>
                             )}
-                            {swipeDirection === 'left' && (
+                            {swipeDir === 'left' && (
                                 <div className="absolute top-8 right-6 px-4 py-2 rounded-xl border-3 border-danger rotate-[15deg] z-20">
                                     <span className="text-danger text-2xl font-black">PASS</span>
                                 </div>
                             )}
-                            {swipeDirection === 'up' && (
+                            {swipeDir === 'up' && (
                                 <div className="absolute top-8 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl border-3 border-gold z-20">
                                     <span className="text-gold text-2xl font-black">SUPER</span>
                                 </div>
                             )}
 
-                            {/* Top badges */}
+                            {/* Badges */}
                             <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10">
                                 <div className="flex items-center gap-1.5">
                                     {isNearby && (
@@ -348,7 +355,7 @@ export default function DiscoverPage() {
                                     )}
                                 </div>
                                 <span className="px-2 py-1 rounded-full glass text-[10px] text-white font-bold">
-                                    {matchScore}% Match
+                                    {score}% Match
                                 </span>
                             </div>
 
@@ -403,7 +410,7 @@ export default function DiscoverPage() {
                 </motion.button>
             </div>
 
-            {/* Remaining count */}
+            {/* Count */}
             <p className="text-center text-[10px] text-text-muted mt-3">
                 {displayProfiles.length} of {allProfiles.length} profiles remaining
             </p>

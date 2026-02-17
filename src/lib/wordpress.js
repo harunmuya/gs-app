@@ -232,7 +232,7 @@ export function parseProfile(post) {
 // CACHING SYSTEM
 // ============================================================
 const profilePageCache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const SERVER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 
 // ============================================================
@@ -241,7 +241,7 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 export async function fetchProfiles(page = 1, perPage = 25) {
     const cacheKey = `${page}-${perPage}`;
     const cached = profilePageCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    if (cached && Date.now() - cached.timestamp < SERVER_CACHE_TTL) {
         return cached.data;
     }
 
