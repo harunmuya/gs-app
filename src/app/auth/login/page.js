@@ -44,12 +44,12 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-dvh flex flex-col bg-bg-dark overflow-hidden">
-            {/* Background decoration */}
+        <div className="min-h-dvh flex flex-col bg-white overflow-hidden">
+            {/* Background decoration — soft orange */}
             <div className="fixed inset-0 pointer-events-none">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-primary/10 rounded-full blur-[120px]" />
-                <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-accent/10 rounded-full blur-[100px]" />
-                <div className="absolute top-1/3 left-0 w-[300px] h-[300px] bg-gold/5 rounded-full blur-[80px]" />
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-orange-100 rounded-full blur-[120px] opacity-60" />
+                <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-amber-50 rounded-full blur-[100px] opacity-50" />
+                <div className="absolute top-1/3 left-0 w-[300px] h-[300px] bg-orange-50 rounded-full blur-[80px] opacity-40" />
             </div>
 
             <div className="relative flex-1 flex flex-col items-center justify-center px-6 py-12">
@@ -73,7 +73,7 @@ export default function LoginPage() {
                     <h1 className="text-3xl font-extrabold text-gradient mb-2 text-center">
                         Welcome to
                     </h1>
-                    <h2 className="text-2xl font-extrabold text-white mb-3 text-center">
+                    <h2 className="text-2xl font-extrabold text-text-primary mb-3 text-center">
                         Genuine Sugar Mummies
                     </h2>
                     <p className="text-text-secondary text-sm flex items-center gap-1.5 text-center max-w-xs">
@@ -98,8 +98,7 @@ export default function LoginPage() {
                             placeholder="Your name (optional)"
                             value={displayName}
                             onChange={(e) => setDisplayName(e.target.value)}
-                            className="w-full py-4 pl-12 pr-4 rounded-2xl bg-surface-light text-white placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                            style={{ border: '1px solid rgba(255,255,255,0.1)' }}
+                            className="w-full py-4 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-black/8"
                         />
                     </div>
 
@@ -112,8 +111,7 @@ export default function LoginPage() {
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             required
-                            className="w-full py-4 pl-12 pr-4 rounded-2xl bg-surface-light text-white placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                            style={{ border: '1px solid rgba(255,255,255,0.1)' }}
+                            className="w-full py-4 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-black/8"
                         />
                     </div>
 
@@ -130,9 +128,9 @@ export default function LoginPage() {
 
                     {/* Divider */}
                     <div className="flex items-center gap-3 px-2">
-                        <div className="flex-1 h-px bg-white/10" />
+                        <div className="flex-1 h-px bg-black/10" />
                         <span className="text-xs text-text-muted uppercase tracking-wider font-medium">or</span>
-                        <div className="flex-1 h-px bg-white/10" />
+                        <div className="flex-1 h-px bg-black/10" />
                     </div>
 
                     {/* Skip Login Button */}
@@ -140,8 +138,7 @@ export default function LoginPage() {
                         type="button"
                         onClick={handleSkip}
                         disabled={loading}
-                        className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-semibold text-white bg-surface-light hover:bg-surface-light/80 transition-all active:scale-[0.98] group"
-                        style={{ border: '1px solid rgba(255,255,255,0.1)' }}
+                        className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-semibold text-text-primary bg-surface hover:bg-surface-light transition-all active:scale-[0.98] group border border-black/8"
                     >
                         <User size={20} className="shrink-0" />
                         Browse as Guest
@@ -163,7 +160,7 @@ export default function LoginPage() {
                                 initial={{ opacity: 0, y: -10 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0 }}
-                                className="mt-3 text-sm text-center text-white bg-danger/80 rounded-xl py-2 px-4 shadow-lg"
+                                className="mt-3 text-sm text-center text-white bg-danger/90 rounded-xl py-2 px-4 shadow-lg"
                             >
                                 {error}
                             </motion.p>

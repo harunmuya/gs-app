@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 
 const AuthContext = createContext({});
 
@@ -214,6 +214,26 @@ export function AuthProvider({ children }) {
         return saved.some(s => s.wpId === wpId);
     }, [saved]);
 
+    // ---- Super Like ----
+    const addSuperLike = useCallback((profile) => {
+        setLikes(prev => {
+            if (prev.find(l => l.wpId === profile.wpId)) return prev;
+            const updated = [...prev, { ...profile, likedAt: new Date().toISOString(), super: true }];
+            setStored(STORAGE_KEYS.LIKES, updated);
+            return updated;
+        });
+        logActivity('like', { title: `You super liked ${profile.name || 'someone'} ⚡`, message: `${profile.location || ''} • Super Like!`, image: profile.imageUrl, profileId: profile.wpId });
+    }, [logActivity]);
+
+    // ---- Request Connection ----
+    const requestConnection = useCallback((profileName, profileId) => {
+        logActivity('connection_request', {
+            title: `Connection requested with ${profileName}`,
+            message: 'Admin will facilitate your connection 💌',
+            profileId,
+        });
+    }, [logActivity]);
+
     // ---- Log Message Sent ----
     const logMessageSent = useCallback((profileName, profileImage) => {
         logActivity('message', { title: `Message sent to ${profileName}`, message: 'Awaiting moderation', image: profileImage });
@@ -223,6 +243,66 @@ export function AuthProvider({ children }) {
     const logProfileView = useCallback((profile) => {
         logActivity('view', { title: `Viewed ${profile.name || 'a profile'}`, message: profile.location || '', image: profile.imageUrl, profileId: profile.wpId });
     }, [logActivity]);
+
+    // ---- AI Engagement System ----
+    const aiTimerRef = useRef(null);
+
+    useEffect(() => {
+        if (loading) return;
+
+        const AI_NAMES = [
+            'Faith', 'Grace', 'Mercy', 'Joy', 'Hope', 'Charity', 'Rose', 'Lilian',
+            'Agnes', 'Esther', 'Margaret', 'Catherine', 'Diana', 'Susan', 'Janet',
+            'Winnie', 'Betty', 'Nancy', 'Doris', 'Alice', 'Gloria', 'Irene',
+            'Patricia', 'Christine', 'Sharon', 'Stella', 'Monica', 'Sarah',
+            'Lucy', 'Ann', 'Beatrice', 'Pauline', 'Purity', 'Vivian', 'Brenda',
+            'Josephine', 'Florence', 'Carol', 'Jane', 'Tabitha', 'Angela',
+        ];
+
+        const AI_LOCATIONS = [
+            'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Thika',
+            'Westlands', 'Kilimani', 'Karen', 'Langata', 'Kiambu', 'Ruiru',
+        ];
+
+        const AI_TEMPLATES = [
+            { type: 'meetup_ready', msg: (n, l) => ({ title: `${n} is ready to meet up today 🔥`, message: `Available in ${l} — tap to connect` }) },
+            { type: 'connection_request', msg: (n, l) => ({ title: `${n} wants to connect with you 💌`, message: `${n} from ${l} is interested` }) },
+            { type: 'request_hookup', msg: (n, l) => ({ title: `${n} sent you a hookup request 💋`, message: `She's available near ${l}` }) },
+            { type: 'match', msg: (n, l) => ({ title: `New match suggestion: ${n} 💖`, message: `${l} • High compatibility` }) },
+            { type: 'like', msg: (n, l) => ({ title: `${n} liked your profile ❤️`, message: `From ${l}` }) },
+            { type: 'meetup_ready', msg: (n, l) => ({ title: `${n} is looking for you tonight 🌙`, message: `Currently in ${l}` }) },
+            { type: 'connection_request', msg: (n, l) => ({ title: `${n} viewed your profile 3 times 👀`, message: `She seems very interested!` }) },
+        ];
+
+        const generateAIAlert = () => {
+            const name = AI_NAMES[Math.floor(Math.random() * AI_NAMES.length)];
+            const location = AI_LOCATIONS[Math.floor(Math.random() * AI_LOCATIONS.length)];
+            const template = AI_TEMPLATES[Math.floor(Math.random() * AI_TEMPLATES.length)];
+            const profileId = Math.floor(Math.random() * 500) + 1;
+            const { title, message } = template.msg(name, location);
+
+            logActivity(template.type, { title, message, profileId, image: '' });
+        };
+
+        const scheduleNext = () => {
+            const delay = (30 + Math.random() * 60) * 1000; // 30-90 seconds
+            aiTimerRef.current = setTimeout(() => {
+                generateAIAlert();
+                scheduleNext();
+            }, delay);
+        };
+
+        // Start after a short initial delay
+        const initialDelay = setTimeout(() => {
+            generateAIAlert();
+            scheduleNext();
+        }, 5000);
+
+        return () => {
+            clearTimeout(initialDelay);
+            if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
+        };
+    }, [loading, logActivity]);
 
     // ---- Delete Account ----
     function deleteAccount() {
@@ -245,9 +325,10 @@ export function AuthProvider({ children }) {
         signIn, signOut, skipLogin,
         updateProfile, addPhoto, removePhoto,
         updateSettings,
-        addLike, addMatch, addPass, isProfileSwiped,
+        addLike, addMatch, addPass, isProfileSwiped, addSuperLike,
         saveProfile, unsaveProfile, isProfileSaved,
         logActivity, logMessageSent, logProfileView, markActivityRead,
+        requestConnection,
         deleteAccount,
     };
 

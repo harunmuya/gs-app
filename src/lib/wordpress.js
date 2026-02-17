@@ -57,33 +57,21 @@ const LOCATION_COORDS = {
     'CBD': { lat: -1.2864, lng: 36.8172 },
 };
 
-/**
- * Extract the person's name from a WordPress post title
- * Handles: "Name Sugar Mummy", "Name a sugar mummy in...", "Name, 35",
- * "Meet Name", "Name - Sugar Mummy", "Rich Name from...", etc.
- */
 const STOP_WORDS = new Set(['Sugar', 'Mummy', 'From', 'The', 'For', 'And', 'With', 'Wants', 'Needs', 'Looking', 'Is', 'In', 'A', 'An', 'Her', 'His', 'She', 'He', 'Who', 'That', 'This', 'Rich', 'Hot', 'Meet', 'Available', 'Seeking', 'Mature', 'Beautiful', 'Wealthy', 'Single', 'Lonely']);
 
 export function extractName(title) {
     if (!title) return 'Unknown';
-
-    // Clean HTML entities
     let clean = title.replace(/&#8217;/g, "'").replace(/&#8211;/g, "–").replace(/&amp;/g, '&').replace(/<[^>]+>/g, '').trim();
-
-    // Remove leading fillers: "Meet ", "Hot ", "Rich "
     clean = clean.replace(/^(?:Meet|Hot|Rich|Beautiful|Wealthy|Mature|Available|Lonely|Single)\s+/i, '');
 
-    // Pattern 1: "Name Name Sugar Mummy..." or "Name - Sugar Mummy"
     const sugarPattern = /^([A-Z][a-z]+(?:[\s-]+[A-Z][a-z]+)?)\s*[-–,]?\s*(?:Sugar\s*[Mm]umm|sugar\s*[Mm]umm|Sugarmumm|sugarmumm|from|a\s+sugar|is\s+|wants|needs|looking|seeking)/i;
     const match1 = clean.match(sugarPattern);
     if (match1) return match1[1].replace(/[-–]/g, ' ').trim();
 
-    // Pattern 2: "Name, 35 years..." or "Name 35..."
     const commaPattern = /^([A-Z][a-z]+(?:[\s-]+[A-Z][a-z]+)?)\s*[,\s]+\d/;
     const match2 = clean.match(commaPattern);
     if (match2) return match2[1].replace(/[-–]/g, ' ').trim();
 
-    // Pattern 3: "Name Name ..." — take first 1-2 proper nouns
     const words = clean.split(/[\s,;–-]+/);
     const nameWords = [];
     for (const word of words) {
@@ -98,66 +86,39 @@ export function extractName(title) {
     }
 
     if (nameWords.length > 0) return nameWords.join(' ');
-
-    // Fallback: first 2 words, title-cased
     return clean.split(/\s+/).slice(0, 2).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 }
 
-/**
- * Extract location from post content and title
- */
 export function extractLocation(content, title) {
     const searchText = `${title || ''} ${content || ''}`;
-
     for (const loc of KENYAN_LOCATIONS) {
         const regex = new RegExp(`\\b${loc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-        if (regex.test(searchText)) {
-            return loc;
-        }
+        if (regex.test(searchText)) return loc;
     }
-
-    // Try to extract from "in [Location]" pattern
     const inPattern = /\bin\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/;
     const match = searchText.match(inPattern);
     if (match) return match[1];
-
     return 'Kenya';
 }
 
-/**
- * Get coordinates for a location name
- */
 export function getLocationCoords(locationName) {
     if (!locationName) return LOCATION_COORDS['Nairobi'];
-
-    // Exact match
     if (LOCATION_COORDS[locationName]) return LOCATION_COORDS[locationName];
-
-    // Partial match
     const lower = locationName.toLowerCase();
     for (const [key, coords] of Object.entries(LOCATION_COORDS)) {
-        if (lower.includes(key.toLowerCase()) || key.toLowerCase().includes(lower)) {
-            return coords;
-        }
+        if (lower.includes(key.toLowerCase()) || key.toLowerCase().includes(lower)) return coords;
     }
-
-    // Default to Nairobi
     return LOCATION_COORDS['Nairobi'];
 }
 
-/**
- * Extract age from content
- */
 export function extractAge(content) {
     if (!content) return null;
-
     const patterns = [
         /(\d{2})\s*(?:yr|year|years|yrs)\s*(?:old)?/i,
         /(?:age|aged)\s*[:=]?\s*(\d{2})/i,
         /(?:I'?m|am)\s+(\d{2})/i,
         /(\d{2})\s*[-–]\s*year/i,
     ];
-
     for (const pattern of patterns) {
         const match = content.match(pattern);
         if (match) {
@@ -165,39 +126,23 @@ export function extractAge(content) {
             if (age >= 18 && age <= 80) return age;
         }
     }
-
     return null;
 }
 
-/**
- * Extract bio from excerpt or content
- */
 export function extractBio(excerpt, content) {
     let text = excerpt || content || '';
-
-    // Strip HTML tags
     text = text.replace(/<[^>]+>/g, '');
-    // Decode entities
     text = text.replace(/&nbsp;/g, ' ').replace(/&#8217;/g, "'").replace(/&#8211;/g, '–').replace(/&amp;/g, '&').replace(/&hellip;/g, '...');
-    // Remove "Continue reading" etc.
     text = text.replace(/continue\s+reading.*$/i, '').trim();
-    // Trim
-    if (text.length > 160) {
-        text = text.substring(0, 157) + '...';
-    }
-
+    if (text.length > 160) text = text.substring(0, 157) + '...';
     return text || 'Looking for a genuine connection. Tap to learn more.';
 }
 
-/**
- * Parse a WordPress post into a clean Profile object
- */
 export function parseProfile(post) {
     const title = post.title?.rendered || '';
     const content = post.content?.rendered || '';
     const excerpt = post.excerpt?.rendered || '';
 
-    // Get featured image URL
     let imageUrl = post.jetpack_featured_media_url || '';
     if (!imageUrl && post._embedded?.['wp:featuredmedia']?.[0]) {
         const media = post._embedded['wp:featuredmedia'][0];
@@ -210,16 +155,12 @@ export function parseProfile(post) {
     const bio = extractBio(excerpt, content);
     const coords = getLocationCoords(location);
 
-    // Real comment count from WordPress API
     const commentCount = post.comment_count || 0;
-    // Also count embedded replies if available (more accurate)
     const embeddedReplies = post._embedded?.replies?.[0];
     const realCommentCount = embeddedReplies ? embeddedReplies.length : commentCount;
 
-    // Clean excerpt text
     const excerptText = excerpt.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&#8217;/g, "'").replace(/&hellip;/g, '...').replace(/continue\s+reading.*$/i, '').trim();
 
-    // Post date for recency
     const postDate = post.date ? new Date(post.date) : new Date();
     const daysSincePost = Math.max(1, Math.floor((Date.now() - postDate.getTime()) / (1000 * 60 * 60 * 24)));
 
@@ -241,21 +182,23 @@ export function parseProfile(post) {
     };
 }
 
-/**
- * Fetch profiles from WordPress with caching
- */
-let profileCache = { data: null, timestamp: 0 };
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+// ==========================================
+// MULTI-PAGE CACHING SYSTEM
+// ==========================================
 
+const profilePageCache = new Map(); // key=page, value={ data, timestamp }
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+let allProfilesCache = { profiles: null, timestamp: 0, totalPosts: 0 };
+
+/**
+ * Fetch a single page of profiles from WordPress
+ */
 export async function fetchProfiles(page = 1, perPage = 20) {
     const cacheKey = `${page}-${perPage}`;
+    const cached = profilePageCache.get(cacheKey);
 
-    if (
-        profileCache.data &&
-        profileCache.key === cacheKey &&
-        Date.now() - profileCache.timestamp < CACHE_TTL
-    ) {
-        return profileCache.data;
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.data;
     }
 
     try {
@@ -266,6 +209,10 @@ export async function fetchProfiles(page = 1, perPage = 20) {
         });
 
         if (!res.ok) {
+            if (res.status === 400) {
+                // Page beyond available range
+                return { profiles: [], totalPages: 0, totalPosts: 0, page };
+            }
             throw new Error(`WordPress API error: ${res.status}`);
         }
 
@@ -277,13 +224,27 @@ export async function fetchProfiles(page = 1, perPage = 20) {
 
         const result = { profiles, totalPages, totalPosts, page };
 
-        profileCache = { data: result, timestamp: Date.now(), key: cacheKey };
+        profilePageCache.set(cacheKey, { data: result, timestamp: Date.now() });
 
         return result;
     } catch (error) {
         console.error('Failed to fetch profiles:', error);
         return { profiles: [], totalPages: 0, totalPosts: 0, page };
     }
+}
+
+/**
+ * Get a list of random profile names for AI engagement
+ */
+export function getRandomProfileNames() {
+    return [
+        'Faith', 'Grace', 'Mercy', 'Joy', 'Hope', 'Charity', 'Rose', 'Lilian',
+        'Agnes', 'Esther', 'Margaret', 'Catherine', 'Diana', 'Susan', 'Janet',
+        'Winnie', 'Betty', 'Nancy', 'Doris', 'Alice', 'Gloria', 'Irene',
+        'Patricia', 'Christine', 'Sharon', 'Stella', 'Monica', 'Sarah',
+        'Lucy', 'Ann', 'Beatrice', 'Pauline', 'Purity', 'Vivian', 'Brenda',
+        'Josephine', 'Florence', 'Carol', 'Jane', 'Tabitha', 'Angela',
+    ];
 }
 
 /**

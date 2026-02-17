@@ -9,6 +9,16 @@ import ContactButtons from '@/components/ContactButtons';
 import CommentForm from '@/components/CommentForm';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
+import BlurImage from '@/components/BlurImage';
+
+// Deterministic match check (no randomness)
+function shouldMatchProfile(profile) {
+    const score = Math.min(99, 50 + (profile.commentCount || 0) * 3 + (profile.daysSincePost < 30 ? 20 : 0) + (profile.imageUrl ? 10 : 0) + (profile.age ? 5 : 0));
+    if (score >= 80) return { match: true, score };
+    if (score >= 70 && (profile.commentCount || 0) >= 3) return { match: true, score };
+    if (score >= 65 && (profile.daysSincePost || 999) < 7 && profile.imageUrl) return { match: true, score };
+    return { match: false, score };
+}
 
 export default function SingleProfilePage({ params }) {
     const resolvedParams = use(params);
@@ -66,8 +76,9 @@ export default function SingleProfilePage({ params }) {
         if (!profile || liked) return;
         addLike(profile);
         setLiked(true);
-        if (Math.random() < 0.4) {
-            const score = Math.floor(Math.random() * 20) + 80;
+        // Deterministic matching — no Math.random()
+        const { match, score } = shouldMatchProfile(profile);
+        if (match) {
             addMatch(profile, score);
         }
     };
@@ -94,7 +105,7 @@ export default function SingleProfilePage({ params }) {
 
     if (loading) {
         return (
-            <div className="min-h-dvh" style={{ background: 'var(--color-bg-dark)' }}>
+            <div className="min-h-dvh bg-white">
                 <div className="animate-pulse">
                     <div className="h-[50vh]" style={{ background: 'var(--color-surface)' }} />
                     <div className="p-5 space-y-4">
@@ -128,11 +139,11 @@ export default function SingleProfilePage({ params }) {
     const freshLabel = profile.daysSincePost < 3 ? 'Newly Available' : profile.daysSincePost <= 14 ? 'Featured' : null;
 
     return (
-        <div className="min-h-dvh pb-8" style={{ background: 'var(--color-bg-dark)' }}>
+        <div className="min-h-dvh pb-8 bg-white">
             {/* Hero */}
             <div className="relative" style={{ height: '55vh', minHeight: '350px' }}>
                 {profile.imageUrl ? (
-                    <img src={profile.imageUrl} alt={profile.name} className="absolute inset-0 w-full h-full object-cover" />
+                    <BlurImage src={profile.imageUrl} alt={profile.name} fill className="absolute inset-0 w-full h-full" />
                 ) : (
                     <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'var(--color-surface)' }}>
                         <UserAvatar name={profile.name} size={120} />
@@ -323,7 +334,7 @@ export default function SingleProfilePage({ params }) {
 
                 {/* Version */}
                 <p className="text-center text-[10px] text-text-muted pt-2 pb-4">
-                    Genuine Sugar Mummies App · v2.1.0
+                    Genuine Sugar Mummies App · v3.0.0
                 </p>
             </div>
 

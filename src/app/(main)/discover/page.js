@@ -1,22 +1,19 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, X, MapPin, MessageCircle, Sparkles, RefreshCw, Bookmark, ChevronDown } from 'lucide-react';
+import { Heart, X, MapPin, MessageCircle, Sparkles, RefreshCw, Bookmark, ChevronDown, Users, Zap } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { useRouter } from 'next/navigation';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
-import SkeletonCard from '@/components/SkeletonCard';
+import BlurImage from '@/components/BlurImage';
 
-const PROFILES_PER_PAGE = 12;
-
-// ---- Dating Algorithm ----
+// ---- Deterministic Match Scoring ----
 function calculateMatchScore(profile, userLocation) {
     let score = 50;
 
-    // Location proximity boost (geolocation-aware)
     if (userLocation && profile.coords) {
         const dist = getDistanceKm(userLocation, profile.coords);
         if (dist < 10) score += 25;
@@ -24,10 +21,9 @@ function calculateMatchScore(profile, userLocation) {
         else if (dist < 60) score += 12;
         else if (dist < 100) score += 6;
     } else if (profile.location && profile.location !== 'Kenya') {
-        score += 8; // Has a specific location
+        score += 8;
     }
 
-    // Recency boost (newer profiles rank higher)
     if (profile.daysSincePost) {
         if (profile.daysSincePost < 3) score += 20;
         else if (profile.daysSincePost < 7) score += 15;
@@ -35,20 +31,22 @@ function calculateMatchScore(profile, userLocation) {
         else if (profile.daysSincePost < 30) score += 5;
     }
 
-    // Engagement boost (real comment count)
     if (profile.commentCount > 10) score += 10;
     else if (profile.commentCount > 5) score += 7;
     else if (profile.commentCount > 0) score += 4;
 
-    // Completeness boost
     if (profile.imageUrl) score += 5;
     if (profile.bio && profile.bio.length > 30) score += 3;
     if (profile.age) score += 2;
 
-    // Freshness jitter (very small for variety)
-    score += Math.floor(Math.random() * 5);
-
     return Math.min(99, Math.max(55, score));
+}
+
+function shouldMatch(profile, matchScore) {
+    if (matchScore >= 80) return true;
+    if (matchScore >= 70 && profile.commentCount >= 3) return true;
+    if (matchScore >= 65 && profile.daysSincePost < 7 && profile.imageUrl) return true;
+    return false;
 }
 
 function getDistanceKm(loc1, loc2) {
@@ -60,47 +58,107 @@ function getDistanceKm(loc1, loc2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+const BATCH_SIZE = 20;
+const PREFETCH_THRESHOLD = 5; // fetch next batch when 5 profiles left
+
 export default function DiscoverPage() {
-    const { user, guest, addLike, addMatch, addPass, isProfileSwiped, saveProfile, isProfileSaved } = useAuth();
+    const { user, guest, addLike, addMatch, addPass, isProfileSwiped, saveProfile, isProfileSaved, addSuperLike } = useAuth();
     const { location } = useGeolocation();
     const router = useRouter();
 
     const [profiles, setProfiles] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [page, setPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [swipeDirection, setSwipeDirection] = useState(null);
+    const [totalAvailable, setTotalAvailable] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
+    const [nextPage, setNextPage] = useState(1);
+    const [loadingMore, setLoadingMore] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
+    const [noMorePages, setNoMorePages] = useState(false);
+    const fetchingRef = useRef(false);
+    const initialLoadRef = useRef(false);
 
-    const fetchProfiles = useCallback(async (pageNum = 1) => {
-        setLoading(true);
+    const userCoords = location ? { lat: location.latitude, lng: location.longitude } : null;
+
+    // Fetch a batch of profiles
+    const fetchBatch = useCallback(async (page) => {
+        if (fetchingRef.current) return null;
+        fetchingRef.current = true;
         try {
-            const res = await fetch(`/api/profiles?page=${pageNum}&per_page=${PROFILES_PER_PAGE}`);
+            const res = await fetch(`/api/profiles?page=${page}&per_page=${BATCH_SIZE}`);
             const data = await res.json();
+            fetchingRef.current = false;
 
-            if (data.profiles?.length > 0) {
-                const userCoords = location ? { lat: location.latitude, lng: location.longitude } : null;
-                const fresh = data.profiles
-                    .filter(p => !isProfileSwiped(p.wpId))
-                    .map(p => ({ ...p, matchScore: calculateMatchScore(p, userCoords) }))
-                    .sort((a, b) => b.matchScore - a.matchScore);
-
-                setProfiles(fresh);
-                setTotalPages(data.totalPages || 1);
-                setCurrentIndex(0);
-            } else {
-                setProfiles([]);
+            if (!data.profiles || data.profiles.length === 0) {
+                return { profiles: [], totalPages: data.totalPages || 0, totalPosts: data.totalPosts || 0, done: true };
             }
-        } catch (error) {
-            console.error('Error fetching profiles:', error);
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-        }
-    }, [isProfileSwiped, location]);
 
-    useEffect(() => { fetchProfiles(page); }, [page]);
+            // Score profiles
+            const scored = data.profiles.map(p => ({
+                ...p,
+                matchScore: calculateMatchScore(p, userCoords)
+            }));
+
+            return {
+                profiles: scored,
+                totalPages: data.totalPages || 1,
+                totalPosts: data.totalPosts || 0,
+                done: false,
+            };
+        } catch (error) {
+            console.error('Error fetching profiles batch:', error);
+            fetchingRef.current = false;
+            return null;
+        }
+    }, [userCoords]);
+
+    // Initial load — fetch first batch instantly
+    useEffect(() => {
+        if (initialLoadRef.current) return;
+        initialLoadRef.current = true;
+
+        (async () => {
+            setLoading(true);
+            const result = await fetchBatch(1);
+            if (result) {
+                const unswiped = result.profiles.filter(p => !isProfileSwiped(p.wpId));
+                setProfiles(unswiped);
+                setTotalAvailable(result.totalPosts);
+                setTotalPages(result.totalPages);
+                setNextPage(2);
+                if (result.done || result.totalPages <= 1) setNoMorePages(true);
+            }
+            setLoading(false);
+        })();
+    }, []);
+
+    // Auto-load next batch when approaching the end
+    useEffect(() => {
+        const remaining = profiles.length - currentIndex;
+        if (remaining <= PREFETCH_THRESHOLD && !loadingMore && !noMorePages && !loading) {
+            loadNextBatch();
+        }
+    }, [currentIndex, profiles.length, loadingMore, noMorePages, loading]);
+
+    const loadNextBatch = async () => {
+        if (loadingMore || noMorePages || fetchingRef.current) return;
+        setLoadingMore(true);
+
+        const result = await fetchBatch(nextPage);
+        if (result && result.profiles.length > 0) {
+            const unswiped = result.profiles.filter(p => !isProfileSwiped(p.wpId));
+            setProfiles(prev => [...prev, ...unswiped]);
+            setNextPage(prev => prev + 1);
+            setTotalAvailable(result.totalPosts);
+            if (nextPage >= result.totalPages) {
+                setNoMorePages(true);
+            }
+        } else {
+            setNoMorePages(true);
+        }
+        setLoadingMore(false);
+    };
 
     const currentProfile = profiles[currentIndex];
 
@@ -108,10 +166,27 @@ export default function DiscoverPage() {
         if (!currentProfile) return;
         setSwipeDirection('right');
         addLike(currentProfile);
-        const matchChance = (currentProfile.matchScore || 70) / 200;
-        if (Math.random() < matchChance) {
-            addMatch(currentProfile, currentProfile.matchScore || 85);
+
+        const matchScore = currentProfile.matchScore || 70;
+        if (shouldMatch(currentProfile, matchScore)) {
+            addMatch(currentProfile, matchScore);
         }
+
+        setTimeout(() => { setSwipeDirection(null); goNext(); }, 300);
+    };
+
+    const handleSuperLike = () => {
+        if (!currentProfile) return;
+        setSwipeDirection('up');
+        if (addSuperLike) {
+            addSuperLike(currentProfile);
+        } else {
+            addLike(currentProfile);
+        }
+
+        const matchScore = Math.min(99, (currentProfile.matchScore || 70) + 10);
+        addMatch(currentProfile, matchScore);
+
         setTimeout(() => { setSwipeDirection(null); goNext(); }, 300);
     };
 
@@ -123,25 +198,38 @@ export default function DiscoverPage() {
     };
 
     const goNext = () => {
-        if (currentIndex < profiles.length - 1) {
-            setCurrentIndex(prev => prev + 1);
-        } else if (page < totalPages) {
-            setPage(prev => prev + 1);
-        } else {
-            setProfiles([]);
-        }
+        setCurrentIndex(prev => prev + 1);
     };
 
-    const handleRefresh = () => {
+    const handleRefresh = async () => {
         setRefreshing(true);
-        const randomPage = Math.floor(Math.random() * Math.max(totalPages, 5)) + 1;
-        setPage(randomPage);
+        initialLoadRef.current = false;
+        fetchingRef.current = false;
+        setCurrentIndex(0);
+        setNextPage(1);
+        setNoMorePages(false);
+        setProfiles([]);
+
+        const result = await fetchBatch(1);
+        if (result) {
+            const unswiped = result.profiles.filter(p => !isProfileSwiped(p.wpId));
+            setProfiles(unswiped);
+            setTotalAvailable(result.totalPosts);
+            setTotalPages(result.totalPages);
+            setNextPage(2);
+            if (result.done || result.totalPages <= 1) setNoMorePages(true);
+        }
+        setRefreshing(false);
     };
 
     const openProfile = () => {
         if (currentProfile) router.push(`/discover/${currentProfile.wpId}`);
     };
 
+    const remainingCount = profiles.length - currentIndex;
+    const totalCount = totalAvailable || profiles.length;
+
+    // Minimal skeleton — instant feel
     if (loading) {
         return (
             <div className="px-4 pt-4 space-y-4">
@@ -149,25 +237,43 @@ export default function DiscoverPage() {
                     <Sparkles size={20} className="text-primary" />
                     <h1 className="text-lg font-bold text-text-primary">Discover</h1>
                 </div>
-                {[1, 2].map(i => <SkeletonCard key={i} />)}
+                <div className="rounded-3xl overflow-hidden bg-surface animate-pulse" style={{ aspectRatio: '3/4', maxHeight: '55vh' }} />
+                <div className="flex items-center justify-center gap-5 mt-5">
+                    <div className="w-16 h-16 rounded-full bg-surface animate-pulse" />
+                    <div className="w-12 h-12 rounded-full bg-surface animate-pulse" />
+                    <div className="w-12 h-12 rounded-full bg-surface animate-pulse" />
+                    <div className="w-16 h-16 rounded-full bg-surface animate-pulse" />
+                </div>
             </div>
         );
     }
 
-    if (!currentProfile) {
+    // All swiped
+    if (!currentProfile || currentIndex >= profiles.length) {
+        const allSwiped = profiles.length > 0 || noMorePages;
         return (
             <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center space-y-6">
-                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-6xl">💫</motion.div>
+                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-6xl">
+                    {allSwiped ? '🎉' : '💫'}
+                </motion.div>
                 <div className="space-y-2">
-                    <h2 className="text-xl font-bold text-text-primary">No more profiles!</h2>
+                    <h2 className="text-xl font-bold text-text-primary">
+                        {allSwiped ? "You've seen everyone!" : 'Loading profiles...'}
+                    </h2>
                     <p className="text-text-secondary text-sm max-w-xs mx-auto">
-                        You&apos;ve seen all available profiles. Refresh to discover more.
+                        {allSwiped
+                            ? `You've viewed all ${totalCount} available profiles. Refresh to see them again!`
+                            : 'Pull to refresh and discover more profiles.'}
                     </p>
                 </div>
                 <button onClick={handleRefresh} className="flex items-center gap-2 px-6 py-3 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 active:scale-95 transition-transform">
                     <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-                    Load More Profiles
+                    {allSwiped ? 'Start Over' : 'Refresh Profiles'}
                 </button>
+                <div className="flex items-center gap-1.5 text-xs text-text-muted">
+                    <Users size={14} />
+                    <span>{totalCount} profiles in database</span>
+                </div>
             </div>
         );
     }
@@ -180,9 +286,17 @@ export default function DiscoverPage() {
                     <Sparkles size={20} className="text-primary" />
                     <h1 className="text-lg font-bold text-text-primary">Discover</h1>
                 </div>
-                <span className="text-xs text-text-muted bg-surface rounded-full px-2.5 py-1">
-                    {currentIndex + 1} / {profiles.length}
-                </span>
+                <div className="flex items-center gap-2">
+                    <span className="text-xs text-text-muted bg-surface rounded-full px-2.5 py-1">
+                        {currentIndex + 1} / {profiles.length}
+                    </span>
+                    <span className="text-[10px] text-primary bg-primary/10 rounded-full px-2 py-0.5 font-medium">
+                        {totalCount} total
+                    </span>
+                    {loadingMore && (
+                        <span className="text-[10px] text-text-muted animate-pulse">loading more...</span>
+                    )}
+                </div>
             </div>
 
             {/* Profile Card */}
@@ -193,16 +307,17 @@ export default function DiscoverPage() {
                     animate={{
                         opacity: 1, scale: 1,
                         x: swipeDirection === 'left' ? -300 : swipeDirection === 'right' ? 300 : 0,
+                        y: swipeDirection === 'up' ? -300 : 0,
                     }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.3 }}
-                    className="rounded-3xl overflow-hidden card-shadow bg-bg-card cursor-pointer"
+                    className="rounded-3xl overflow-hidden card-shadow bg-white cursor-pointer"
                     style={{ border: '1px solid var(--color-border)' }}
                     onClick={openProfile}
                 >
                     <div className="relative" style={{ aspectRatio: '3/4', maxHeight: '55vh' }}>
                         {currentProfile.imageUrl ? (
-                            <img src={currentProfile.imageUrl} alt={currentProfile.name} className="absolute inset-0 w-full h-full object-cover" loading="eager" />
+                            <BlurImage src={currentProfile.imageUrl} alt={currentProfile.name} fill priority className="absolute inset-0 w-full h-full" />
                         ) : (
                             <div className="absolute inset-0 bg-surface flex items-center justify-center">
                                 <UserAvatar name={currentProfile.name} size={100} />
@@ -255,27 +370,44 @@ export default function DiscoverPage() {
             </AnimatePresence>
 
             {/* Action Buttons */}
-            <div className="flex items-center justify-center gap-5 mt-5">
+            <div className="flex items-center justify-center gap-4 mt-5">
                 <motion.button whileTap={{ scale: 0.85 }} onClick={handlePass}
-                    className="w-16 h-16 rounded-full bg-surface flex items-center justify-center shadow-lg hover:bg-danger/20 transition-colors group"
-                    style={{ border: '2px solid var(--color-border)' }}>
-                    <X size={28} className="text-text-muted group-hover:text-danger transition-colors" />
+                    className="w-15 h-15 rounded-full bg-white flex items-center justify-center shadow-lg hover:bg-danger/10 transition-colors group"
+                    style={{ border: '2px solid var(--color-border)', width: 60, height: 60 }}>
+                    <X size={26} className="text-text-muted group-hover:text-danger transition-colors" />
                 </motion.button>
 
                 <motion.button whileTap={{ scale: 0.85 }} onClick={(e) => { e.stopPropagation(); if (currentProfile) { if (isProfileSaved(currentProfile.wpId)) return; saveProfile(currentProfile); } }}
-                    className="w-12 h-12 rounded-full bg-surface flex items-center justify-center shadow-lg hover:bg-gold/20 transition-colors group">
+                    className="w-12 h-12 rounded-full bg-white flex items-center justify-center shadow-lg hover:bg-gold/10 transition-colors group"
+                    style={{ border: '1px solid var(--color-border)' }}>
                     <Bookmark size={20} className={`transition-colors ${isProfileSaved(currentProfile?.wpId) ? 'text-gold fill-gold' : 'text-text-muted group-hover:text-gold'}`} />
                 </motion.button>
 
+                <motion.button whileTap={{ scale: 0.85 }} onClick={handleSuperLike}
+                    className="w-12 h-12 rounded-full bg-white flex items-center justify-center shadow-lg hover:bg-blue-50 transition-colors group"
+                    style={{ border: '2px solid #3B82F6' }}>
+                    <Zap size={20} className="text-blue-500 group-hover:text-blue-600 transition-colors" fill="currentColor" />
+                </motion.button>
+
                 <motion.button whileTap={{ scale: 0.85 }} onClick={handleRefresh}
-                    className="w-12 h-12 rounded-full bg-surface flex items-center justify-center shadow-lg hover:bg-accent/20 transition-colors group">
-                    <RefreshCw size={20} className={`text-text-muted group-hover:text-accent transition-colors ${refreshing ? 'animate-spin' : ''}`} />
+                    className="w-11 h-11 rounded-full bg-white flex items-center justify-center shadow-md hover:bg-accent/10 transition-colors group"
+                    style={{ border: '1px solid var(--color-border)' }}>
+                    <RefreshCw size={18} className={`text-text-muted group-hover:text-accent transition-colors ${refreshing ? 'animate-spin' : ''}`} />
                 </motion.button>
 
                 <motion.button whileTap={{ scale: 0.85 }} onClick={handleLike}
-                    className="w-16 h-16 rounded-full gradient-primary flex items-center justify-center shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all group">
-                    <Heart size={28} className="text-white group-hover:scale-110 transition-transform" fill="currentColor" />
+                    className="rounded-full gradient-primary flex items-center justify-center shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all group"
+                    style={{ width: 60, height: 60 }}>
+                    <Heart size={26} className="text-white group-hover:scale-110 transition-transform" fill="currentColor" />
                 </motion.button>
+            </div>
+
+            {/* Remaining count */}
+            <div className="text-center mt-3">
+                <p className="text-[11px] text-text-muted">
+                    {remainingCount > 1 ? `${remainingCount} profiles remaining` : 'Last profile!'}
+                    {loadingMore && ' • Loading more...'}
+                </p>
             </div>
         </div>
     );

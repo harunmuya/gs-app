@@ -1,24 +1,24 @@
 {
     "name": "Genuine Sugar Mummies",
-    "short_name": "SugarMummies",
+    "short_name": "GS App",
     "description": "Kenya's leading dating app for genuine sugar mummy connections",
     "start_url": "/",
     "display": "standalone",
-    "background_color": "#0f0d15",
-    "theme_color": "#e11d48",
+    "background_color": "#ffffff",
+    "theme_color": "#EA580C",
     "orientation": "portrait",
     "icons": [
         {
-            "src": "/icons/icon-192.png",
-            "sizes": "192x192",
-            "type": "image/png",
-            "purpose": "any maskable"
+            "src": "/gs-logo.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any"
         },
         {
-            "src": "/icons/icon-512.png",
-            "sizes": "512x512",
-            "type": "image/png",
-            "purpose": "any maskable"
+            "src": "/gs-logo.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "maskable"
         }
     ],
     "categories": [

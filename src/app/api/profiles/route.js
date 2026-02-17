@@ -6,7 +6,7 @@ export async function GET(request) {
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
         const page = parseInt(searchParams.get('page') || '1');
-        const perPage = parseInt(searchParams.get('per_page') || '20');
+        const perPage = Math.min(parseInt(searchParams.get('per_page') || '20'), 30);
 
         // Single profile fetch
         if (id) {
@@ -19,8 +19,8 @@ export async function GET(request) {
             });
         }
 
-        // Paginated list
-        const result = await fetchProfiles(page, Math.min(perPage, 50));
+        // Paginated list (default 20 per page, max 30)
+        const result = await fetchProfiles(page, perPage);
 
         return NextResponse.json(result, {
             headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, MapPin, MessageCircle, ExternalLink } from 'lucide-react';
+import { Heart, MapPin, MessageCircle, ExternalLink, Zap, Flame, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import CommentForm from '@/components/CommentForm';
 import VerifiedBadge from '@/components/VerifiedBadge';
@@ -10,8 +10,24 @@ import UserAvatar from '@/components/UserAvatar';
 import Link from 'next/link';
 
 export default function MatchesPage() {
-    const { user, guest, matches, logMessageSent } = useAuth();
+    const { user, guest, matches, activity, addLike, addSuperLike, logMessageSent } = useAuth();
     const [commentProfile, setCommentProfile] = useState(null);
+    const [activityProfiles, setActivityProfiles] = useState([]);
+
+    // Build activity feed from recent activity items that have a profileId
+    useEffect(() => {
+        const seen = new Set();
+        const feed = activity
+            .filter(a => a.profileId && !seen.has(a.profileId) && (seen.add(a.profileId), true))
+            .slice(0, 15)
+            .map(a => ({
+                wpId: a.profileId,
+                name: (a.title || '').replace(/^(You (super )?liked |Matched with |Viewed |Saved )/, '').replace(/ [⚡💖✓].*$/, '').trim() || 'Someone',
+                image: a.image || '',
+                type: a.type,
+            }));
+        setActivityProfiles(feed);
+    }, [activity]);
 
     if (guest && !user) {
         return (
@@ -27,7 +43,7 @@ export default function MatchesPage() {
     }
 
     const handleSendMessage = (match) => {
-        setCommentProfile({ wpId: match.wpId, name: match.name, imageUrl: match.imageUrl });
+        setCommentProfile({ wpId: match.wpId, name: match.name, imageUrl: match.imageUrl || match.image });
     };
 
     return (
@@ -37,6 +53,62 @@ export default function MatchesPage() {
                 <h1 className="text-xl font-bold text-text-primary">Your Matches</h1>
                 <span className="ml-auto text-xs text-text-muted bg-surface rounded-full px-2.5 py-0.5">{matches.length}</span>
             </div>
+
+            {/* Activity Feed */}
+            {activityProfiles.length > 0 && (
+                <div className="mb-6">
+                    <div className="flex items-center gap-1.5 mb-3">
+                        <Flame size={16} className="text-primary" />
+                        <h2 className="text-sm font-bold text-text-primary">Activity Feed</h2>
+                        <span className="text-[10px] text-text-muted ml-auto">{activityProfiles.length} recent</span>
+                    </div>
+                    <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                        {activityProfiles.map((prof) => (
+                            <div key={`feed-${prof.wpId}-${prof.type}`} className="shrink-0 w-[90px]">
+                                <Link href={`/discover/${prof.wpId}`} className="block">
+                                    <div className="w-[90px] h-[90px] rounded-2xl overflow-hidden bg-surface ring-1 ring-black/5 mb-1.5 relative">
+                                        {prof.image ? (
+                                            <img src={prof.image} alt={prof.name} className="w-full h-full object-cover" loading="lazy" />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
+                                                <UserAvatar name={prof.name} size={40} />
+                                            </div>
+                                        )}
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+                                        <span className="absolute bottom-1 left-1 right-1 text-[9px] text-white font-medium truncate text-center">
+                                            {prof.name}
+                                        </span>
+                                    </div>
+                                </Link>
+                                {/* Quick Actions */}
+                                <div className="flex items-center justify-center gap-1">
+                                    <button
+                                        onClick={() => addSuperLike?.({ wpId: prof.wpId, name: prof.name, imageUrl: prof.image })}
+                                        className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center hover:bg-blue-100 transition-colors"
+                                        title="Super Like"
+                                    >
+                                        <Zap size={12} className="text-blue-500" fill="currentColor" />
+                                    </button>
+                                    <button
+                                        onClick={() => addLike?.({ wpId: prof.wpId, name: prof.name, imageUrl: prof.image })}
+                                        className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center hover:bg-primary/20 transition-colors"
+                                        title="Like"
+                                    >
+                                        <Heart size={12} className="text-primary" fill="currentColor" />
+                                    </button>
+                                    <button
+                                        onClick={() => handleSendMessage(prof)}
+                                        className="w-7 h-7 rounded-full bg-surface flex items-center justify-center hover:bg-surface-light transition-colors"
+                                        title="Comment"
+                                    >
+                                        <MessageCircle size={12} className="text-text-muted" />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {matches.length === 0 ? (
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-16 space-y-4">
@@ -117,7 +189,7 @@ export default function MatchesPage() {
             )}
 
             {commentProfile && (
-                <CommentForm profile={commentProfile} onClose={() => { logMessageSent(commentProfile.name, commentProfile.imageUrl); setCommentProfile(null); }} />
+                <CommentForm profile={commentProfile} onClose={() => { logMessageSent(commentProfile.name, commentProfile.imageUrl || commentProfile.image); setCommentProfile(null); }} />
             )}
         </div>
     );

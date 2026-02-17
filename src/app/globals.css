@@ -1,62 +1,37 @@
 @import "tailwindcss";
 
-/* ---- Light Theme (Default) ---- */
-:root,
-[data-theme="light"] {
-  --color-primary: #e11d48;
-  --color-primary-light: #fb7185;
-  --color-primary-dark: #be123c;
-  --color-secondary: #f43f5e;
-  --color-accent: #ec4899;
-  --color-bg-dark: #f5f5f7;
+/* ---- Light Theme Only (White + Orange) ---- */
+:root {
+  --color-primary: #EA580C;
+  --color-primary-light: #FB923C;
+  --color-primary-dark: #C2410C;
+  --color-secondary: #F97316;
+  --color-accent: #F59E0B;
+  --color-bg-dark: #f8f9fa;
   --color-bg-card: #ffffff;
-  --color-bg-input: #edeef1;
-  --color-surface: #e8e9ed;
-  --color-surface-light: #dcdde2;
-  --color-text-primary: #000000;
-  /* Pure Black */
-  --color-text-secondary: #0f172a;
-  /* Very Dark Blue/Grey (almost black) */
-  --color-text-muted: #374151;
-  /* Dark Grey (readable) */
-  --color-gold: #b45309;
-  --color-success: #047857;
+  --color-bg-input: #f1f3f5;
+  --color-surface: #e9ecef;
+  --color-surface-light: #dee2e6;
+  --color-text-primary: #111111;
+  --color-text-secondary: #1a1a2e;
+  --color-text-muted: #495057;
+  --color-gold: #d97706;
+  --color-success: #059669;
   --color-danger: #dc2626;
-  --color-border: rgba(0, 0, 0, 0.12);
-  --glass-bg: rgba(255, 255, 255, 0.9);
-  --glass-border: rgba(0, 0, 0, 0.1);
-  --shadow-color: rgba(0, 0, 0, 0.1);
-  --overlay-gradient: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.15) 30%, rgba(0, 0, 0, 0.8) 100%);
-  --card-border: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-/* ---- Dark Theme ---- */
-[data-theme="dark"] {
-  --color-bg-dark: #0f0d15;
-  --color-bg-card: #1a1625;
-  --color-bg-input: #251f33;
-  --color-surface: #1e1a2a;
-  --color-surface-light: #2a2440;
-  --color-text-primary: #f8fafc;
-  --color-text-secondary: #c4c4cc;
-  --color-text-muted: #8b8b99;
-  --color-gold: #fbbf24;
-  --color-success: #10b981;
-  --color-danger: #ef4444;
-  --color-border: rgba(255, 255, 255, 0.1);
-  --glass-bg: rgba(26, 22, 37, 0.85);
-  --glass-border: rgba(255, 255, 255, 0.1);
-  --shadow-color: rgba(0, 0, 0, 0.4);
-  --overlay-gradient: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.3) 30%, rgba(0, 0, 0, 0.85) 100%);
-  --card-border: 1px solid rgba(255, 255, 255, 0.08);
+  --color-border: rgba(0, 0, 0, 0.1);
+  --glass-bg: rgba(255, 255, 255, 0.92);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --shadow-color: rgba(0, 0, 0, 0.08);
+  --overlay-gradient: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.1) 30%, rgba(0, 0, 0, 0.75) 100%);
+  --card-border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 @theme {
-  --color-primary: #e11d48;
-  --color-primary-light: #fb7185;
-  --color-primary-dark: #be123c;
-  --color-secondary: #f43f5e;
-  --color-accent: #ec4899;
+  --color-primary: #EA580C;
+  --color-primary-light: #FB923C;
+  --color-primary-dark: #C2410C;
+  --color-secondary: #F97316;
+  --color-accent: #F59E0B;
   --color-bg-dark: var(--color-bg-dark);
   --color-bg-card: var(--color-bg-card);
   --color-bg-input: var(--color-bg-input);
@@ -91,7 +66,6 @@
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    transition: background 0.3s ease, color 0.3s ease;
   }
 
   input,
@@ -123,11 +97,11 @@
 
 @layer utilities {
   .gradient-primary {
-    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%);
+    background: linear-gradient(135deg, #F97316 0%, #EA580C 50%, #C2410C 100%);
   }
 
   .gradient-card {
-    background: linear-gradient(180deg, transparent 0%, rgba(15, 13, 21, 0.6) 40%, rgba(15, 13, 21, 0.95) 100%);
+    background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.5) 40%, rgba(0, 0, 0, 0.9) 100%);
   }
 
   .gradient-overlay {
@@ -157,12 +131,12 @@
 
   .card-glow {
     box-shadow:
-      0 0 40px rgba(225, 29, 72, 0.15),
-      0 0 80px rgba(236, 72, 153, 0.1);
+      0 0 40px rgba(234, 88, 12, 0.12),
+      0 0 80px rgba(249, 115, 22, 0.08);
   }
 
   .text-gradient {
-    background: linear-gradient(135deg, var(--color-primary-light), var(--color-accent));
+    background: linear-gradient(135deg, #FB923C, #EA580C);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
