@@ -6,7 +6,7 @@ export async function GET(request) {
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
         const page = parseInt(searchParams.get('page') || '1');
-        const perPage = Math.min(parseInt(searchParams.get('per_page') || '20'), 30);
+        const perPage = Math.min(parseInt(searchParams.get('per_page') || '25'), 100);
 
         // Single profile fetch
         if (id) {

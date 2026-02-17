@@ -1,19 +1,23 @@
 'use client';
 
+import { Send } from 'lucide-react';
+
 /**
  * Contact buttons for connecting with profiles via admin Mary G.
- * Shows Telegram (recommended), SMS (recommended), Phone Call, WhatsApp (paused).
+ * Shows Telegram (recommended), SMS, Phone Call, Email. WhatsApp is paused.
  */
 export default function ContactButtons({ profileName }) {
     const name = profileName || 'this person';
+    const connectionMsg = encodeURIComponent(`Hi, need a match connection with ${name}`);
+    const helpMsg = encodeURIComponent(`Hi, I need help from the app regarding ${name}`);
 
     return (
-        <div className="w-full rounded-2xl bg-bg-card overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+        <div className="w-full rounded-2xl bg-bg-card overflow-hidden" style={{ border: '1px solid rgba(0,0,0,0.08)' }}>
             {/* Title */}
-            <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
                 <p className="text-sm font-semibold text-text-primary leading-snug">
                     To Hookup or Connect with <span className="text-gradient">{name}</span>,
-                    request connection from admin <span className="text-white font-bold">Mary G</span>
+                    request connection from admin <span className="text-text-primary font-bold">Mary G</span>
                 </p>
             </div>
 
@@ -21,7 +25,7 @@ export default function ContactButtons({ profileName }) {
             <div className="grid grid-cols-2 gap-2 p-3">
                 {/* Telegram - Recommended */}
                 <a
-                    href="https://t.me/+254738871048"
+                    href={`https://t.me/GSADMINMARYGAGENCY?text=${connectionMsg}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="group flex items-center gap-2.5 px-3.5 py-3 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
@@ -32,13 +36,15 @@ export default function ContactButtons({ profileName }) {
                     </svg>
                     <div className="min-w-0">
                         <span className="block text-sm font-bold leading-tight">Telegram</span>
-                        <span className="block text-[10px] opacity-80 font-medium">⭐ Recommended</span>
+                        <span className="block text-[10px] opacity-80 font-medium flex items-center gap-0.5">
+                            <Star size={8} /> Recommended
+                        </span>
                     </div>
                 </a>
 
-                {/* SMS - Recommended */}
+                {/* SMS */}
                 <a
-                    href="sms:+254738871048"
+                    href={`sms:+254738871048?body=${connectionMsg}`}
                     className="group flex items-center gap-2.5 px-3.5 py-3 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                     style={{ backgroundColor: '#34B7F1', color: 'white' }}
                 >
@@ -47,7 +53,9 @@ export default function ContactButtons({ profileName }) {
                     </svg>
                     <div className="min-w-0">
                         <span className="block text-sm font-bold leading-tight">SMS</span>
-                        <span className="block text-[10px] opacity-80 font-medium">⭐ Recommended</span>
+                        <span className="block text-[10px] opacity-80 font-medium flex items-center gap-0.5">
+                            <Star size={8} /> Recommended
+                        </span>
                     </div>
                 </a>
 
@@ -66,12 +74,27 @@ export default function ContactButtons({ profileName }) {
                     </div>
                 </a>
 
+                {/* Email */}
+                <a
+                    href={`mailto:genuinesugarmummies@gmail.com?subject=Connection Request&body=${helpMsg}`}
+                    className="group flex items-center gap-2.5 px-3.5 py-3 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                    style={{ backgroundColor: '#9333EA', color: 'white' }}
+                >
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                        <rect width="20" height="16" x="2" y="4" rx="2" />
+                        <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                    </svg>
+                    <div className="min-w-0">
+                        <span className="block text-sm font-bold leading-tight">Email</span>
+                        <span className="block text-[10px] opacity-70 font-medium">Write to us</span>
+                    </div>
+                </a>
+
                 {/* WhatsApp - Paused */}
                 <div
-                    className="flex items-center gap-2.5 px-3.5 py-3 rounded-xl opacity-50 cursor-not-allowed relative overflow-hidden"
+                    className="col-span-2 flex items-center gap-2.5 px-3.5 py-3 rounded-xl opacity-40 cursor-not-allowed relative overflow-hidden"
                     style={{ backgroundColor: '#25D366', color: 'white' }}
                 >
-                    {/* Paused overlay */}
                     <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
                         <span className="text-[10px] font-bold uppercase tracking-wider bg-black/50 px-2 py-0.5 rounded-full">
                             Paused
@@ -87,5 +110,14 @@ export default function ContactButtons({ profileName }) {
                 </div>
             </div>
         </div>
+    );
+}
+
+// Star icon for "Recommended" labels
+function Star({ size = 10 }) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </svg>
     );
 }

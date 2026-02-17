@@ -1,7 +1,10 @@
 /**
  * Blue verification checkmark badge (Twitter/X style)
+ * Only shows when verified=true or when no prop is passed (for WP profiles)
  */
-export default function VerifiedBadge({ size = 18, className = '' }) {
+export default function VerifiedBadge({ size = 18, className = '', verified = true }) {
+    if (!verified) return null;
+
     return (
         <svg
             width={size}

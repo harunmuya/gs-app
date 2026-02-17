@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 
 const WP_API_URL = process.env.NEXT_PUBLIC_WP_API_URL || 'https://genuinesugarmummies.co.ke/wp-json/wp/v2';
+const WP_BASE_URL = WP_API_URL.replace('/wp-json/wp/v2', '');
+const GS_PLUGIN_URL = `${WP_BASE_URL}/wp-json/gs-app/v1/comment`;
 
 // GET: Fetch approved comments for a post
 export async function GET(request) {
@@ -14,7 +16,7 @@ export async function GET(request) {
 
         const wpRes = await fetch(
             `${WP_API_URL}/comments?post=${postId}&per_page=50&orderby=date&order=desc&status=approve`,
-            { next: { revalidate: 60 } } // Cache for 60 seconds
+            { next: { revalidate: 60 } }
         );
 
         if (!wpRes.ok) {
@@ -65,40 +67,66 @@ export async function POST(request) {
             );
         }
 
-        // Submit to WordPress REST API — will go to pending/moderation
+        // Method 1: Try the GS custom plugin endpoint (works without auth)
+        try {
+            const pluginRes = await fetch(GS_PLUGIN_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    post_id: postId,
+                    author_name: authorName,
+                    author_email: authorEmail,
+                    content: content,
+                }),
+            });
+
+            if (pluginRes.ok) {
+                const result = await pluginRes.json();
+                return NextResponse.json({
+                    success: true,
+                    status: result.status || 'hold',
+                    message: 'Comment submitted for moderation',
+                    method: 'plugin',
+                });
+            }
+        } catch (pluginErr) {
+            console.log('GS plugin endpoint not available, falling back to standard WP API');
+        }
+
+        // Method 2: Standard WordPress REST API with all required fields
         const wpRes = await fetch(`${WP_API_URL}/comments`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                post: postId,
+                post: parseInt(postId),
                 author_name: authorName,
                 author_email: authorEmail,
                 content: content,
             }),
         });
 
-        if (!wpRes.ok) {
-            const errorData = await wpRes.text();
-            console.error('WordPress comment error:', wpRes.status, errorData);
-            // Always return success — WP may reject with 401/403/rest_comment_login_required
-            // The user should always get positive feedback
+        if (wpRes.ok) {
+            const result = await wpRes.json();
             return NextResponse.json({
                 success: true,
-                status: 'hold',
-                message: 'Your comment has been submitted for moderation',
+                status: result.status || 'hold',
+                message: 'Comment submitted for moderation',
+                method: 'wp_api',
             });
         }
 
-        const result = await wpRes.json();
+        // Even if WP rejects (401/403), show success to user
+        const errorText = await wpRes.text();
+        console.error('WordPress comment error:', wpRes.status, errorText);
 
         return NextResponse.json({
             success: true,
-            status: result.status || 'hold',
-            message: 'Comment submitted for moderation',
+            status: 'hold',
+            message: 'Your comment has been submitted for moderation',
+            method: 'fallback',
         });
     } catch (error) {
         console.error('Comment API error:', error);
-        // Even on network errors, return success to keep user experience smooth
         return NextResponse.json({
             success: true,
             status: 'hold',

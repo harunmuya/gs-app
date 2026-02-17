@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Heart, Bookmark, MapPin, MessageCircle, Share2, Star, Clock, TrendingUp, Award, Activity, Globe, User } from 'lucide-react';
+import { ArrowLeft, Heart, Bookmark, MapPin, MessageCircle, Share2, Star, Clock, TrendingUp, Award, Activity, Globe, User, Copy, CheckCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ContactButtons from '@/components/ContactButtons';
@@ -35,6 +35,7 @@ export default function SingleProfilePage({ params }) {
     const [liked, setLiked] = useState(false);
     const [comments, setComments] = useState([]);
     const [loadingComments, setLoadingComments] = useState(true);
+    const [copied, setCopied] = useState(false);
 
     useEffect(() => {
         async function loadProfile() {
@@ -76,7 +77,6 @@ export default function SingleProfilePage({ params }) {
         if (!profile || liked) return;
         addLike(profile);
         setLiked(true);
-        // Deterministic matching — no Math.random()
         const { match, score } = shouldMatchProfile(profile);
         if (match) {
             addMatch(profile, score);
@@ -91,12 +91,30 @@ export default function SingleProfilePage({ params }) {
 
     const handleShare = async () => {
         if (!profile) return;
-        try { await navigator.share({ title: profile.name, text: `Check out ${profile.name} on Genuine Sugar Mummies`, url: window.location.href }); } catch { }
+        const shareData = {
+            title: profile.name,
+            text: `Check out ${profile.name} on Genuine Sugar Mummies`,
+            url: window.location.href,
+        };
+
+        // Try Web Share API first
+        if (navigator.share) {
+            try {
+                await navigator.share(shareData);
+                return;
+            } catch { }
+        }
+
+        // Fallback: copy to clipboard
+        try {
+            await navigator.clipboard.writeText(window.location.href);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch { }
     };
 
     const handleCommentClose = () => {
         setShowComment(false);
-        // Refresh comments after posting
         fetch(`/api/comments?post=${profileId}`)
             .then(r => r.json())
             .then(d => setComments(d.comments || []))
@@ -121,7 +139,9 @@ export default function SingleProfilePage({ params }) {
     if (!profile) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center space-y-4">
-                <div className="text-5xl">🔍</div>
+                <div className="w-16 h-16 rounded-full bg-surface flex items-center justify-center">
+                    <User size={32} className="text-text-muted" />
+                </div>
                 <h2 className="text-lg font-bold text-text-primary">Profile not found</h2>
                 <button onClick={() => router.back()} className="px-6 py-3 rounded-2xl gradient-primary text-white font-semibold">Go Back</button>
             </div>
@@ -157,17 +177,24 @@ export default function SingleProfilePage({ params }) {
 
                 <div className="absolute top-4 right-4 flex gap-2 z-10">
                     {freshLabel && (
-                        <span className={`flex items-center px-3 py-1.5 rounded-full text-xs font-bold text-white shadow-lg ${freshLabel === 'Newly Available' ? 'bg-success' : 'bg-gold'}`}>
-                            {freshLabel === 'Newly Available' ? '🆕' : '⭐'} {freshLabel}
+                        <span className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold text-white shadow-lg ${freshLabel === 'Newly Available' ? 'bg-success' : 'bg-gold'}`}>
+                            {freshLabel === 'Newly Available' ? <Clock size={11} /> : <Star size={11} />} {freshLabel}
                         </span>
                     )}
-                    <button onClick={handleShare} className="w-10 h-10 rounded-full glass flex items-center justify-center">
-                        <Share2 size={18} className="text-white" />
+                    <button onClick={handleShare} className="w-10 h-10 rounded-full glass flex items-center justify-center relative">
+                        {copied ? <CheckCircle size={18} className="text-success" /> : <Share2 size={18} className="text-white" />}
                     </button>
                     <button onClick={handleSave} className="w-10 h-10 rounded-full glass flex items-center justify-center">
                         <Bookmark size={18} className={isSaved ? 'text-gold fill-gold' : 'text-white'} />
                     </button>
                 </div>
+
+                {/* Copied toast */}
+                {copied && (
+                    <div className="absolute top-16 right-4 z-20 px-3 py-1.5 rounded-full bg-success text-white text-xs font-bold shadow-lg animate-fade-in">
+                        Link copied!
+                    </div>
+                )}
 
                 <div className="absolute bottom-0 left-0 right-0 p-5 profile-overlay-text">
                     <div className="flex items-end justify-between">
@@ -199,7 +226,7 @@ export default function SingleProfilePage({ params }) {
                     <motion.button whileTap={{ scale: 0.9 }} onClick={handleLike} disabled={liked}
                         className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-white shadow-lg transition-all ${liked ? 'bg-primary/30 cursor-default' : 'gradient-primary shadow-primary/30 hover:shadow-primary/50'}`}>
                         <Heart size={20} fill={liked ? 'currentColor' : 'none'} />
-                        {liked ? 'Liked ✓' : 'Like'}
+                        {liked ? 'Liked' : 'Like'}
                     </motion.button>
                     <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowComment(true)}
                         className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-text-primary shadow-lg transition-all"
@@ -239,7 +266,7 @@ export default function SingleProfilePage({ params }) {
                         )}
                         <div className="rounded-xl p-3" style={{ background: 'var(--color-surface)' }}>
                             <p className="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">Status</p>
-                            <p className="text-sm font-semibold text-success">✓ Verified</p>
+                            <p className="text-sm font-semibold text-success flex items-center gap-1"><CheckCircle size={12} /> Verified</p>
                         </div>
                         <div className="rounded-xl p-3" style={{ background: 'var(--color-surface)' }}>
                             <p className="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">Comments</p>
@@ -256,7 +283,7 @@ export default function SingleProfilePage({ params }) {
                     </div>
                 </div>
 
-                {/* Contact buttons after main content */}
+                {/* Contact buttons */}
                 <ContactButtons profileName={profile.name} />
 
                 {/* Profile Labels */}
@@ -329,12 +356,12 @@ export default function SingleProfilePage({ params }) {
                 <button onClick={() => setShowComment(true)}
                     className="w-full py-3.5 rounded-2xl text-sm font-semibold text-text-secondary transition-colors flex items-center justify-center gap-2"
                     style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                    💬 Leave a Comment on this Profile
+                    <MessageCircle size={16} /> Leave a Comment on this Profile
                 </button>
 
                 {/* Version */}
                 <p className="text-center text-[10px] text-text-muted pt-2 pb-4">
-                    Genuine Sugar Mummies App · v3.0.0
+                    Genuine Sugar Mummies App · v3.1.0
                 </p>
             </div>
 

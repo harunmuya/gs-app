@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, Heart, Eye, MessageCircle, Bookmark, User, LogIn, Star, Flame, Zap, Phone } from 'lucide-react';
+import { Bell, Heart, Eye, MessageCircle, Bookmark, User, LogIn, Star, Flame, Zap, Phone, Send, BellOff, Sparkles, UserCheck } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
 
@@ -13,15 +13,23 @@ const ICON_MAP = {
     save: { icon: Bookmark, color: 'bg-blue-500', fill: true },
     view: { icon: Eye, color: 'bg-surface-light', fill: false },
     login: { icon: LogIn, color: 'bg-success', fill: false },
-    profile_update: { icon: User, color: 'bg-surface-light', fill: false },
+    profile_update: { icon: UserCheck, color: 'bg-surface-light', fill: false },
     photo_added: { icon: User, color: 'bg-primary', fill: false },
-    // New engagement types
     request_hookup: { icon: Flame, color: 'bg-red-500', fill: true },
     connection_request: { icon: Zap, color: 'bg-blue-500', fill: true },
     meetup_ready: { icon: Flame, color: 'bg-orange-500', fill: true },
 };
 
 const HOOKUP_TYPES = new Set(['request_hookup', 'connection_request', 'meetup_ready']);
+
+// Telegram SVG icon component
+function TelegramIcon({ size = 14, className = '' }) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
+            <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
+        </svg>
+    );
+}
 
 export default function AlertsPage() {
     const { user, guest, activity, markActivityRead, requestConnection } = useAuth();
@@ -65,7 +73,9 @@ export default function AlertsPage() {
 
             {activity.length === 0 ? (
                 <div className="text-center py-16 space-y-4">
-                    <div className="text-5xl opacity-50">🔕</div>
+                    <div className="w-16 h-16 rounded-full bg-surface flex items-center justify-center mx-auto">
+                        <BellOff size={32} className="text-text-muted" />
+                    </div>
                     <h2 className="text-lg font-bold text-text-primary">No activity yet</h2>
                     <p className="text-text-secondary text-sm">Start swiping to see your activity here!</p>
                 </div>
@@ -77,6 +87,11 @@ export default function AlertsPage() {
                             const Icon = iconData.icon;
                             const hasProfile = !!item.profileId;
                             const isHookup = HOOKUP_TYPES.has(item.type);
+
+                            // Build Telegram link with auto-fill message
+                            const profileName = (item.title || '').replace(/^.*?([\w]+)\s*(is|wants|sent|liked|viewed|match).*$/i, '$1').trim() || 'a sugar mummy';
+                            const telegramMsg = encodeURIComponent(`Hi, need a match connection with ${profileName}`);
+                            const telegramLink = `https://t.me/GSADMINMARYGAGENCY?text=${telegramMsg}`;
 
                             const alertContent = (
                                 <motion.div key={item.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(index * 0.03, 0.5) }}
@@ -109,21 +124,20 @@ export default function AlertsPage() {
                                         </div>
                                         {item.message && <p className="text-xs text-text-muted truncate">{item.message}</p>}
 
-                                        {/* Request Connection button for hookup-type alerts */}
+                                        {/* Request Connection button — opens Telegram */}
                                         {isHookup && (
                                             <a
-                                                href="https://wa.me/254738871048?text=Hi%20Admin%2C%20I%20want%20to%20connect%20with%20a%20sugar%20mummy"
+                                                href={telegramLink}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    e.preventDefault();
-                                                    requestConnection?.(item.title, item.profileId);
-                                                    window.open(e.currentTarget.href, '_blank');
+                                                    requestConnection?.(profileName, item.profileId);
                                                 }}
-                                                className="inline-flex items-center gap-1 mt-2 px-3 py-1.5 rounded-full text-[11px] font-semibold text-white gradient-primary shadow-sm hover:shadow-md transition-all active:scale-95"
+                                                className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-full text-[11px] font-semibold text-white shadow-sm hover:shadow-md transition-all active:scale-95"
+                                                style={{ background: '#26A5E4' }}
                                             >
-                                                <Phone size={10} />
+                                                <TelegramIcon size={12} />
                                                 Request Connection
                                             </a>
                                         )}
@@ -133,7 +147,6 @@ export default function AlertsPage() {
                                 </motion.div>
                             );
 
-                            // Wrap in Link if the alert has a profileId
                             if (hasProfile) {
                                 return (
                                     <Link key={item.id} href={`/discover/${item.profileId}`} className="block">
