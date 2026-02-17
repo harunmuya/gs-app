@@ -5,6 +5,24 @@ const WP_BASE = process.env.NEXT_PUBLIC_WP_API_URL?.replace('/wp/v2', '') || 'ht
 const GS_API = `${WP_BASE}/gs-app/v1`;
 const WP_API = `${WP_BASE}/wp/v2`;
 
+// Convert Jetpack CDN URLs to direct WordPress URLs for WebView compatibility
+// i0.wp.com/genuinesugarmummies.co.ke/path/image.jpg?... → genuinesugarmummies.co.ke/path/image.jpg
+function normalizeImageUrl(url) {
+    if (!url) return '';
+    try {
+        // Strip Jetpack Photon CDN wrapper: https://i0.wp.com/DOMAIN/PATH?query
+        const jetpackMatch = url.match(/https?:\/\/i\d\.wp\.com\/(.+)/);
+        if (jetpackMatch) {
+            // Extract the original domain + path, drop query params like ?fit=...&ssl=1
+            const originalPath = jetpackMatch[1].split('?')[0];
+            return `https://${originalPath}`;
+        }
+        return url;
+    } catch {
+        return url;
+    }
+}
+
 // Kenyan cities/towns for location extraction
 const KENYAN_LOCATIONS = [
     'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Thika',
@@ -148,12 +166,12 @@ export function parsePluginProfile(data) {
     const title = data.title || '';
     const excerptRaw = data.excerpt || '';
     const contentRaw = data.content || '';
-    let imageUrl = data.imageUrl || '';
+    let imageUrl = normalizeImageUrl(data.imageUrl || '');
 
     // Fallback: extract first image from HTML content if imageUrl is empty
     if (!imageUrl && contentRaw) {
         const imgMatch = contentRaw.match(/<img[^>]+src=["']([^"']+)["']/);
-        if (imgMatch) imageUrl = imgMatch[1];
+        if (imgMatch) imageUrl = normalizeImageUrl(imgMatch[1]);
     }
 
     const name = extractName(title);
@@ -194,10 +212,10 @@ export function parseProfile(post) {
     const content = post.content?.rendered || '';
     const excerpt = post.excerpt?.rendered || '';
 
-    let imageUrl = post.jetpack_featured_media_url || '';
+    let imageUrl = normalizeImageUrl(post.jetpack_featured_media_url || '');
     if (!imageUrl && post._embedded?.['wp:featuredmedia']?.[0]) {
         const media = post._embedded['wp:featuredmedia'][0];
-        imageUrl = media.source_url || media.media_details?.sizes?.large?.source_url || '';
+        imageUrl = normalizeImageUrl(media.source_url || media.media_details?.sizes?.large?.source_url || '');
     }
 
     const name = extractName(title);
