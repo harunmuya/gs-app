@@ -22,6 +22,11 @@ export async function GET(request) {
         // Paginated list
         const result = await fetchProfiles(page, perPage);
 
+        // Debug: log image status
+        const withImg = (result.profiles || []).filter(p => p.imageUrl).length;
+        const total = (result.profiles || []).length;
+        console.log(`[Profiles API] page=${page} total=${total} withImage=${withImg} sample=${result.profiles?.[0]?.imageUrl?.substring(0, 60) || 'NONE'}`);
+
         return NextResponse.json(result, {
             headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
         });

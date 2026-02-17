@@ -148,7 +148,13 @@ export function parsePluginProfile(data) {
     const title = data.title || '';
     const excerptRaw = data.excerpt || '';
     const contentRaw = data.content || '';
-    const imageUrl = data.imageUrl || '';
+    let imageUrl = data.imageUrl || '';
+
+    // Fallback: extract first image from HTML content if imageUrl is empty
+    if (!imageUrl && contentRaw) {
+        const imgMatch = contentRaw.match(/<img[^>]+src=["']([^"']+)["']/);
+        if (imgMatch) imageUrl = imgMatch[1];
+    }
 
     const name = extractName(title);
     const location = extractLocation(contentRaw + ' ' + title, title);
