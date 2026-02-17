@@ -363,13 +363,12 @@ function gs_app_subscribe($request) {
 
 
 // ============================================================
-// SEND CONFIRMATION EMAIL — spam-resistant
+// SEND CONFIRMATION EMAIL — optimized for deliverability
 // ============================================================
 function gs_app_send_confirmation($email, $name, $token) {
-    $site_name = get_bloginfo('name');
-    $site_url  = home_url();
+    $site_name   = get_bloginfo('name');
+    $site_url    = home_url();
     $admin_email = get_option('admin_email');
-    $domain = parse_url($site_url, PHP_URL_HOST);
 
     // Build verify URL
     $verify_url = add_query_arg(
@@ -379,28 +378,33 @@ function gs_app_send_confirmation($email, $name, $token) {
 
     $greeting = $name ? "Hi $name," : "Hello,";
 
-    // Plain text version (better for spam score)
-    $text_body = "$greeting\n\n";
+    // Plain text body (lowest spam score)
+    $text_body  = "$greeting\n\n";
     $text_body .= "Thank you for subscribing to $site_name.\n\n";
-    $text_body .= "Please confirm your email by clicking the link below:\n";
+    $text_body .= "Please confirm your email by visiting this link:\n";
     $text_body .= "$verify_url\n\n";
     $text_body .= "Once confirmed, you will receive email notifications whenever new profiles are posted.\n\n";
     $text_body .= "If you did not subscribe, simply ignore this email.\n\n";
-    $text_body .= "Regards,\n$site_name Team\n$site_url";
+    $text_body .= "Best regards,\n$site_name Team\n$site_url";
 
-    // Use admin email as sender (reduces spam score)
+    // Headers — use admin email for From AND Return-Path
     $headers = array(
         'From: ' . $site_name . ' <' . $admin_email . '>',
         'Reply-To: ' . $admin_email,
+        'Return-Path: ' . $admin_email,
+        'X-Mailer: GS-App/3.1',
     );
 
-    // Send as plain text (much less likely to go to spam than HTML)
+    // Override the return-path at PHP level too
+    add_filter('wp_mail_from', function() use ($admin_email) { return $admin_email; });
+    add_filter('wp_mail_from_name', function() use ($site_name) { return $site_name; });
+
     wp_mail($email, "Confirm your subscription - $site_name", $text_body, $headers);
 }
 
 
 // ============================================================
-// VERIFY EMAIL — confirms subscription
+// VERIFY EMAIL — confirms subscription (outputs HTML directly)
 // ============================================================
 function gs_app_verify_email($request) {
     global $wpdb;
@@ -411,36 +415,31 @@ function gs_app_verify_email($request) {
     gs_app_ensure_table();
 
     if (empty($token) || strlen($token) < 10) {
-        return gs_app_html_page('Invalid Link', 'This verification link is invalid.', false);
+        gs_app_html_page('Invalid Link', 'This verification link is invalid or malformed.', false);
     }
 
     $subscriber = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE token = %s", $token));
 
     if (!$subscriber) {
-        // Debug: check if table has any rows at all
         $count = $wpdb->get_var("SELECT COUNT(*) FROM $table");
         $msg = 'This verification link could not be found. ';
         if ($count == 0) {
-            $msg .= 'The subscriber database is empty — your subscription may not have been saved. Please try subscribing again from the app.';
+            $msg .= 'The subscriber database appears empty. Please try subscribing again from the app.';
         } else {
             $msg .= 'It may have expired or already been used. Please try subscribing again.';
         }
-        return gs_app_html_page('Link Not Found', $msg, false);
+        gs_app_html_page('Link Not Found', $msg, false);
     }
 
     if ($subscriber->confirmed) {
-        return gs_app_html_page('Already Confirmed', 'Your email <strong>' . esc_html($subscriber->email) . '</strong> is already confirmed! You will be notified when new profiles are posted.', true);
+        gs_app_html_page('Already Confirmed', 'Your email <strong>' . esc_html($subscriber->email) . '</strong> is already confirmed! You will be notified when new profiles are posted.', true);
     }
 
-    // Confirm
-    $updated = $wpdb->update($table, array('confirmed' => 1), array('id' => $subscriber->id));
-
-    if ($updated === false) {
-        return gs_app_html_page('Error', 'Could not confirm your email. Please try again later.', false);
-    }
+    // Confirm the subscriber
+    $wpdb->update($table, array('confirmed' => 1), array('id' => $subscriber->id));
 
     $site_name = get_bloginfo('name');
-    return gs_app_html_page(
+    gs_app_html_page(
         'Email Confirmed!',
         'Your email <strong>' . esc_html($subscriber->email) . '</strong> has been confirmed.<br><br>You will now receive notifications whenever new profiles are posted on <strong>' . esc_html($site_name) . '</strong>.',
         true
@@ -461,12 +460,12 @@ function gs_app_unsubscribe($request) {
     $subscriber = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE token = %s", $token));
 
     if (!$subscriber) {
-        return gs_app_html_page('Not Found', 'This unsubscribe link is invalid or has already been used.', false);
+        gs_app_html_page('Not Found', 'This unsubscribe link is invalid or has already been used.', false);
     }
 
     $wpdb->delete($table, array('id' => $subscriber->id));
 
-    return gs_app_html_page(
+    gs_app_html_page(
         'Unsubscribed',
         'You have been unsubscribed from <strong>' . esc_html(get_bloginfo('name')) . '</strong> notifications. You will no longer receive emails about new profiles.',
         true
@@ -475,27 +474,35 @@ function gs_app_unsubscribe($request) {
 
 
 // ============================================================
-// HTML PAGE HELPER — renders a full branded HTML page
+// HTML PAGE HELPER — outputs branded HTML directly and exits
+// IMPORTANT: This function calls die() — it does NOT return!
+// We must bypass WP REST API's JSON encoding to serve HTML.
 // ============================================================
 function gs_app_html_page($title, $message, $success) {
-    $site_name = get_bloginfo('name');
-    $site_url  = home_url();
+    $site_name = esc_html(get_bloginfo('name'));
+    $site_url  = esc_url(home_url());
     $color     = $success ? '#16a34a' : '#dc2626';
-    $icon      = $success ? '✓' : '✕';
+    $bg_color  = $success ? '#f0fdf4' : '#fef2f2';
+    $icon      = $success ? '&#10003;' : '&#10007;';
     $year      = date('Y');
 
-    $html = <<<HTML
-<!DOCTYPE html>
+    // Send proper HTTP headers
+    status_header(200);
+    header('Content-Type: text/html; charset=UTF-8');
+    header('Cache-Control: no-store, no-cache');
+
+    // Output HTML directly — bypasses WP REST JSON encoding
+    echo '<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{$title} - {$site_name}</title>
+<title>' . $title . ' - ' . $site_name . '</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f7f7f7;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f7f7f7;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
 .card{background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:440px;width:100%;padding:40px 32px;text-align:center}
-.icon{width:64px;height:64px;border-radius:50%;background:{$color}15;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:28px;color:{$color}}
+.icon{width:64px;height:64px;border-radius:50%;background:' . $bg_color . ';display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:28px;color:' . $color . '}
 h1{font-size:22px;color:#1a1a1a;margin-bottom:12px}
 p{font-size:15px;color:#555;line-height:1.6;margin-bottom:24px}
 .btn{display:inline-block;background:#EA580C;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:600;font-size:15px;transition:background .2s}
@@ -506,21 +513,17 @@ strong{color:#333}
 </head>
 <body>
 <div class="card">
-<div class="icon">{$icon}</div>
-<h1>{$title}</h1>
-<p>{$message}</p>
-<a href="{$site_url}" class="btn">Visit {$site_name}</a>
-<div class="footer">&copy; {$year} {$site_name}</div>
+<div class="icon">' . $icon . '</div>
+<h1>' . $title . '</h1>
+<p>' . $message . '</p>
+<a href="' . $site_url . '" class="btn">Visit ' . $site_name . '</a>
+<div class="footer">&copy; ' . $year . ' ' . $site_name . '</div>
 </div>
 </body>
-</html>
-HTML;
+</html>';
 
-    // Return as HTML response
-    $response = new WP_REST_Response($html, 200);
-    $response->header('Content-Type', 'text/html; charset=UTF-8');
-    $response->header('Cache-Control', 'no-store');
-    return $response;
+    // Stop execution — do NOT let WP REST API JSON-encode this
+    die();
 }
 
 
