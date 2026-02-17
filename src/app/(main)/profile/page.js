@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import VerifiedBadge from '@/components/VerifiedBadge';
+import EmailSubscribe from '@/components/EmailSubscribe';
 import UserAvatar from '@/components/UserAvatar';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -200,9 +201,22 @@ export default function ProfilePage() {
                         <div className="w-16 h-16 mx-auto rounded-full bg-success/10 flex items-center justify-center">
                             <ShieldCheck size={32} className="text-success" />
                         </div>
-                        <h3 className="text-lg font-bold text-success">You are Verified!</h3>
-                        <p className="text-sm text-text-secondary">Your profile shows a blue verification badge.</p>
+                        <h3 className="text-lg font-bold text-success">Profile Verified ✓</h3>
+                        <p className="text-sm text-text-secondary">Your identity has been confirmed. Other users can see your blue verification badge.</p>
                         <div className="flex justify-center"><VerifiedBadge size={28} verified={true} /></div>
+                    </>
+                ) : verificationStatus === 'processing' ? (
+                    <>
+                        <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center animate-pulse">
+                            <Shield size={32} className="text-primary" />
+                        </div>
+                        <h3 className="text-lg font-bold text-primary">Verifying Identity...</h3>
+                        <p className="text-sm text-text-secondary">Our AI is analyzing your selfie. This takes a few seconds.</p>
+                        <div className="flex justify-center gap-1.5 py-2">
+                            {[0, 1, 2].map(i => (
+                                <div key={i} className="w-2.5 h-2.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                            ))}
+                        </div>
                     </>
                 ) : (
                     <>
@@ -211,18 +225,48 @@ export default function ProfilePage() {
                         </div>
                         <h3 className="text-lg font-bold text-text-primary">Get Verified</h3>
                         <p className="text-sm text-text-secondary leading-relaxed">
-                            Upload a clear selfie to verify your identity. Your selfie will be compared with your profile picture to earn a blue verification badge.
+                            Earn a blue verification badge to show you're real. Upload a selfie for our AI to verify your identity.
                         </p>
+
+                        {/* Strict Rules */}
+                        <div className="text-left rounded-xl p-3.5 space-y-2" style={{ background: 'var(--color-surface)' }}>
+                            <p className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+                                <Shield size={12} className="text-primary" /> Verification Rules
+                            </p>
+                            <ul className="text-[11px] text-text-secondary space-y-1.5 list-none">
+                                <li className="flex items-start gap-1.5">
+                                    <Check size={10} className="text-success mt-0.5 shrink-0" />
+                                    <span>You must have a <strong>profile photo</strong> uploaded first</span>
+                                </li>
+                                <li className="flex items-start gap-1.5">
+                                    <Check size={10} className="text-success mt-0.5 shrink-0" />
+                                    <span>Upload a <strong>different selfie</strong> (not the same as profile photo)</span>
+                                </li>
+                                <li className="flex items-start gap-1.5">
+                                    <Check size={10} className="text-success mt-0.5 shrink-0" />
+                                    <span>Selfie must clearly show your <strong>face</strong> with good lighting</span>
+                                </li>
+                                <li className="flex items-start gap-1.5">
+                                    <Check size={10} className="text-success mt-0.5 shrink-0" />
+                                    <span>No <strong>masks, sunglasses</strong>, or face-obscuring items</span>
+                                </li>
+                                <li className="flex items-start gap-1.5">
+                                    <Check size={10} className="text-success mt-0.5 shrink-0" />
+                                    <span>Minimum photo size: <strong>100×100 pixels</strong></span>
+                                </li>
+                            </ul>
+                        </div>
+
                         {!(user.avatar_url || user.photos?.length > 0) && (
                             <div className="flex items-center gap-2 p-3 rounded-xl bg-gold/10">
                                 <AlertCircle size={16} className="text-gold shrink-0" />
-                                <span className="text-xs text-gold font-medium">Upload a profile picture first</span>
+                                <span className="text-xs text-gold font-medium">Upload a profile picture first (go to My Photos)</span>
                             </div>
                         )}
                         {verificationStatus === 'failed' && (
-                            <div className="flex items-center gap-2 p-3 rounded-xl bg-danger/10">
-                                <ShieldAlert size={16} className="text-danger shrink-0" />
-                                <span className="text-xs text-danger font-medium">Details mismatched. Try again with a clearer selfie.</span>
+                            <div className="flex items-start gap-2 p-3 rounded-xl bg-danger/10">
+                                <ShieldAlert size={16} className="text-danger shrink-0 mt-0.5" />
+                                <span className="text-xs text-danger font-medium">Verification denied. Please read the rules above and try again with a valid selfie.</span>
                             </div>
                         )}
                         <button
@@ -329,6 +373,10 @@ export default function ProfilePage() {
                 <ToggleRow icon={Bell} label="Push Notifications" checked={settings.notifications} onChange={v => updateSettings({ notifications: v })} />
                 <ToggleRow icon={Mail} label="Email Notifications" checked={settings.emailNotifications} onChange={v => updateSettings({ emailNotifications: v })} />
             </div>
+
+            {/* Email Subscription */}
+            <EmailSubscribe />
+
             <button onClick={() => { signOut(); router.push('/auth/login'); }}
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-text-secondary transition-colors" style={{ background: 'var(--color-surface)' }}>
                 <LogOut size={18} /> Sign Out

@@ -1,29 +1,72 @@
 {
     "name": "Genuine Sugar Mummies",
     "short_name": "GS App",
-    "description": "Kenya's leading dating app for genuine sugar mummy connections",
-    "start_url": "/",
+    "description": "Kenya's leading dating app for genuine sugar mummy connections. Swipe, match, and connect with verified profiles.",
+    "start_url": "/discover",
+    "scope": "/",
     "display": "standalone",
     "background_color": "#ffffff",
     "theme_color": "#EA580C",
     "orientation": "portrait",
+    "id": "/",
     "icons": [
         {
-            "src": "/gs-logo.svg",
-            "sizes": "any",
-            "type": "image/svg+xml",
+            "src": "/gs-logo.png",
+            "sizes": "500x500",
+            "type": "image/png",
             "purpose": "any"
+        },
+        {
+            "src": "/gs-logo.png",
+            "sizes": "500x500",
+            "type": "image/png",
+            "purpose": "maskable"
         },
         {
             "src": "/gs-logo.svg",
             "sizes": "any",
             "type": "image/svg+xml",
-            "purpose": "maskable"
+            "purpose": "any"
         }
     ],
+    "screenshots": [
+        {
+            "src": "/gs-logo.png",
+            "sizes": "500x500",
+            "type": "image/png",
+            "form_factor": "narrow",
+            "label": "Discover profiles on GS App"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Discover Profiles",
+            "short_name": "Discover",
+            "url": "/discover",
+            "icons": [
+                {
+                    "src": "/gs-logo.png",
+                    "sizes": "500x500"
+                }
+            ]
+        },
+        {
+            "name": "My Profile",
+            "short_name": "Profile",
+            "url": "/profile"
+        }
+    ],
+    "related_applications": [
+        {
+            "platform": "webapp",
+            "url": "https://genuinesugarmummies.co.ke/manifest.json"
+        }
+    ],
+    "prefer_related_applications": false,
     "categories": [
         "social",
-        "lifestyle"
+        "lifestyle",
+        "dating"
     ],
     "lang": "en",
     "dir": "ltr"
