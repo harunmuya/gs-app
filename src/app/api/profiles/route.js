@@ -15,11 +15,11 @@ export async function GET(request) {
                 return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
             }
             return NextResponse.json({ profiles: [profile] }, {
-                headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
+                headers: { 'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=300' },
             });
         }
 
-        // Paginated list (default 20 per page, max 30)
+        // Paginated list
         const result = await fetchProfiles(page, perPage);
 
         return NextResponse.json(result, {

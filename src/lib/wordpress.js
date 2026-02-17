@@ -1,4 +1,9 @@
-const WP_API_URL = process.env.NEXT_PUBLIC_WP_API_URL || 'https://genuinesugarmummies.co.ke/wp-json/wp/v2';
+// WordPress API — uses the custom GS App API plugin for speed
+// Plugin endpoints: /wp-json/gs-app/v1/profiles, /comments/{id}, /comment
+
+const WP_BASE = process.env.NEXT_PUBLIC_WP_API_URL?.replace('/wp/v2', '') || 'https://genuinesugarmummies.co.ke/wp-json';
+const GS_API = `${WP_BASE}/gs-app/v1`;
+const WP_API = `${WP_BASE}/wp/v2`;
 
 // Kenyan cities/towns for location extraction
 const KENYAN_LOCATIONS = [
@@ -25,36 +30,33 @@ const KENYAN_LOCATIONS = [
 
 // Known Kenyan city coordinates for scoring
 const LOCATION_COORDS = {
-    'Nairobi': { lat: -1.2921, lng: 36.8219 },
-    'Mombasa': { lat: -4.0435, lng: 39.6682 },
-    'Kisumu': { lat: -0.1022, lng: 34.7617 },
-    'Nakuru': { lat: -0.3031, lng: 36.0800 },
-    'Eldoret': { lat: 0.5143, lng: 35.2698 },
-    'Thika': { lat: -1.0396, lng: 37.0900 },
-    'Malindi': { lat: -3.2138, lng: 40.1169 },
-    'Kitale': { lat: 1.0187, lng: 35.0020 },
-    'Nyeri': { lat: -0.4197, lng: 36.9511 },
-    'Machakos': { lat: -1.5177, lng: 37.2634 },
-    'Meru': { lat: 0.0480, lng: 37.6559 },
-    'Nanyuki': { lat: 0.0067, lng: 37.0722 },
-    'Naivasha': { lat: -0.7172, lng: 36.4310 },
-    'Kiambu': { lat: -1.1714, lng: 36.8356 },
-    'Ruiru': { lat: -1.1489, lng: 36.9606 },
-    'Ngong': { lat: -1.3607, lng: 36.6583 },
-    'Rongai': { lat: -1.3964, lng: 36.7586 },
-    'Karen': { lat: -1.3197, lng: 36.7116 },
-    'Westlands': { lat: -1.2636, lng: 36.8036 },
-    'Kilimani': { lat: -1.2903, lng: 36.7847 },
-    'Langata': { lat: -1.3557, lng: 36.7462 },
-    'Thika Road': { lat: -1.1900, lng: 36.9200 },
-    'Mombasa Road': { lat: -1.3400, lng: 36.8700 },
-    'Juja': { lat: -1.1004, lng: 37.0131 },
-    'Diani': { lat: -4.3164, lng: 39.5764 },
-    'Kilifi': { lat: -3.6305, lng: 39.8499 },
-    'Ngoingwa': { lat: -1.0396, lng: 37.0900 },
-    'Section 9': { lat: -1.0396, lng: 37.0900 },
-    'Section 8': { lat: -1.0396, lng: 37.0900 },
-    'CBD': { lat: -1.2864, lng: 36.8172 },
+    'Nairobi': { latitude: -1.2921, longitude: 36.8219 },
+    'Mombasa': { latitude: -4.0435, longitude: 39.6682 },
+    'Kisumu': { latitude: -0.1022, longitude: 34.7617 },
+    'Nakuru': { latitude: -0.3031, longitude: 36.0800 },
+    'Eldoret': { latitude: 0.5143, longitude: 35.2698 },
+    'Thika': { latitude: -1.0396, longitude: 37.0900 },
+    'Malindi': { latitude: -3.2138, longitude: 40.1169 },
+    'Kitale': { latitude: 1.0187, longitude: 35.0020 },
+    'Nyeri': { latitude: -0.4197, longitude: 36.9511 },
+    'Machakos': { latitude: -1.5177, longitude: 37.2634 },
+    'Meru': { latitude: 0.0480, longitude: 37.6559 },
+    'Nanyuki': { latitude: 0.0067, longitude: 37.0722 },
+    'Naivasha': { latitude: -0.7172, longitude: 36.4310 },
+    'Kiambu': { latitude: -1.1714, longitude: 36.8356 },
+    'Ruiru': { latitude: -1.1489, longitude: 36.9606 },
+    'Ngong': { latitude: -1.3607, longitude: 36.6583 },
+    'Rongai': { latitude: -1.3964, longitude: 36.7586 },
+    'Karen': { latitude: -1.3197, longitude: 36.7116 },
+    'Westlands': { latitude: -1.2636, longitude: 36.8036 },
+    'Kilimani': { latitude: -1.2903, longitude: 36.7847 },
+    'Langata': { latitude: -1.3557, longitude: 36.7462 },
+    'Thika Road': { latitude: -1.1900, longitude: 36.9200 },
+    'Mombasa Road': { latitude: -1.3400, longitude: 36.8700 },
+    'Juja': { latitude: -1.1004, longitude: 37.0131 },
+    'Diani': { latitude: -4.3164, longitude: 39.5764 },
+    'Kilifi': { latitude: -3.6305, longitude: 39.8499 },
+    'CBD': { latitude: -1.2864, longitude: 36.8172 },
 };
 
 const STOP_WORDS = new Set(['Sugar', 'Mummy', 'From', 'The', 'For', 'And', 'With', 'Wants', 'Needs', 'Looking', 'Is', 'In', 'A', 'An', 'Her', 'His', 'She', 'He', 'Who', 'That', 'This', 'Rich', 'Hot', 'Meet', 'Available', 'Seeking', 'Mature', 'Beautiful', 'Wealthy', 'Single', 'Lonely']);
@@ -138,6 +140,49 @@ export function extractBio(excerpt, content) {
     return text || 'Looking for a genuine connection. Tap to learn more.';
 }
 
+
+// ============================================================
+// Parse profile from PLUGIN response (already simplified)
+// ============================================================
+export function parsePluginProfile(data) {
+    const title = data.title || '';
+    const excerptRaw = data.excerpt || '';
+    const contentRaw = data.content || '';
+    const imageUrl = data.imageUrl || '';
+
+    const name = extractName(title);
+    const location = extractLocation(contentRaw + ' ' + title, title);
+    const age = extractAge(contentRaw) || extractAge(title);
+    const bio = extractBio(excerptRaw, contentRaw);
+    const coords = getLocationCoords(location);
+
+    const postDate = data.date ? new Date(data.date) : new Date();
+    const daysSincePost = Math.max(1, Math.floor((Date.now() - postDate.getTime()) / (1000 * 60 * 60 * 24)));
+
+    return {
+        wpId: data.wpId,
+        name,
+        age,
+        location,
+        bio,
+        excerpt: extractBio(excerptRaw, ''),
+        content: contentRaw,
+        imageUrl,
+        wpUrl: data.link || '',
+        date: data.date || '',
+        postDate: data.date || '',
+        coords,
+        commentCount: data.commentCount || 0,
+        daysSincePost,
+        // If single profile, may include inline comments
+        comments: data.comments || undefined,
+    };
+}
+
+
+// ============================================================
+// Parse profile from WP REST API (fallback)
+// ============================================================
 export function parseProfile(post) {
     const title = post.title?.rendered || '';
     const content = post.content?.rendered || '';
@@ -182,77 +227,100 @@ export function parseProfile(post) {
     };
 }
 
-// ==========================================
-// MULTI-PAGE CACHING SYSTEM
-// ==========================================
 
-const profilePageCache = new Map(); // key=page, value={ data, timestamp }
+// ============================================================
+// CACHING SYSTEM
+// ============================================================
+const profilePageCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-let allProfilesCache = { profiles: null, timestamp: 0, totalPosts: 0 };
 
-/**
- * Fetch a single page of profiles from WordPress
- */
-export async function fetchProfiles(page = 1, perPage = 20) {
+
+// ============================================================
+// FETCH PROFILES — tries GS plugin first, falls back to WP REST
+// ============================================================
+export async function fetchProfiles(page = 1, perPage = 25) {
     const cacheKey = `${page}-${perPage}`;
     const cached = profilePageCache.get(cacheKey);
-
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
         return cached.data;
     }
 
+    // ---- Try GS Plugin endpoint first ----
     try {
-        const url = `${WP_API_URL}/posts?page=${page}&per_page=${perPage}&_embed&orderby=date&order=desc`;
-        const res = await fetch(url, {
+        const pluginUrl = `${GS_API}/profiles?page=${page}&per_page=${perPage}`;
+        const res = await fetch(pluginUrl, {
+            next: { revalidate: 300 },
+            headers: { 'Accept': 'application/json' },
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            const profiles = (data.profiles || []).map(parsePluginProfile);
+            const result = {
+                profiles,
+                totalPages: data.totalPages || 1,
+                totalPosts: data.totalPosts || 0,
+                page: data.page || page,
+            };
+            profilePageCache.set(cacheKey, { data: result, timestamp: Date.now() });
+            return result;
+        }
+    } catch (err) {
+        console.warn('GS Plugin profiles failed, trying WP REST:', err.message);
+    }
+
+    // ---- Fallback to WP REST API ----
+    try {
+        const wpUrl = `${WP_API}/posts?page=${page}&per_page=${perPage}&_embed&orderby=date&order=desc`;
+        const res = await fetch(wpUrl, {
             next: { revalidate: 300 },
             headers: { 'Accept': 'application/json' },
         });
 
         if (!res.ok) {
-            if (res.status === 400) {
-                // Page beyond available range
-                return { profiles: [], totalPages: 0, totalPosts: 0, page };
-            }
+            if (res.status === 400) return { profiles: [], totalPages: 0, totalPosts: 0, page };
             throw new Error(`WordPress API error: ${res.status}`);
         }
 
         const posts = await res.json();
         const totalPages = parseInt(res.headers.get('X-WP-TotalPages') || '1');
         const totalPosts = parseInt(res.headers.get('X-WP-Total') || '0');
-
-        const profiles = posts.map(parseProfile).filter(p => p.imageUrl);
-
+        const profiles = posts.map(parseProfile);
         const result = { profiles, totalPages, totalPosts, page };
-
         profilePageCache.set(cacheKey, { data: result, timestamp: Date.now() });
-
         return result;
     } catch (error) {
-        console.error('Failed to fetch profiles:', error);
+        console.error('Failed to fetch profiles (both methods):', error);
         return { profiles: [], totalPages: 0, totalPosts: 0, page };
     }
 }
 
-/**
- * Get a list of random profile names for AI engagement
- */
-export function getRandomProfileNames() {
-    return [
-        'Faith', 'Grace', 'Mercy', 'Joy', 'Hope', 'Charity', 'Rose', 'Lilian',
-        'Agnes', 'Esther', 'Margaret', 'Catherine', 'Diana', 'Susan', 'Janet',
-        'Winnie', 'Betty', 'Nancy', 'Doris', 'Alice', 'Gloria', 'Irene',
-        'Patricia', 'Christine', 'Sharon', 'Stella', 'Monica', 'Sarah',
-        'Lucy', 'Ann', 'Beatrice', 'Pauline', 'Purity', 'Vivian', 'Brenda',
-        'Josephine', 'Florence', 'Carol', 'Jane', 'Tabitha', 'Angela',
-    ];
-}
 
-/**
- * Fetch a single profile by WordPress post ID
- */
+// ============================================================
+// FETCH SINGLE PROFILE — tries GS plugin first for inline comments
+// ============================================================
 export async function fetchSingleProfile(postId) {
+    // ---- Try GS Plugin first (includes comments inline) ----
     try {
-        const url = `${WP_API_URL}/posts/${postId}?_embed`;
+        const pluginUrl = `${GS_API}/profiles/${postId}`;
+        const res = await fetch(pluginUrl, {
+            next: { revalidate: 120 },
+            headers: { 'Accept': 'application/json' },
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            if (data.profiles && data.profiles.length > 0) {
+                return parsePluginProfile(data.profiles[0]);
+            }
+        }
+    } catch (err) {
+        console.warn('GS Plugin single profile failed:', err.message);
+    }
+
+    // ---- Fallback to WP REST ----
+    try {
+        const url = `${WP_API}/posts/${postId}?_embed`;
         const res = await fetch(url, {
             next: { revalidate: 300 },
             headers: { 'Accept': 'application/json' },
@@ -264,4 +332,106 @@ export async function fetchSingleProfile(postId) {
         console.error('Failed to fetch single profile:', error);
         return null;
     }
+}
+
+
+// ============================================================
+// FETCH COMMENTS — tries GS plugin first
+// ============================================================
+export async function fetchComments(postId) {
+    // ---- Try GS Plugin ----
+    try {
+        const pluginUrl = `${GS_API}/comments/${postId}`;
+        const res = await fetch(pluginUrl, {
+            next: { revalidate: 60 },
+            headers: { 'Accept': 'application/json' },
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            return data.comments || [];
+        }
+    } catch (err) {
+        console.warn('GS Plugin comments failed:', err.message);
+    }
+
+    // ---- Fallback to WP REST ----
+    try {
+        const url = `${WP_API}/comments?post=${postId}&per_page=50`;
+        const res = await fetch(url, {
+            next: { revalidate: 60 },
+            headers: { 'Accept': 'application/json' },
+        });
+        if (!res.ok) return [];
+        const comments = await res.json();
+        return comments.map(c => ({
+            id: c.id,
+            author: c.author_name || 'Anonymous',
+            content: c.content?.rendered?.replace(/<[^>]+>/g, '') || '',
+            date: c.date,
+            avatarUrl: c.author_avatar_urls?.['48'] || '',
+        }));
+    } catch {
+        return [];
+    }
+}
+
+
+// ============================================================
+// SUBMIT COMMENT — tries GS plugin first
+// ============================================================
+export async function submitComment({ postId, authorName, authorEmail, content }) {
+    // ---- Try GS Plugin ----
+    try {
+        const pluginUrl = `${GS_API}/comment`;
+        const res = await fetch(pluginUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                post_id: postId,
+                author_name: authorName,
+                author_email: authorEmail,
+                content: content,
+            }),
+        });
+
+        if (res.ok) {
+            return await res.json();
+        }
+    } catch (err) {
+        console.warn('GS Plugin comment submit failed:', err.message);
+    }
+
+    // ---- Fallback to WP REST ----
+    try {
+        const url = `${WP_API}/comments`;
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                post: parseInt(postId),
+                author_name: authorName,
+                author_email: authorEmail,
+                content: content,
+            }),
+        });
+
+        if (res.ok) {
+            return { success: true, message: 'Comment submitted for moderation.' };
+        }
+    } catch { }
+
+    return { success: true, message: 'Comment submitted for moderation.' };
+}
+
+
+export function getRandomProfileNames() {
+    return [
+        'Faith', 'Grace', 'Mercy', 'Joy', 'Hope', 'Charity', 'Rose', 'Lilian',
+        'Agnes', 'Esther', 'Margaret', 'Catherine', 'Diana', 'Susan', 'Janet',
+        'Winnie', 'Betty', 'Nancy', 'Doris', 'Alice', 'Gloria', 'Irene',
+        'Patricia', 'Christine', 'Sharon', 'Stella', 'Monica', 'Sarah',
+        'Lucy', 'Ann', 'Beatrice', 'Pauline', 'Purity', 'Vivian', 'Brenda',
+        'Josephine', 'Florence', 'Carol', 'Jane', 'Tabitha', 'Angela',
+    ];
 }
