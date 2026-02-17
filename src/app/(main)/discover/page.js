@@ -7,7 +7,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
-import BlurImage from '@/components/BlurImage';
 import Link from 'next/link';
 
 // ---- Ultra-fast profile cache ----
@@ -309,7 +308,18 @@ export default function DiscoverPage() {
                     >
                         <Link href={`/discover/${currentProfile.wpId}`} className="block w-full h-full">
                             {currentProfile.imageUrl ? (
-                                <BlurImage src={currentProfile.imageUrl} alt={currentProfile.name} fill className="w-full h-full" />
+                                <img
+                                    src={currentProfile.imageUrl}
+                                    alt={currentProfile.name}
+                                    loading="eager"
+                                    style={{
+                                        position: 'absolute',
+                                        inset: 0,
+                                        width: '100%',
+                                        height: '100%',
+                                        objectFit: 'cover',
+                                    }}
+                                />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center" style={{ background: 'var(--color-surface)' }}>
                                     <UserAvatar name={currentProfile.name} size={120} />
