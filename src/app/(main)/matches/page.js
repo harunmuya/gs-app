@@ -81,7 +81,7 @@ export default function MatchesPage() {
                                 <Link href={`/discover/${match.wpId}`} className="flex items-center gap-3 p-3">
                                     <div className="w-14 h-14 rounded-xl overflow-hidden bg-surface shrink-0">
                                         {match.imageUrl ? (
-                                            <img src={match.imageUrl} alt="" className="w-full h-full object-cover" />
+                                            <img src={match.imageUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                         ) : (
                                             <UserAvatar name={match.name} size={56} />
                                         )}

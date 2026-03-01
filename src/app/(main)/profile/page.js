@@ -418,7 +418,7 @@ export default function ProfilePage() {
                         className="flex items-center gap-3 p-3 rounded-2xl transition-colors hover:bg-surface/50"
                         style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                         <div className="w-12 h-12 rounded-full overflow-hidden bg-surface shrink-0">
-                            {p.imageUrl ? <img src={p.imageUrl} alt="" className="w-full h-full object-cover" /> : <UserAvatar name={p.name} size={48} />}
+                            {p.imageUrl ? <img src={p.imageUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <UserAvatar name={p.name} size={48} />}
                         </div>
                         <div className="flex-1 min-w-0">
                             <h4 className="text-sm font-bold text-text-primary truncate">{p.name || 'Sugar Mummy'}</h4>

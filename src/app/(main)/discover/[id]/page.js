@@ -167,6 +167,7 @@ export default function SingleProfilePage({ params }) {
                         src={profile.imageUrl}
                         alt={profile.name}
                         loading="eager"
+                        referrerPolicy="no-referrer"
                         style={{
                             position: 'absolute',
                             inset: 0,

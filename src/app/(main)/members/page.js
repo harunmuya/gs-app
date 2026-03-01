@@ -119,6 +119,7 @@ export default function MembersPage() {
                                 <div className="aspect-square relative">
                                     {profile.imageUrl ? (
                                         <img src={profile.imageUrl} alt={profile.name} className="w-full h-full object-cover"
+                                            referrerPolicy="no-referrer"
                                             onError={(e) => { e.target.style.display = 'none'; }} />
                                     ) : (
                                         <div className="w-full h-full flex items-center justify-center" style={{ background: 'var(--color-surface)' }}>
@@ -161,6 +162,7 @@ export default function MembersPage() {
                                     <div className="w-12 h-12 rounded-full overflow-hidden bg-surface shrink-0">
                                         {profile.imageUrl ? (
                                             <img src={profile.imageUrl} alt="" className="w-full h-full object-cover"
+                                                referrerPolicy="no-referrer"
                                                 onError={(e) => { e.target.style.display = 'none'; }} />
                                         ) : (
                                             <UserAvatar name={profile.name} size={48} />

@@ -418,7 +418,7 @@ export default function DiscoverPage() {
                 {/* Next card preview */}
                 {nextProfile && (
                     <div className="absolute inset-2 rounded-2xl overflow-hidden bg-surface" style={{ transform: 'scale(0.95)', opacity: 0.6 }}>
-                        {nextProfile.imageUrl && <img src={nextProfile.imageUrl} alt="" className="w-full h-full object-cover" loading="eager" />}
+                        {nextProfile.imageUrl && <img src={nextProfile.imageUrl} alt="" className="w-full h-full object-cover" loading="eager" referrerPolicy="no-referrer" />}
                     </div>
                 )}
 
@@ -449,6 +449,7 @@ export default function DiscoverPage() {
                                     draggable={false}
                                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                                     onError={(e) => { e.target.style.display = 'none'; }}
+                                    referrerPolicy="no-referrer"
                                 />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center" style={{ background: 'var(--color-surface)' }}>
