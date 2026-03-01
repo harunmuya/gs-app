@@ -182,7 +182,7 @@ export default function ChatConversationPage({ params }) {
     };
 
     // ---- Remaining replies indicator ----
-    const repliesUsed = getReplyCount(conversationId);
+    const repliesUsed = replyCountRef.current;
     const repliesLeft = Math.max(0, MAX_FREE_REPLIES - repliesUsed);
 
     if (!conversation) {
