@@ -81,9 +81,6 @@ export default function DiscoverPage() {
     const { user, addLike, addMatch, addPass, isProfileSwiped, addSuperLike, clearSwipeHistory, blockedUsers } = useAuth();
     const { location: userLocation, requestLocation } = useGeolocation();
 
-    // Gender-based profile label
-    const profileRoleLabel = user?.lookingFor === 'sugar_daddy' ? '💙 Sugar Daddy' : '💖 Sugar Mummy';
-
     const [allProfiles, setAllProfiles] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -191,6 +188,11 @@ export default function DiscoverPage() {
         // Block filter
         if (blockedUsers && blockedUsers.length > 0) {
             filtered = filtered.filter(p => !blockedUsers.includes(p.wpId));
+        }
+
+        // Gender-based filter: show only matching profileType
+        if (user?.lookingFor) {
+            filtered = filtered.filter(p => p.profileType === user.lookingFor || !p.profileType);
         }
 
         // Location filter
@@ -506,8 +508,9 @@ export default function DiscoverPage() {
                             {/* Bottom info */}
                             <div className="absolute bottom-0 left-0 right-0 p-5 profile-overlay-text">
                                 <div className="flex items-center gap-2 mb-1">
-                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold text-white" style={{ background: user?.lookingFor === 'sugar_daddy' ? 'rgba(59,130,246,0.85)' : 'rgba(236,72,153,0.85)' }}>
-                                        {profileRoleLabel}
+                                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold text-white" style={{ background: currentProfile.profileType === 'sugar_daddy' ? 'rgba(59,130,246,0.85)' : 'rgba(236,72,153,0.85)' }}>
+                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
+                                        {currentProfile.profileType === 'sugar_daddy' ? 'Sugar Daddy' : 'Sugar Mummy'}
                                     </span>
                                 </div>
                                 <h2 className="text-2xl font-bold text-white flex items-center gap-2 mb-0.5">

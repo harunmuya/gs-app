@@ -11,11 +11,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import UserAvatar from '@/components/UserAvatar';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import {
-    detectIntent, filterContent, getBlockWarning, generateResponse,
-    calculateTypingDelay, shouldAddLongDelay, getLongDelay,
-    getOnlineStatus, getReplyCount, incrementReplyCount, setReplyCount,
-    isChatLocked, MAX_FREE_REPLIES, getApprovalUrl
+    filterContent, generateResponse,
+    calculateTypingDelay, calculateSplitDelay,
+    calculateSeenDelay, calculatePreTypingDelay,
+    getOnlineStatus, getApprovalUrl
 } from '@/lib/chatEngine';
+
+const MAX_FREE_REPLIES = 4;
 
 export default function ChatConversationPage({ params }) {
     const resolvedParams = use(params);
@@ -34,10 +36,11 @@ export default function ChatConversationPage({ params }) {
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
     const replyTimerRef = useRef(null);
+    const replyCountRef = useRef(0);
 
     const conversation = conversations?.find(c => c.id === conversationId);
 
-    // Load messages + reply count
+    // Load messages + restore reply count
     useEffect(() => {
         async function load() {
             try {
@@ -45,9 +48,9 @@ export default function ChatConversationPage({ params }) {
                 setMessages(msgs || []);
                 await markChatSeen(conversationId);
 
-                // Count existing AI replies to restore state
+                // Count existing AI replies
                 const aiReplies = (msgs || []).filter(m => m.senderId !== user?.email).length;
-                setReplyCount(conversationId, aiReplies);
+                replyCountRef.current = aiReplies;
                 if (aiReplies >= MAX_FREE_REPLIES) setChatLocked(true);
             } catch (err) {
                 console.error('Failed to load messages:', err);
@@ -78,63 +81,63 @@ export default function ChatConversationPage({ params }) {
         };
     }, []);
 
-    // ---- AI Reply Logic ----
+    // ---- AI Reply Logic (human-like) ----
     const triggerAIReply = useCallback(async (userMessageText) => {
-        if (isChatLocked(conversationId)) return;
+        if (replyCountRef.current >= MAX_FREE_REPLIES) return;
 
-        const replyNumber = getReplyCount(conversationId) + 1;
-        const response = generateResponse(
-            userMessageText,
-            conversation?.matchName,
-            user?.display_name || user?.email?.split('@')[0],
-            replyNumber
-        );
+        const response = generateResponse(userMessageText, replyCountRef.current);
 
-        // Calculate delays
-        const typingDelay = calculateTypingDelay(response.text);
-        const preDelay = shouldAddLongDelay() ? getLongDelay() : (1500 + Math.random() * 2000);
-
-        // Show "delivered" after 1s
-        await new Promise(r => setTimeout(r, 1000));
+        // Step 1: Mark as delivered (1-2s)
+        await new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
         setMessages(prev => prev.map(m =>
             m.senderId === user?.email && m.status === 'sent'
                 ? { ...m, status: 'delivered' } : m
         ));
 
-        // Show "seen" after 2-4s
-        await new Promise(r => setTimeout(r, 1500 + Math.random() * 2000));
+        // Step 2: Mark as seen (8-33s)
+        await new Promise(r => setTimeout(r, calculateSeenDelay()));
         setMessages(prev => prev.map(m =>
             m.senderId === user?.email && m.status === 'delivered'
                 ? { ...m, status: 'seen' } : m
         ));
 
-        // Pre-delay (simulate human thinking)
-        await new Promise(r => setTimeout(r, preDelay));
+        // Step 3: Pre-typing delay — simulate reading (5-25s)
+        await new Promise(r => setTimeout(r, calculatePreTypingDelay()));
 
-        // Change status to "online" when about to type
+        // Go online before typing
         setOnlineStatus({ status: 'online', text: 'Online now' });
 
-        // Show typing indicator
-        setIsTyping(true);
+        // Send each message bubble with typing indicator
+        for (let i = 0; i < response.messages.length; i++) {
+            const msgText = response.messages[i];
 
-        // Wait typing duration
-        await new Promise(r => setTimeout(r, typingDelay));
+            // Show typing indicator
+            setIsTyping(true);
 
-        // Send the AI response
-        setIsTyping(false);
-        const replyMsg = await sendChatMessage(conversationId, response.text);
-        if (replyMsg) {
-            replyMsg.senderId = 'match';
-            replyMsg.senderName = conversation?.matchName || 'Match';
-            replyMsg.status = 'seen';
-            setMessages(prev => [...prev, replyMsg]);
+            // Typing duration based on message length
+            await new Promise(r => setTimeout(r, calculateTypingDelay(msgText, i === 0 && replyCountRef.current === 0)));
+
+            // Send the message
+            setIsTyping(false);
+            const replyMsg = await sendChatMessage(conversationId, msgText);
+            if (replyMsg) {
+                replyMsg.senderId = 'match';
+                replyMsg.senderName = conversation?.matchName || 'Match';
+                replyMsg.status = 'seen';
+                setMessages(prev => [...prev, replyMsg]);
+            }
+
+            // Delay between split messages
+            if (i < response.messages.length - 1) {
+                await new Promise(r => setTimeout(r, calculateSplitDelay()));
+            }
         }
 
-        // Track reply count
-        const newCount = incrementReplyCount(conversationId);
+        // Increment count
+        replyCountRef.current += 1;
 
-        // Lock chat after max replies
-        if (newCount >= MAX_FREE_REPLIES) {
+        // Lock after max replies
+        if (response.isEscalation || replyCountRef.current >= MAX_FREE_REPLIES) {
             setChatLocked(true);
         }
     }, [conversationId, conversation, user, sendChatMessage]);
@@ -147,33 +150,23 @@ export default function ChatConversationPage({ params }) {
         setSending(true);
 
         // Content filter
-        const { filtered, wasBlocked, blockType } = filterContent(rawText);
+        const { text: filteredText, blocked } = filterContent(rawText);
 
-        if (wasBlocked) {
-            // Show warning
-            setShowWarning(getBlockWarning(blockType));
+        if (blocked) {
+            setShowWarning('Sharing personal contact info is not allowed for safety reasons.');
             setTimeout(() => setShowWarning(null), 6000);
 
-            // Send the filtered version (with [Contact hidden])
-            const msg = await sendChatMessage(conversationId, filtered);
-            if (msg) {
-                setMessages(prev => [...prev, msg]);
-            }
+            const msg = await sendChatMessage(conversationId, filteredText);
+            if (msg) setMessages(prev => [...prev, msg]);
             setSending(false);
             inputRef.current?.focus();
-
-            // AI responds to blocked content with contact_request response
             triggerAIReply(rawText);
             return;
         }
 
         try {
             const msg = await sendChatMessage(conversationId, rawText);
-            if (msg) {
-                setMessages(prev => [...prev, msg]);
-            }
-
-            // Trigger AI reply
+            if (msg) setMessages(prev => [...prev, msg]);
             triggerAIReply(rawText);
         } catch { } finally {
             setSending(false);

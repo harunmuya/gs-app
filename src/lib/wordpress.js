@@ -168,7 +168,51 @@ export function extractBio(excerpt, content) {
     return text || 'Looking for a genuine connection. Tap to learn more.';
 }
 
+// Detect profile type from title + content keywords
+export function detectProfileType(title, content) {
+    const searchText = `${title || ''} ${content || ''}`.toLowerCase();
 
+    // Check for sugar daddy indicators
+    const daddyPatterns = [
+        /sugar\s*dadd/i,
+        /sugardadd/i,
+        /\bdaddy\b/i,
+        /\brich\s*man\b/i,
+        /\bwealthy\s*man\b/i,
+        /\bmale\s*sugar\b/i,
+        /\bhe\s+(is|wants|needs|seeks)\b/i,
+        /\bhis\s+(looking|age|name)\b/i,
+        /\bgentleman\b/i,
+    ];
+
+    // Check for sugar mummy indicators
+    const mummyPatterns = [
+        /sugar\s*mumm/i,
+        /sugarmumm/i,
+        /\bmummy\b/i,
+        /\bmama\b/i,
+        /\brich\s*wom[ae]n\b/i,
+        /\bwealthy\s*wom[ae]n\b/i,
+        /\bwealthy\s*lad/i,
+        /\bfemale\s*sugar\b/i,
+        /\bshe\s+(is|wants|needs|seeks)\b/i,
+        /\bher\s+(looking|age|name)\b/i,
+        /\bcougar\b/i,
+        /\bmadam\b/i,
+    ];
+
+    let daddyScore = 0;
+    let mummyScore = 0;
+
+    for (const p of daddyPatterns) { if (p.test(searchText)) daddyScore++; }
+    for (const p of mummyPatterns) { if (p.test(searchText)) mummyScore++; }
+
+    if (daddyScore > mummyScore) return 'sugar_daddy';
+    if (mummyScore > daddyScore) return 'sugar_mummy';
+
+    // Default: this site is genuinesugarmummies.co.ke so default to mummy
+    return 'sugar_mummy';
+}
 // ============================================================
 // Parse profile from PLUGIN response (already simplified)
 // ============================================================
@@ -208,6 +252,7 @@ export function parsePluginProfile(data) {
         coords,
         commentCount: data.commentCount || 0,
         daysSincePost,
+        profileType: detectProfileType(title, contentRaw),
         // If single profile, may include inline comments
         comments: data.comments || undefined,
     };
@@ -258,6 +303,7 @@ export function parseProfile(post) {
         coords,
         commentCount: realCommentCount,
         daysSincePost,
+        profileType: detectProfileType(title, content),
     };
 }
 
