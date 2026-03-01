@@ -10,14 +10,24 @@ const WP_API = `${WP_BASE}/wp/v2`;
 function normalizeImageUrl(url) {
     if (!url) return '';
     try {
-        // Strip Jetpack Photon CDN wrapper: https://i0.wp.com/DOMAIN/PATH?query
-        const jetpackMatch = url.match(/https?:\/\/i\d\.wp\.com\/(.+)/);
+        // Clean up the URL
+        let cleaned = url.trim();
+
+        // If it's a Jetpack CDN URL, keep it — it's a reliable CDN
+        // Just ensure we have good quality params
+        const jetpackMatch = cleaned.match(/https?:\/\/i\d\.wp\.com\/(.+)/);
         if (jetpackMatch) {
-            // Extract the original domain + path, drop query params like ?fit=...&ssl=1
-            const originalPath = jetpackMatch[1].split('?')[0];
-            return `https://${originalPath}`;
+            // Keep the CDN URL but optimize params
+            const base = cleaned.split('?')[0];
+            return `${base}?w=800&quality=80&strip=info`;
         }
-        return url;
+
+        // For direct WordPress URLs, use as-is
+        if (cleaned.includes('genuinesugarmummies.co.ke')) {
+            return cleaned;
+        }
+
+        return cleaned;
     } catch {
         return url;
     }

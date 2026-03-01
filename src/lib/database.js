@@ -265,11 +265,24 @@ async function dbCount(storeName) {
 
 async function hashPassword(password) {
     const encoder = new TextEncoder();
-    // Use a fixed salt prefix + email for deterministic hashing
     const data = encoder.encode(password + '__gsm_salt_2024__');
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    // Use Web Crypto API if available (HTTPS contexts)
+    if (typeof crypto !== 'undefined' && crypto.subtle) {
+        try {
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        } catch { /* fallback below */ }
+    }
+    // Fallback: simple hash for HTTP/non-secure contexts
+    let hash = 0;
+    const str = password + '__gsm_salt_2024__';
+    for (let i = 0; i < str.length; i++) {
+        const chr = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + chr;
+        hash |= 0;
+    }
+    return 'fb_' + Math.abs(hash).toString(16).padStart(8, '0') + '_' + str.length.toString(16);
 }
 
 async function verifyPassword(password, hash) {
@@ -329,7 +342,7 @@ async function destroySession() {
     if (typeof window === 'undefined') return;
     const token = localStorage.getItem(SESSION_KEY);
     if (token) {
-        try { await dbDelete(STORES.sessions, token); } catch {}
+        try { await dbDelete(STORES.sessions, token); } catch { }
     }
     localStorage.removeItem(SESSION_KEY);
 }
@@ -783,7 +796,12 @@ async function migrateFromLocalStorage() {
             const user = JSON.parse(userStr);
             if (user && user.email) {
                 // Set a default password for migrated users
-                const passwordHash = await hashPassword('changeme123');
+                let passwordHash = '';
+                try {
+                    passwordHash = await hashPassword('changeme123');
+                } catch {
+                    passwordHash = 'migrated_no_hash';
+                }
                 const migratedUser = {
                     ...user,
                     passwordHash,
@@ -796,43 +814,53 @@ async function migrateFromLocalStorage() {
                 await dbPut(STORES.users, migratedUser);
 
                 // Migrate likes
-                const likesStr = localStorage.getItem('gsm_likes');
-                if (likesStr) {
-                    const likes = JSON.parse(likesStr);
-                    for (const like of (likes || [])) {
-                        await dbPut(STORES.likes, {
-                            id: `${user.email}__${like.wpId}`,
-                            userEmail: user.email,
-                            ...like,
-                        });
+                try {
+                    const likesStr = localStorage.getItem('gsm_likes');
+                    if (likesStr) {
+                        const likes = JSON.parse(likesStr);
+                        for (const like of (likes || [])) {
+                            await dbPut(STORES.likes, {
+                                id: `${user.email}__${like.wpId}`,
+                                userEmail: user.email,
+                                ...like,
+                            });
+                        }
                     }
-                }
+                } catch (e) { console.warn('[DB] Likes migration skipped:', e); }
 
                 // Migrate matches
-                const matchesStr = localStorage.getItem('gsm_matches');
-                if (matchesStr) {
-                    const matches = JSON.parse(matchesStr);
-                    for (const match of (matches || [])) {
-                        await addMatchDB(user.email, match, match.score || 85);
+                try {
+                    const matchesStr = localStorage.getItem('gsm_matches');
+                    if (matchesStr) {
+                        const matches = JSON.parse(matchesStr);
+                        for (const match of (matches || [])) {
+                            await addMatchDB(user.email, match, match.score || 85);
+                        }
                     }
-                }
+                } catch (e) { console.warn('[DB] Matches migration skipped:', e); }
 
                 // Migrate settings
-                const settingsStr = localStorage.getItem('gsm_settings');
-                if (settingsStr) {
-                    const settings = JSON.parse(settingsStr);
-                    await dbPut(STORES.settings, { userEmail: user.email, ...settings });
-                }
+                try {
+                    const settingsStr = localStorage.getItem('gsm_settings');
+                    if (settingsStr) {
+                        const settings = JSON.parse(settingsStr);
+                        await dbPut(STORES.settings, { userEmail: user.email, ...settings });
+                    }
+                } catch (e) { console.warn('[DB] Settings migration skipped:', e); }
 
                 // Migrate verification
-                const verStr = localStorage.getItem('gsm_verification');
-                if (verStr) {
-                    const status = JSON.parse(verStr);
-                    await dbPut(STORES.verification, { userEmail: user.email, status });
-                }
+                try {
+                    const verStr = localStorage.getItem('gsm_verification');
+                    if (verStr) {
+                        const status = JSON.parse(verStr);
+                        await dbPut(STORES.verification, { userEmail: user.email, status });
+                    }
+                } catch (e) { console.warn('[DB] Verification migration skipped:', e); }
 
                 // Create session for migrated user
-                await createSession(user.email);
+                try {
+                    await createSession(user.email);
+                } catch (e) { console.warn('[DB] Session creation skipped:', e); }
             }
         }
 
@@ -840,6 +868,8 @@ async function migrateFromLocalStorage() {
         console.log('[DB] Migration from localStorage complete');
     } catch (err) {
         console.error('[DB] Migration error:', err);
+        // Still mark as migrated to prevent re-attempts
+        try { localStorage.setItem('gsm_db_migrated', 'true'); } catch { }
     }
 }
 
