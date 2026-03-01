@@ -220,10 +220,14 @@ export default function DiscoverPage() {
         });
     }, [displayProfiles, preloadImage]);
 
-    // Detect viewed all
+    // Auto-loop: when all profiles are exhausted, clear swipe history to show them again
     useEffect(() => {
-        if (allProfiles.length > 0 && displayProfiles.length === 0 && !loading) setViewedAll(true);
-    }, [displayProfiles.length, allProfiles.length, loading]);
+        if (allProfiles.length > 0 && displayProfiles.length === 0 && !loading) {
+            // Silently clear passes so profiles reappear
+            clearSwipeHistory();
+            setViewedAll(false);
+        }
+    }, [displayProfiles.length, allProfiles.length, loading, clearSwipeHistory]);
 
     // Swipe handler
     const handleSwipe = useCallback((dir, profile) => {
@@ -316,23 +320,12 @@ export default function DiscoverPage() {
         );
     }
 
-    // VIEWED ALL
-    if (viewedAll || (!currentProfile && allProfiles.length > 0)) {
+    // If somehow still empty after reset, show a loading spinner briefly
+    if (!currentProfile && allProfiles.length > 0) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center space-y-5">
-                <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Sparkles size={36} className="text-primary" />
-                </div>
-                <h2 className="text-xl font-bold text-text-primary">You&apos;ve Seen Everyone!</h2>
-                <p className="text-text-secondary text-sm">
-                    You have viewed all {allProfiles.length} profiles.<br />Refresh to see them again.
-                </p>
-                <button onClick={handleRefresh} disabled={refreshing}
-                    className="flex items-center gap-2 px-8 py-3.5 rounded-2xl gradient-primary text-white font-semibold shadow-lg shadow-primary/20 transition-all active:scale-95">
-                    <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-                    {refreshing ? 'Loading...' : 'Refresh Profiles'}
-                </button>
-                <p className="text-[10px] text-text-muted">{dbTotal} profiles in database</p>
+            <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-4">
+                <div className="w-16 h-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+                <p className="text-sm text-text-muted">Loading more profiles...</p>
             </div>
         );
     }
