@@ -216,6 +216,18 @@ export default function SingleProfilePage({ params }) {
                                 {profile.age && <span className="text-white/70 font-normal text-xl">{profile.age}</span>}
                                 <VerifiedBadge size={22} />
                             </h1>
+                            <div className="flex items-center gap-2 mb-1">
+                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ background: profile.profileType === 'sugar_daddy' ? 'rgba(59,130,246,0.85)' : 'rgba(236,72,153,0.85)' }}>
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
+                                    {profile.profileType === 'sugar_daddy' ? 'Sugar Daddy' : 'Sugar Mummy'}
+                                </span>
+                                {profile.isTestimonial && (
+                                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold text-white bg-amber-500/85">
+                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+                                        Review
+                                    </span>
+                                )}
+                            </div>
                             {profile.location && (
                                 <div className="flex items-center gap-1.5 text-white/80">
                                     <MapPin size={14} />
@@ -295,8 +307,19 @@ export default function SingleProfilePage({ params }) {
                     </div>
                 </div>
 
-                {/* Contact buttons */}
-                <ContactButtons profileName={profile.name} />
+                {/* Contact buttons — hidden for testimonials */}
+                {!profile.isTestimonial && (
+                    <ContactButtons profileName={profile.name} />
+                )}
+                {profile.isTestimonial && (
+                    <div className="w-full rounded-2xl p-4 text-center" style={{ background: 'var(--color-bg-card)', border: '1px solid rgba(0,0,0,0.08)' }}>
+                        <div className="flex items-center justify-center gap-2 mb-1">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-amber-500"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+                            <span className="text-sm font-bold text-text-primary">User Review / Testimonial</span>
+                        </div>
+                        <p className="text-xs text-text-muted">This is a user review, not a matchable profile.</p>
+                    </div>
+                )}
 
                 {/* Profile Labels */}
                 <div className="rounded-3xl p-5 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>

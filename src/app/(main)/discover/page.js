@@ -505,6 +505,12 @@ export default function DiscoverPage() {
                                         <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
                                         {currentProfile.profileType === 'sugar_daddy' ? 'Sugar Daddy' : 'Sugar Mummy'}
                                     </span>
+                                    {currentProfile.isTestimonial && (
+                                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold text-white bg-amber-500/85">
+                                            <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+                                            Review
+                                        </span>
+                                    )}
                                 </div>
                                 <h2 className="text-2xl font-bold text-white flex items-center gap-2 mb-0.5">
                                     {currentProfile.name || 'Sugar Mummy'}

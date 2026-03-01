@@ -168,49 +168,89 @@ export function extractBio(excerpt, content) {
     return text || 'Looking for a genuine connection. Tap to learn more.';
 }
 
-// Detect profile type from title + content keywords
-export function detectProfileType(title, content) {
-    const searchText = `${title || ''} ${content || ''}`.toLowerCase();
+// Common Kenyan female names for name-based gender detection
+const FEMALE_NAMES = new Set([
+    'amina', 'aisha', 'wanjiku', 'wambui', 'njeri', 'nyambura', 'wangari', 'muthoni', 'wairimu',
+    'akinyi', 'adhiambo', 'atieno', 'anyango', 'awino', 'akoth', 'odhiambo',
+    'mercy', 'grace', 'faith', 'hope', 'joy', 'charity', 'prudence', 'patience',
+    'nancy', 'lucy', 'jane', 'mary', 'sarah', 'esther', 'ruth', 'naomi', 'martha',
+    'anne', 'betty', 'carol', 'diana', 'elizabeth', 'gladys', 'hannah', 'irene',
+    'joyce', 'lilian', 'margaret', 'millicent', 'monica', 'pauline', 'rose', 'salome',
+    'susan', 'tabitha', 'veronica', 'winnie', 'agnes', 'alice', 'beatrice',
+    'cynthia', 'dorothy', 'emily', 'florence', 'hellen', 'janet', 'josephine',
+    'linet', 'lydia', 'nelly', 'purity', 'risper', 'sharon', 'sylvia', 'vivian',
+    'chebet', 'chepkoech', 'jepkosgei', 'jepchirchir', 'cherono', 'chepkemoi',
+    'mumbi', 'nyokabi', 'wacera', 'gathoni', 'waithera', 'wairagu',
+    'fatma', 'halima', 'zainab', 'khadija', 'mariam', 'rehema', 'mwanaisha',
+    'agnes', 'assumpta', 'consolata', 'damaris', 'everlyne', 'felistus',
+]);
 
-    // Check for sugar daddy indicators
-    const daddyPatterns = [
-        /sugar\s*dadd/i,
-        /sugardadd/i,
-        /\bdaddy\b/i,
-        /\brich\s*man\b/i,
-        /\bwealthy\s*man\b/i,
-        /\bmale\s*sugar\b/i,
-        /\bhe\s+(is|wants|needs|seeks)\b/i,
-        /\bhis\s+(looking|age|name)\b/i,
-        /\bgentleman\b/i,
-    ];
+// Common Kenyan male names
+const MALE_NAMES = new Set([
+    'john', 'james', 'peter', 'david', 'samuel', 'daniel', 'joseph', 'michael', 'paul',
+    'brian', 'kevin', 'dennis', 'patrick', 'martin', 'george', 'alex', 'simon', 'stephen',
+    'william', 'robert', 'thomas', 'richard', 'charles', 'mark', 'anthony', 'andrew',
+    'eric', 'felix', 'francis', 'gerald', 'henry', 'isaac', 'jackson', 'kennedy',
+    'lawrence', 'moses', 'nicholas', 'oliver', 'raphael', 'timothy', 'vincent',
+    'wycliffe', 'otieno', 'omondi', 'ochieng', 'kipchoge', 'kipruto', 'koech',
+    'kiprop', 'kibet', 'langat', 'kiptoo', 'ruto', 'cheruiyot', 'bett',
+    'kamau', 'mwangi', 'njoroge', 'kariuki', 'gitau', 'kimani', 'njenga',
+    'mutua', 'musyoka', 'mwenda', 'muriithi', 'maina', 'ndung', 'karanja',
+    'omar', 'hassan', 'ali', 'mohamed', 'ibrahim', 'yusuf', 'abdullahi',
+    'evans', 'kelvin', 'fredrick', 'geoffrey', 'ronald', 'allan', 'collins',
+    'emmanuel', 'godwin', 'harrison', 'japheth', 'lenny', 'nelson', 'oscar',
+]);
 
-    // Check for sugar mummy indicators
-    const mummyPatterns = [
-        /sugar\s*mumm/i,
-        /sugarmumm/i,
-        /\bmummy\b/i,
-        /\bmama\b/i,
-        /\brich\s*wom[ae]n\b/i,
-        /\bwealthy\s*wom[ae]n\b/i,
-        /\bwealthy\s*lad/i,
-        /\bfemale\s*sugar\b/i,
-        /\bshe\s+(is|wants|needs|seeks)\b/i,
-        /\bher\s+(looking|age|name)\b/i,
-        /\bcougar\b/i,
-        /\bmadam\b/i,
-    ];
+// Detect if name is male
+function isNameMale(name) {
+    if (!name) return false;
+    const first = name.trim().split(/\s+/)[0].toLowerCase();
+    if (MALE_NAMES.has(first)) return true;
+    if (FEMALE_NAMES.has(first)) return false;
+    return false; // unknown
+}
 
-    let daddyScore = 0;
-    let mummyScore = 0;
+function isNameFemale(name) {
+    if (!name) return false;
+    const first = name.trim().split(/\s+/)[0].toLowerCase();
+    return FEMALE_NAMES.has(first);
+}
 
-    for (const p of daddyPatterns) { if (p.test(searchText)) daddyScore++; }
-    for (const p of mummyPatterns) { if (p.test(searchText)) mummyScore++; }
+// Detect if post is a testimonial/review
+export function isTestimonialPost(title, content) {
+    const text = `${title || ''} ${content || ''}`.toLowerCase();
+    return /\b(testimoni|review|feedback|experience|story|confession|success\s*story)\b/i.test(text);
+}
 
-    if (daddyScore > mummyScore) return 'sugar_daddy';
-    if (mummyScore > daddyScore) return 'sugar_mummy';
+// Detect profile type from title + content + name
+export function detectProfileType(title, content, profileName) {
+    // STEP 1: Check TITLE only (most reliable)
+    const titleLower = (title || '').toLowerCase();
 
-    // Default: this site is genuinesugarmummies.co.ke so default to mummy
+    // Title explicitly says sugar daddy
+    if (/sugar\s*dadd/i.test(titleLower) && !/sugar\s*mumm/i.test(titleLower)) {
+        return 'sugar_daddy';
+    }
+    // Title explicitly says sugar mummy
+    if (/sugar\s*mumm/i.test(titleLower)) {
+        return 'sugar_mummy';
+    }
+    // Title says daddy without mummy
+    if (/\bdaddy\b/i.test(titleLower) && !/\bmumm/i.test(titleLower)) {
+        return 'sugar_daddy';
+    }
+    // Title says mummy
+    if (/\bmumm/i.test(titleLower) || /\bmama\b/i.test(titleLower)) {
+        return 'sugar_mummy';
+    }
+
+    // STEP 2: Name-based detection fallback
+    if (profileName) {
+        if (isNameMale(profileName)) return 'sugar_daddy';
+        if (isNameFemale(profileName)) return 'sugar_mummy';
+    }
+
+    // STEP 3: Default — this is genuinesugarmummies.co.ke
     return 'sugar_mummy';
 }
 // ============================================================
@@ -252,7 +292,8 @@ export function parsePluginProfile(data) {
         coords,
         commentCount: data.commentCount || 0,
         daysSincePost,
-        profileType: detectProfileType(title, contentRaw),
+        profileType: detectProfileType(title, contentRaw, name),
+        isTestimonial: isTestimonialPost(title, contentRaw),
         // If single profile, may include inline comments
         comments: data.comments || undefined,
     };
@@ -303,7 +344,8 @@ export function parseProfile(post) {
         coords,
         commentCount: realCommentCount,
         daysSincePost,
-        profileType: detectProfileType(title, content),
+        profileType: detectProfileType(title, content, name),
+        isTestimonial: isTestimonialPost(title, content),
     };
 }
 
