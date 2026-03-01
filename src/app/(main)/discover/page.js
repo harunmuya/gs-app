@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, X, Star, MapPin, MessageCircle, RefreshCw, Sparkles, Navigation, Database } from 'lucide-react';
+import { Heart, X, Star, MapPin, MessageCircle, RefreshCw, Sparkles, Navigation, Database, SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import VerifiedBadge from '@/components/VerifiedBadge';
@@ -12,7 +12,7 @@ import Link from 'next/link';
 // ---- Ultra-fast profile cache ----
 const CACHE_KEY = 'gsm_profiles_v2';
 const CACHE_TS = 'gsm_profiles_ts';
-const TTL = 10 * 60 * 1000; // 10 min
+const TTL = 10 * 60 * 1000;
 
 function getCache() {
     if (typeof window === 'undefined') return null;
@@ -61,7 +61,6 @@ function haversine(c1, c2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// ---- Fetch with timeout ----
 async function fetchWithTimeout(url, ms = 8000) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), ms);
@@ -75,8 +74,11 @@ async function fetchWithTimeout(url, ms = 8000) {
     }
 }
 
+// Kenyan locations for filter
+const KENYAN_LOCATIONS = ['All', 'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Thika', 'Kiambu', 'Westlands', 'Kilimani', 'Karen', 'Langata', 'Ruiru', 'Malindi', 'Nyeri', 'Machakos', 'Meru'];
+
 export default function DiscoverPage() {
-    const { addLike, addMatch, addPass, isProfileSwiped, addSuperLike, clearSwipeHistory } = useAuth();
+    const { addLike, addMatch, addPass, isProfileSwiped, addSuperLike, clearSwipeHistory, blockedUsers } = useAuth();
     const { location: userLocation, requestLocation } = useGeolocation();
 
     const [allProfiles, setAllProfiles] = useState([]);
@@ -85,15 +87,35 @@ export default function DiscoverPage() {
     const [swipeDir, setSwipeDir] = useState(null);
     const [viewedAll, setViewedAll] = useState(false);
     const [dbTotal, setDbTotal] = useState(0);
+    const [showFilters, setShowFilters] = useState(false);
+    const [previewProfile, setPreviewProfile] = useState(null);
     const fetchingRef = useRef(false);
 
-    // ---- FAST LOAD: cache → show instantly → background update ----
+    // Filters
+    const [filterLocation, setFilterLocation] = useState('All');
+    const [filterAgeMin, setFilterAgeMin] = useState(18);
+    const [filterAgeMax, setFilterAgeMax] = useState(70);
+
+    // Touch swipe state
+    const [touchStart, setTouchStart] = useState(null);
+    const [touchDelta, setTouchDelta] = useState({ x: 0, y: 0 });
+    const [isDragging, setIsDragging] = useState(false);
+    const cardRef = useRef(null);
+
+    // Preload images
+    const preloadedRef = useRef(new Set());
+    const preloadImage = useCallback((url) => {
+        if (!url || preloadedRef.current.has(url)) return;
+        preloadedRef.current.add(url);
+        const img = new Image();
+        img.src = url;
+    }, []);
+
+    // FAST LOAD
     const loadProfiles = useCallback(async (forceRefresh = false) => {
         if (fetchingRef.current) return;
         fetchingRef.current = true;
-
         try {
-            // Step 1: Show cache INSTANTLY
             if (!forceRefresh) {
                 const cached = getCache();
                 if (cached && cached.length > 0) {
@@ -102,8 +124,6 @@ export default function DiscoverPage() {
                     setLoading(false);
                 }
             }
-
-            // Step 2: Fetch page 1 FAST (show immediately if no cache)
             const res1 = await fetchWithTimeout('/api/profiles?page=1&per_page=50', 10000);
             if (!res1.ok) throw new Error('API failed');
             const data1 = await res1.json();
@@ -111,7 +131,6 @@ export default function DiscoverPage() {
             const totalPages = data1.totalPages || 1;
             const totalPosts = data1.totalPosts || page1.length;
 
-            // Show page 1 immediately
             if (page1.length > 0) {
                 setAllProfiles(page1);
                 setDbTotal(totalPosts);
@@ -119,7 +138,6 @@ export default function DiscoverPage() {
                 setCache(page1);
             }
 
-            // Step 3: Fetch remaining pages IN PARALLEL (background)
             if (totalPages > 1) {
                 const promises = [];
                 for (let p = 2; p <= totalPages; p++) {
@@ -132,10 +150,8 @@ export default function DiscoverPage() {
                 }
                 const results = await Promise.all(promises);
                 const moreProfiles = results.flat();
-
                 if (moreProfiles.length > 0) {
                     const all = [...page1, ...moreProfiles];
-                    // Deduplicate
                     const seen = new Set();
                     const unique = all.filter(p => {
                         if (seen.has(p.wpId)) return false;
@@ -149,7 +165,6 @@ export default function DiscoverPage() {
             }
         } catch (err) {
             console.error('Profile load error:', err);
-            // If we have nothing, try cache one more time
             if (allProfiles.length === 0) {
                 const cached = getCache();
                 if (cached && cached.length > 0) {
@@ -164,24 +179,48 @@ export default function DiscoverPage() {
         }
     }, []);
 
-    // Mount: instant load
     useEffect(() => { loadProfiles(); }, [loadProfiles]);
 
-    // Filter unswiped
+    // Filter + sort profiles
     const displayProfiles = useMemo(() => {
-        const unswiped = allProfiles.filter(p => !isProfileSwiped(p.wpId));
-        if (userLocation && unswiped.length > 0) {
-            return [...unswiped].sort((a, b) => matchScore(b, userLocation) - matchScore(a, userLocation));
+        let filtered = allProfiles.filter(p => !isProfileSwiped(p.wpId));
+
+        // Block filter
+        if (blockedUsers && blockedUsers.length > 0) {
+            filtered = filtered.filter(p => !blockedUsers.includes(p.wpId));
         }
-        return unswiped;
-    }, [allProfiles, userLocation, isProfileSwiped]);
+
+        // Location filter
+        if (filterLocation !== 'All') {
+            filtered = filtered.filter(p => p.location && p.location.toLowerCase().includes(filterLocation.toLowerCase()));
+        }
+
+        // Age filter
+        filtered = filtered.filter(p => {
+            if (!p.age) return true; // show profiles without age
+            return p.age >= filterAgeMin && p.age <= filterAgeMax;
+        });
+
+        // Sort by match score
+        if (userLocation && filtered.length > 0) {
+            return [...filtered].sort((a, b) => matchScore(b, userLocation) - matchScore(a, userLocation));
+        }
+        return filtered;
+    }, [allProfiles, userLocation, isProfileSwiped, blockedUsers, filterLocation, filterAgeMin, filterAgeMax]);
+
+    // Preload next 3 images
+    useEffect(() => {
+        displayProfiles.slice(0, 3).forEach(p => {
+            if (p.imageUrl) preloadImage(p.imageUrl);
+        });
+    }, [displayProfiles, preloadImage]);
 
     // Detect viewed all
     useEffect(() => {
         if (allProfiles.length > 0 && displayProfiles.length === 0 && !loading) setViewedAll(true);
     }, [displayProfiles.length, allProfiles.length, loading]);
 
-    // Swipe
+    // Swipe handler
     const handleSwipe = useCallback((dir, profile) => {
         if (!profile) return;
         setSwipeDir(dir);
@@ -195,10 +234,45 @@ export default function DiscoverPage() {
         } else {
             addPass(profile.wpId);
         }
-        setTimeout(() => setSwipeDir(null), 200);
+        setTimeout(() => setSwipeDir(null), 300);
     }, [addLike, addMatch, addPass, addSuperLike, userLocation]);
 
-    // Refresh
+    // Touch gesture handlers
+    const handleTouchStart = (e) => {
+        const touch = e.touches[0];
+        setTouchStart({ x: touch.clientX, y: touch.clientY });
+        setIsDragging(true);
+    };
+
+    const handleTouchMove = (e) => {
+        if (!touchStart) return;
+        const touch = e.touches[0];
+        setTouchDelta({
+            x: touch.clientX - touchStart.x,
+            y: touch.clientY - touchStart.y,
+        });
+    };
+
+    const handleTouchEnd = () => {
+        if (!touchStart) return;
+        const threshold = 80;
+        const profile = displayProfiles[0];
+
+        if (Math.abs(touchDelta.x) > threshold || Math.abs(touchDelta.y) > threshold) {
+            if (touchDelta.y < -threshold && Math.abs(touchDelta.y) > Math.abs(touchDelta.x)) {
+                handleSwipe('up', profile);
+            } else if (touchDelta.x > threshold) {
+                handleSwipe('right', profile);
+            } else if (touchDelta.x < -threshold) {
+                handleSwipe('left', profile);
+            }
+        }
+
+        setTouchStart(null);
+        setTouchDelta({ x: 0, y: 0 });
+        setIsDragging(false);
+    };
+
     const handleRefresh = () => {
         setRefreshing(true);
         setViewedAll(false);
@@ -209,7 +283,7 @@ export default function DiscoverPage() {
     const currentProfile = displayProfiles[0];
     const nextProfile = displayProfiles[1];
 
-    // ---- LOADING ----
+    // LOADING
     if (loading && allProfiles.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-4">
@@ -219,7 +293,7 @@ export default function DiscoverPage() {
         );
     }
 
-    // ---- EMPTY ----
+    // EMPTY
     if (!loading && allProfiles.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center space-y-5">
@@ -227,9 +301,7 @@ export default function DiscoverPage() {
                     <Database size={36} className="text-text-muted" />
                 </div>
                 <h2 className="text-xl font-bold text-text-primary">No Profiles Available</h2>
-                <p className="text-text-secondary text-sm leading-relaxed">
-                    Could not load profiles. Check your internet connection and try again.
-                </p>
+                <p className="text-text-secondary text-sm">Check your internet connection and try again.</p>
                 <button onClick={handleRefresh} disabled={refreshing}
                     className="flex items-center gap-2 px-8 py-3.5 rounded-2xl gradient-primary text-white font-semibold shadow-lg shadow-primary/20 transition-all active:scale-95">
                     <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
@@ -239,15 +311,15 @@ export default function DiscoverPage() {
         );
     }
 
-    // ---- VIEWED ALL ----
+    // VIEWED ALL
     if (viewedAll || (!currentProfile && allProfiles.length > 0)) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center space-y-5">
                 <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
                     <Sparkles size={36} className="text-primary" />
                 </div>
-                <h2 className="text-xl font-bold text-text-primary">You've Seen Everyone!</h2>
-                <p className="text-text-secondary text-sm leading-relaxed">
+                <h2 className="text-xl font-bold text-text-primary">You&apos;ve Seen Everyone!</h2>
+                <p className="text-text-secondary text-sm">
                     You have viewed all {allProfiles.length} profiles.<br />Refresh to see them again.
                 </p>
                 <button onClick={handleRefresh} disabled={refreshing}
@@ -255,15 +327,21 @@ export default function DiscoverPage() {
                     <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
                     {refreshing ? 'Loading...' : 'Refresh Profiles'}
                 </button>
-                <p className="text-[10px] text-text-muted">
-                    {dbTotal} profiles in database
-                </p>
+                <p className="text-[10px] text-text-muted">{dbTotal} profiles in database</p>
             </div>
         );
     }
 
     const score = matchScore(currentProfile, userLocation);
     const isNearby = userLocation && currentProfile.coords && haversine(userLocation, currentProfile.coords) < 30;
+
+    // Calculate card transform from touch
+    const dragX = isDragging ? touchDelta.x : 0;
+    const dragY = isDragging ? Math.min(0, touchDelta.y) : 0;
+    const dragRotate = isDragging ? touchDelta.x * 0.08 : 0;
+    const showLikeIndicator = isDragging && touchDelta.x > 50;
+    const showPassIndicator = isDragging && touchDelta.x < -50;
+    const showSuperIndicator = isDragging && touchDelta.y < -50;
 
     return (
         <div className="px-4 pt-2 pb-24">
@@ -277,6 +355,11 @@ export default function DiscoverPage() {
                     </span>
                 </div>
                 <div className="flex items-center gap-2">
+                    <button onClick={() => setShowFilters(!showFilters)}
+                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[10px] font-semibold transition-colors ${showFilters ? 'text-white bg-primary' : 'text-text-muted'}`}
+                        style={!showFilters ? { background: 'var(--color-surface)' } : {}}>
+                        <SlidersHorizontal size={10} /> Filter
+                    </button>
                     {!userLocation && (
                         <button onClick={requestLocation} className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[10px] font-semibold text-white transition-colors" style={{ background: 'var(--color-primary)', opacity: 0.9 }}>
                             <Navigation size={10} /> Location
@@ -288,6 +371,48 @@ export default function DiscoverPage() {
                 </div>
             </div>
 
+            {/* Filter Bar */}
+            <AnimatePresence>
+                {showFilters && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden mb-3"
+                    >
+                        <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                            {/* Location */}
+                            <div>
+                                <label className="text-[10px] text-text-muted font-semibold uppercase tracking-wider block mb-1">Location</label>
+                                <div className="relative">
+                                    <select
+                                        value={filterLocation}
+                                        onChange={(e) => setFilterLocation(e.target.value)}
+                                        className="w-full py-2 px-3 pr-8 rounded-xl text-xs font-medium text-text-primary appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                        style={{ background: 'var(--color-surface)' }}
+                                    >
+                                        {KENYAN_LOCATIONS.map(loc => (
+                                            <option key={loc} value={loc}>{loc}</option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                                </div>
+                            </div>
+                            {/* Age */}
+                            <div>
+                                <label className="text-[10px] text-text-muted font-semibold uppercase tracking-wider block mb-1">Age Range: {filterAgeMin} – {filterAgeMax}</label>
+                                <div className="flex gap-3 items-center">
+                                    <input type="range" min={18} max={70} value={filterAgeMin} onChange={(e) => setFilterAgeMin(Math.min(Number(e.target.value), filterAgeMax - 1))}
+                                        className="flex-1 accent-primary h-1" />
+                                    <input type="range" min={18} max={70} value={filterAgeMax} onChange={(e) => setFilterAgeMax(Math.max(Number(e.target.value), filterAgeMin + 1))}
+                                        className="flex-1 accent-primary h-1" />
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* Card Stack */}
             <div className="relative w-full aspect-[3/4] max-h-[65vh] rounded-3xl overflow-hidden mb-4">
                 {/* Next card preview */}
@@ -297,14 +422,23 @@ export default function DiscoverPage() {
                     </div>
                 )}
 
-                {/* Current Card */}
+                {/* Current Card — touchable swipe */}
                 <AnimatePresence mode="popLayout">
                     <motion.div
                         key={currentProfile.wpId}
+                        ref={cardRef}
                         initial={{ scale: 0.95, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1, x: swipeDir === 'left' ? -300 : swipeDir === 'right' ? 300 : 0, y: swipeDir === 'up' ? -300 : 0, rotate: swipeDir === 'left' ? -15 : swipeDir === 'right' ? 15 : 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="absolute inset-0 rounded-3xl overflow-hidden card-shadow"
+                        animate={{
+                            scale: 1, opacity: 1,
+                            x: swipeDir === 'left' ? -400 : swipeDir === 'right' ? 400 : dragX,
+                            y: swipeDir === 'up' ? -400 : dragY,
+                            rotate: swipeDir === 'left' ? -20 : swipeDir === 'right' ? 20 : dragRotate,
+                        }}
+                        transition={isDragging ? { duration: 0 } : { duration: 0.3, ease: 'easeOut' }}
+                        className="absolute inset-0 rounded-3xl overflow-hidden card-shadow touch-none"
+                        onTouchStart={handleTouchStart}
+                        onTouchMove={handleTouchMove}
+                        onTouchEnd={handleTouchEnd}
                     >
                         <Link href={`/discover/${currentProfile.wpId}`} className="block w-full h-full">
                             {currentProfile.imageUrl ? (
@@ -312,13 +446,9 @@ export default function DiscoverPage() {
                                     src={currentProfile.imageUrl}
                                     alt={currentProfile.name}
                                     loading="eager"
-                                    style={{
-                                        position: 'absolute',
-                                        inset: 0,
-                                        width: '100%',
-                                        height: '100%',
-                                        objectFit: 'cover',
-                                    }}
+                                    draggable={false}
+                                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                                    onError={(e) => { e.target.style.display = 'none'; }}
                                 />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center" style={{ background: 'var(--color-surface)' }}>
@@ -329,18 +459,18 @@ export default function DiscoverPage() {
                             <div className="absolute inset-0 gradient-overlay" />
 
                             {/* Swipe indicators */}
-                            {swipeDir === 'right' && (
-                                <div className="absolute top-8 left-6 px-4 py-2 rounded-xl border-3 border-success rotate-[-15deg] z-20">
+                            {(swipeDir === 'right' || showLikeIndicator) && (
+                                <div className="absolute top-8 left-6 px-4 py-2 rounded-xl border-3 border-success rotate-[-15deg] z-20 bg-success/20">
                                     <span className="text-success text-2xl font-black">LIKE</span>
                                 </div>
                             )}
-                            {swipeDir === 'left' && (
-                                <div className="absolute top-8 right-6 px-4 py-2 rounded-xl border-3 border-danger rotate-[15deg] z-20">
+                            {(swipeDir === 'left' || showPassIndicator) && (
+                                <div className="absolute top-8 right-6 px-4 py-2 rounded-xl border-3 border-danger rotate-[15deg] z-20 bg-danger/20">
                                     <span className="text-danger text-2xl font-black">PASS</span>
                                 </div>
                             )}
-                            {swipeDir === 'up' && (
-                                <div className="absolute top-8 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl border-3 border-gold z-20">
+                            {(swipeDir === 'up' || showSuperIndicator) && (
+                                <div className="absolute top-8 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl border-3 border-gold z-20 bg-gold/20">
                                     <span className="text-gold text-2xl font-black">SUPER</span>
                                 </div>
                             )}
@@ -397,6 +527,11 @@ export default function DiscoverPage() {
                     </motion.div>
                 </AnimatePresence>
             </div>
+
+            {/* Swipe hint */}
+            <p className="text-center text-[10px] text-text-muted mb-3">
+                ← Swipe left to pass · Swipe right to like → · ↑ Super like
+            </p>
 
             {/* Action Buttons */}
             <div className="flex items-center justify-center gap-4">

@@ -26,6 +26,60 @@
   --card-border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
+/* ---- Dark Mode ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light-forced) {
+    --color-primary: #FB923C;
+    --color-primary-light: #FDBA74;
+    --color-primary-dark: #EA580C;
+    --color-secondary: #F97316;
+    --color-accent: #F59E0B;
+    --color-bg-dark: #0a0a0a;
+    --color-bg-card: #1a1a1a;
+    --color-bg-input: #252525;
+    --color-surface: #1f1f1f;
+    --color-surface-light: #2a2a2a;
+    --color-text-primary: #f1f1f1;
+    --color-text-secondary: #d4d4d4;
+    --color-text-muted: #888888;
+    --color-gold: #f59e0b;
+    --color-success: #10b981;
+    --color-danger: #ef4444;
+    --color-border: rgba(255, 255, 255, 0.12);
+    --glass-bg: rgba(26, 26, 26, 0.92);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --shadow-color: rgba(0, 0, 0, 0.3);
+    --overlay-gradient: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.2) 30%, rgba(0, 0, 0, 0.85) 100%);
+    --card-border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* Manual dark mode override via JS */
+.dark {
+  --color-primary: #FB923C;
+  --color-primary-light: #FDBA74;
+  --color-primary-dark: #EA580C;
+  --color-secondary: #F97316;
+  --color-accent: #F59E0B;
+  --color-bg-dark: #0a0a0a;
+  --color-bg-card: #1a1a1a;
+  --color-bg-input: #252525;
+  --color-surface: #1f1f1f;
+  --color-surface-light: #2a2a2a;
+  --color-text-primary: #f1f1f1;
+  --color-text-secondary: #d4d4d4;
+  --color-text-muted: #888888;
+  --color-gold: #f59e0b;
+  --color-success: #10b981;
+  --color-danger: #ef4444;
+  --color-border: rgba(255, 255, 255, 0.12);
+  --glass-bg: rgba(26, 26, 26, 0.92);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --overlay-gradient: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.2) 30%, rgba(0, 0, 0, 0.85) 100%);
+  --card-border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 @theme {
   --color-primary: #EA580C;
   --color-primary-light: #FB923C;

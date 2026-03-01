@@ -6,7 +6,7 @@ import {
     User, Camera, Heart, Bookmark, Settings, ChevronRight, LogOut, Trash2, Pencil,
     Shield, HelpCircle, ChevronLeft, X, Mail, MapPin, Calendar, Star, Plus, Phone,
     MessageCircle, ShieldCheck, ShieldAlert, ImagePlus, Check, AlertCircle, Send,
-    MessageSquare, Bell
+    MessageSquare, Bell, Crown, CreditCard, BarChart3, Eye
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import VerifiedBadge from '@/components/VerifiedBadge';
@@ -30,6 +30,7 @@ const MENU_ITEMS = [
     { key: 'verification', icon: ShieldCheck, label: 'Verify Profile' },
     { key: 'messages', icon: MessageSquare, label: 'Messages' },
     { key: 'saved', icon: Bookmark, label: 'Saved Profiles' },
+    { key: 'subscribe', icon: Crown, label: 'Membership Plans', link: '/subscribe' },
     { key: 'settings', icon: Settings, label: 'Settings' },
     { key: 'contact', icon: Phone, label: 'Contact Us' },
     { key: 'help', icon: HelpCircle, label: 'Help & FAQ' },
@@ -41,8 +42,11 @@ export default function ProfilePage() {
     const [activeSection, setActiveSection] = useState(null);
     const [editMode, setEditMode] = useState(false);
     const [editData, setEditData] = useState({});
+    const [selfieData, setSelfieData] = useState(null);
+    const [idDocData, setIdDocData] = useState(null);
     const fileInputRef = useRef(null);
     const selfieInputRef = useRef(null);
+    const idDocInputRef = useRef(null);
 
     if (guest && !user) {
         return (
@@ -74,12 +78,25 @@ export default function ProfilePage() {
         const file = e.target.files?.[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = (ev) => {
-            const result = verifyProfile(ev.target.result);
-            // verifyProfile handles state + messages
-        };
+        reader.onload = (ev) => setSelfieData(ev.target.result);
         reader.readAsDataURL(file);
         e.target.value = '';
+    };
+
+    const handleIdDocUpload = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => setIdDocData(ev.target.result);
+        reader.readAsDataURL(file);
+        e.target.value = '';
+    };
+
+    const handleSubmitVerification = async () => {
+        if (!selfieData || !idDocData) return;
+        await verifyProfile(selfieData, idDocData);
+        setSelfieData(null);
+        setIdDocData(null);
     };
 
     const startEdit = () => {
@@ -205,13 +222,25 @@ export default function ProfilePage() {
                         <p className="text-sm text-text-secondary">Your identity has been confirmed. Other users can see your blue verification badge.</p>
                         <div className="flex justify-center"><VerifiedBadge size={28} verified={true} /></div>
                     </>
+                ) : verificationStatus === 'pending_review' ? (
+                    <>
+                        <div className="w-16 h-16 mx-auto rounded-full bg-gold/10 flex items-center justify-center">
+                            <Shield size={32} className="text-gold" />
+                        </div>
+                        <h3 className="text-lg font-bold text-gold">⏳ Under Review</h3>
+                        <p className="text-sm text-text-secondary">Your verification submission is being reviewed by our team. This usually takes 24-48 hours.</p>
+                        <div className="w-full bg-surface rounded-full h-2 overflow-hidden">
+                            <div className="h-full bg-gold rounded-full animate-pulse" style={{ width: '60%' }} />
+                        </div>
+                        <p className="text-xs text-text-muted">You will be notified once your verification is approved.</p>
+                    </>
                 ) : verificationStatus === 'processing' ? (
                     <>
                         <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center animate-pulse">
                             <Shield size={32} className="text-primary" />
                         </div>
-                        <h3 className="text-lg font-bold text-primary">Verifying Identity...</h3>
-                        <p className="text-sm text-text-secondary">Our AI is analyzing your selfie. This takes a few seconds.</p>
+                        <h3 className="text-lg font-bold text-primary">Processing...</h3>
+                        <p className="text-sm text-text-secondary">Analyzing your documents. Please wait.</p>
                         <div className="flex justify-center gap-1.5 py-2">
                             {[0, 1, 2].map(i => (
                                 <div key={i} className="w-2.5 h-2.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
@@ -225,34 +254,26 @@ export default function ProfilePage() {
                         </div>
                         <h3 className="text-lg font-bold text-text-primary">Get Verified</h3>
                         <p className="text-sm text-text-secondary leading-relaxed">
-                            Earn a blue verification badge to show you're real. Upload a selfie for our AI to verify your identity.
+                            Earn a verified badge by uploading a selfie <strong>and</strong> a valid ID/passport. Our team will review your submission.
                         </p>
 
-                        {/* Strict Rules */}
+                        {/* Verification Steps */}
                         <div className="text-left rounded-xl p-3.5 space-y-2" style={{ background: 'var(--color-surface)' }}>
                             <p className="text-xs font-bold text-text-primary flex items-center gap-1.5">
-                                <Shield size={12} className="text-primary" /> Verification Rules
+                                <Shield size={12} className="text-primary" /> Requirements
                             </p>
                             <ul className="text-[11px] text-text-secondary space-y-1.5 list-none">
                                 <li className="flex items-start gap-1.5">
-                                    <Check size={10} className="text-success mt-0.5 shrink-0" />
-                                    <span>You must have a <strong>profile photo</strong> uploaded first</span>
+                                    <Check size={10} className={`mt-0.5 shrink-0 ${(user.avatar_url || user.photos?.length > 0) ? 'text-success' : 'text-text-muted'}`} />
+                                    <span>Profile photo uploaded</span>
                                 </li>
                                 <li className="flex items-start gap-1.5">
-                                    <Check size={10} className="text-success mt-0.5 shrink-0" />
-                                    <span>Upload a <strong>different selfie</strong> (not the same as profile photo)</span>
+                                    <Check size={10} className={`mt-0.5 shrink-0 ${selfieData ? 'text-success' : 'text-text-muted'}`} />
+                                    <span>Clear selfie showing your face</span>
                                 </li>
                                 <li className="flex items-start gap-1.5">
-                                    <Check size={10} className="text-success mt-0.5 shrink-0" />
-                                    <span>Selfie must clearly show your <strong>face</strong> with good lighting</span>
-                                </li>
-                                <li className="flex items-start gap-1.5">
-                                    <Check size={10} className="text-success mt-0.5 shrink-0" />
-                                    <span>No <strong>masks, sunglasses</strong>, or face-obscuring items</span>
-                                </li>
-                                <li className="flex items-start gap-1.5">
-                                    <Check size={10} className="text-success mt-0.5 shrink-0" />
-                                    <span>Minimum photo size: <strong>100×100 pixels</strong></span>
+                                    <Check size={10} className={`mt-0.5 shrink-0 ${idDocData ? 'text-success' : 'text-text-muted'}`} />
+                                    <span>Valid ID or passport photo</span>
                                 </li>
                             </ul>
                         </div>
@@ -260,23 +281,69 @@ export default function ProfilePage() {
                         {!(user.avatar_url || user.photos?.length > 0) && (
                             <div className="flex items-center gap-2 p-3 rounded-xl bg-gold/10">
                                 <AlertCircle size={16} className="text-gold shrink-0" />
-                                <span className="text-xs text-gold font-medium">Upload a profile picture first (go to My Photos)</span>
+                                <span className="text-xs text-gold font-medium">Upload a profile picture first (My Photos)</span>
                             </div>
                         )}
                         {verificationStatus === 'failed' && (
                             <div className="flex items-start gap-2 p-3 rounded-xl bg-danger/10">
                                 <ShieldAlert size={16} className="text-danger shrink-0 mt-0.5" />
-                                <span className="text-xs text-danger font-medium">Verification denied. Please read the rules above and try again with a valid selfie.</span>
+                                <span className="text-xs text-danger font-medium">Verification denied. Please try again with a valid selfie and ID/passport.</span>
                             </div>
                         )}
+
+                        {/* Step 1: Selfie */}
+                        <div className="text-left space-y-2">
+                            <p className="text-xs font-bold text-text-primary">Step 1: Upload Selfie</p>
+                            {selfieData ? (
+                                <div className="flex items-center gap-3 p-2 rounded-xl" style={{ background: 'var(--color-surface)' }}>
+                                    <img src={selfieData} alt="selfie" className="w-12 h-12 rounded-lg object-cover" />
+                                    <span className="text-xs text-success font-medium flex-1">Selfie uploaded ✓</span>
+                                    <button onClick={() => setSelfieData(null)} className="text-danger"><X size={14} /></button>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => selfieInputRef.current?.click()}
+                                    disabled={!(user.avatar_url || user.photos?.length > 0)}
+                                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium text-primary disabled:opacity-40 transition-all"
+                                    style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }}
+                                >
+                                    <Camera size={16} /> Take or Upload Selfie
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Step 2: ID Document */}
+                        <div className="text-left space-y-2">
+                            <p className="text-xs font-bold text-text-primary">Step 2: Upload ID / Passport</p>
+                            {idDocData ? (
+                                <div className="flex items-center gap-3 p-2 rounded-xl" style={{ background: 'var(--color-surface)' }}>
+                                    <img src={idDocData} alt="ID" className="w-12 h-12 rounded-lg object-cover" />
+                                    <span className="text-xs text-success font-medium flex-1">ID document uploaded ✓</span>
+                                    <button onClick={() => setIdDocData(null)} className="text-danger"><X size={14} /></button>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => idDocInputRef.current?.click()}
+                                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium text-primary transition-all"
+                                    style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }}
+                                >
+                                    <CreditCard size={16} /> Upload ID or Passport Photo
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Submit */}
                         <button
-                            onClick={() => selfieInputRef.current?.click()}
-                            disabled={!(user.avatar_url || user.photos?.length > 0)}
+                            onClick={handleSubmitVerification}
+                            disabled={!selfieData || !idDocData}
                             className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-white gradient-primary disabled:opacity-40 transition-all"
                         >
-                            <ImagePlus size={18} /> Upload Selfie to Verify
+                            <ShieldCheck size={18} /> Submit for Verification
                         </button>
+
                         <input ref={selfieInputRef} type="file" accept="image/*" capture="user" className="hidden" onChange={handleSelfieUpload} />
+                        <input ref={idDocInputRef} type="file" accept="image/*" className="hidden" onChange={handleIdDocUpload} />
+                        <p className="text-[10px] text-text-muted">Your documents are reviewed by our team and are never shared with other users.</p>
                     </>
                 )}
             </div>
@@ -471,7 +538,7 @@ export default function ProfilePage() {
                                 return (
                                     <button
                                         key={item.key}
-                                        onClick={() => setActiveSection(item.key)}
+                                        onClick={() => item.link ? router.push(item.link) : setActiveSection(item.key)}
                                         className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-surface/50"
                                         style={idx < MENU_ITEMS.length - 1 ? { borderBottom: '1px solid rgba(0,0,0,0.06)' } : {}}
                                     >
