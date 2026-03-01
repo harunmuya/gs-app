@@ -17,6 +17,7 @@ import {
     deleteAllUserData,
     dbGet, STORES,
 } from '@/lib/database';
+import { initNotifications, notifyMatch, notifyMessage, notifyLike } from '@/lib/notifications';
 
 const AuthContext = createContext({});
 
@@ -53,6 +54,7 @@ export function AuthProvider({ children }) {
             try {
                 await openDB();
                 await migrateFromLocalStorage();
+                initNotifications().catch(() => { }); // Register SW + request permission
 
                 // Check for active session
                 const session = await getActiveSession();

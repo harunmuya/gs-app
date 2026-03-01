@@ -129,6 +129,12 @@ export default function MembersPage() {
                                     <div className="absolute inset-0 gradient-card" />
                                     {/* Online indicator */}
                                     <div className="absolute top-2 right-2 w-3 h-3 rounded-full bg-success border-2 border-white" />
+                                    {/* Role label */}
+                                    <div className="absolute top-2 left-2">
+                                        <span className="px-1.5 py-0.5 rounded-full text-[8px] font-bold text-white" style={{ background: user?.lookingFor === 'sugar_daddy' ? 'rgba(59,130,246,0.85)' : 'rgba(236,72,153,0.85)' }}>
+                                            {user?.lookingFor === 'sugar_daddy' ? '💙 Sugar Daddy' : '💖 Sugar Mummy'}
+                                        </span>
+                                    </div>
                                     <div className="absolute bottom-0 left-0 right-0 p-2.5">
                                         <h3 className="text-sm font-bold text-white truncate flex items-center gap-1">
                                             {profile.name || 'Member'}
@@ -176,11 +182,16 @@ export default function MembersPage() {
                                         {profile.age && <span className="text-text-muted text-xs font-normal">· {profile.age}</span>}
                                         <VerifiedBadge size={14} />
                                     </h3>
-                                    {profile.location && (
-                                        <p className="text-xs text-text-muted flex items-center gap-1">
-                                            <MapPin size={10} /> {profile.location}
-                                        </p>
-                                    )}
+                                    <div className="flex items-center gap-2">
+                                        {profile.location && (
+                                            <p className="text-xs text-text-muted flex items-center gap-1">
+                                                <MapPin size={10} /> {profile.location}
+                                            </p>
+                                        )}
+                                        <span className="px-1.5 py-0.5 rounded-full text-[8px] font-medium" style={{ background: user?.lookingFor === 'sugar_daddy' ? 'rgba(59,130,246,0.1)' : 'rgba(236,72,153,0.1)', color: user?.lookingFor === 'sugar_daddy' ? '#3b82f6' : '#ec4899' }}>
+                                            {user?.lookingFor === 'sugar_daddy' ? '💙 Sugar Daddy' : '💖 Sugar Mummy'}
+                                        </span>
+                                    </div>
                                 </div>
                                 {profile.daysSincePost < 7 && (
                                     <span className="text-[9px] font-bold text-white bg-success rounded-full px-1.5 py-0.5 shrink-0">

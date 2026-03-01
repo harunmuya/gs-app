@@ -78,8 +78,11 @@ async function fetchWithTimeout(url, ms = 8000) {
 const KENYAN_LOCATIONS = ['All', 'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Thika', 'Kiambu', 'Westlands', 'Kilimani', 'Karen', 'Langata', 'Ruiru', 'Malindi', 'Nyeri', 'Machakos', 'Meru'];
 
 export default function DiscoverPage() {
-    const { addLike, addMatch, addPass, isProfileSwiped, addSuperLike, clearSwipeHistory, blockedUsers } = useAuth();
+    const { user, addLike, addMatch, addPass, isProfileSwiped, addSuperLike, clearSwipeHistory, blockedUsers } = useAuth();
     const { location: userLocation, requestLocation } = useGeolocation();
+
+    // Gender-based profile label
+    const profileRoleLabel = user?.lookingFor === 'sugar_daddy' ? '💙 Sugar Daddy' : '💖 Sugar Mummy';
 
     const [allProfiles, setAllProfiles] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -502,6 +505,11 @@ export default function DiscoverPage() {
 
                             {/* Bottom info */}
                             <div className="absolute bottom-0 left-0 right-0 p-5 profile-overlay-text">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold text-white" style={{ background: user?.lookingFor === 'sugar_daddy' ? 'rgba(59,130,246,0.85)' : 'rgba(236,72,153,0.85)' }}>
+                                        {profileRoleLabel}
+                                    </span>
+                                </div>
                                 <h2 className="text-2xl font-bold text-white flex items-center gap-2 mb-0.5">
                                     {currentProfile.name || 'Sugar Mummy'}
                                     {currentProfile.age && <span className="text-white/70 text-lg font-normal">{currentProfile.age}</span>}

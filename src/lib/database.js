@@ -352,7 +352,7 @@ async function destroySession() {
 // User Account Operations
 // ============================================================
 
-async function registerUser({ email, password, displayName, gender, age, location }) {
+async function registerUser({ email, password, displayName, gender, age, location, lookingFor, isPublic }) {
     const existing = await dbGet(STORES.users, email);
     if (existing) {
         throw new Error('An account with this email already exists. Please log in.');
@@ -365,6 +365,7 @@ async function registerUser({ email, password, displayName, gender, age, locatio
         passwordHash,
         display_name: displayName || email.split('@')[0],
         gender: gender || '',
+        lookingFor: lookingFor || '', // sugar_mummy | sugar_daddy
         age: age || '',
         location: location || '',
         avatar_url: '',
@@ -372,7 +373,7 @@ async function registerUser({ email, password, displayName, gender, age, locatio
         bio: '',
         interests: [],
         orientation: '',
-        isPublic: true,
+        isPublic: isPublic !== undefined ? isPublic : true,
         isOnline: true,
         lastActive: new Date().toISOString(),
         profileCompletion: 0,

@@ -1,123 +1,62 @@
-// Genuine Sugarmummies — Service Worker v3.0.0
-const CACHE_NAME = 'gs-app-v3';
-const OFFLINE_URL = '/offline.html';
+// Service Worker for GS App — Push Notifications
+// Handles background notifications even when app is closed
 
-// Files to pre-cache on install
-const PRE_CACHE = [
-    '/',
-    '/offline.html',
-    '/gs-logo.svg',
-    '/manifest.json',
-];
+const APP_ICON = '/icon-192.png';
 
-// Install: pre-cache critical assets
+// Install event
 self.addEventListener('install', (event) => {
-    event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => {
-            return cache.addAll(PRE_CACHE);
-        })
-    );
     self.skipWaiting();
 });
 
-// Activate: clean up old caches
+// Activate event
 self.addEventListener('activate', (event) => {
-    event.waitUntil(
-        caches.keys().then((keys) =>
-            Promise.all(
-                keys
-                    .filter((key) => key !== CACHE_NAME)
-                    .map((key) => caches.delete(key))
-            )
-        )
-    );
-    self.clients.claim();
+    event.waitUntil(self.clients.claim());
 });
 
-// Fetch: different strategies based on request type
-self.addEventListener('fetch', (event) => {
-    const { request } = event;
-    const url = new URL(request.url);
+// Push notification event
+self.addEventListener('push', (event) => {
+    let data = { title: 'Genuine Sugarmummies', body: 'You have a new notification!', icon: APP_ICON };
 
-    // Skip non-GET requests
-    if (request.method !== 'GET') return;
-
-    // Skip chrome-extension and other protocols
-    if (!url.protocol.startsWith('http')) return;
-
-    // Navigation requests → Network-first, fall back to offline page
-    if (request.mode === 'navigate') {
-        event.respondWith(
-            fetch(request)
-                .then((response) => {
-                    // Cache a copy of successful navigations
-                    const clone = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => {
-                        cache.put(request, clone);
-                    });
-                    return response;
-                })
-                .catch(() => {
-                    return caches.match(request).then((cached) => {
-                        return cached || caches.match(OFFLINE_URL);
-                    });
-                })
-        );
-        return;
+    try {
+        if (event.data) {
+            const payload = event.data.json();
+            data = { ...data, ...payload };
+        }
+    } catch {
+        if (event.data) data.body = event.data.text();
     }
 
-    // API requests → Network-first with cache fallback
-    if (url.pathname.startsWith('/api/') || url.hostname.includes('genuinesugarmummies.co.ke') || url.hostname.includes('supabase.co')) {
-        event.respondWith(
-            fetch(request)
-                .then((response) => {
-                    const clone = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => {
-                        cache.put(request, clone);
-                    });
-                    return response;
-                })
-                .catch(() => {
-                    return caches.match(request);
-                })
-        );
-        return;
-    }
+    const options = {
+        body: data.body,
+        icon: data.icon || APP_ICON,
+        badge: APP_ICON,
+        vibrate: [200, 100, 200],
+        data: { url: data.url || '/', timestamp: Date.now() },
+        actions: [
+            { action: 'open', title: 'Open App' },
+            { action: 'dismiss', title: 'Dismiss' },
+        ],
+        tag: data.tag || 'gs-notification',
+        renotify: true,
+    };
 
-    // Static assets (images, CSS, JS, fonts) → Cache-first
-    if (
-        url.pathname.match(/\.(js|css|png|jpg|jpeg|webp|svg|gif|ico|woff|woff2|ttf|eot)$/) ||
-        url.hostname.includes('fonts.googleapis.com') ||
-        url.hostname.includes('fonts.gstatic.com')
-    ) {
-        event.respondWith(
-            caches.match(request).then((cached) => {
-                if (cached) return cached;
-                return fetch(request).then((response) => {
-                    const clone = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => {
-                        cache.put(request, clone);
-                    });
-                    return response;
-                }).catch(() => {
-                    // Return nothing if offline and not cached
-                    return new Response('', { status: 408, statusText: 'Offline' });
-                });
-            })
-        );
-        return;
-    }
+    event.waitUntil(self.registration.showNotification(data.title, options));
+});
 
-    // Everything else → Network-first
-    event.respondWith(
-        fetch(request)
-            .then((response) => {
-                const clone = response.clone();
-                caches.open(CACHE_NAME).then((cache) => {
-                    cache.put(request, clone);
-                });
-                return response;
-            })
-            .catch(() => caches.match(request))
+// Click notification → open app
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    if (event.action === 'dismiss') return;
+    const url = event.notification.data?.url || '/';
+    event.waitUntil(
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+            for (const client of clients) {
+                if (client.url.includes(self.location.origin)) {
+                    client.navigate(url);
+                    return client.focus();
+                }
+            }
+            return self.clients.openWindow(url);
+        })
     );
 });

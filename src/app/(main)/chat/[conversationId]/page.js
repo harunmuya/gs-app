@@ -377,9 +377,11 @@ export default function ChatConversationPage({ params }) {
                         </div>
                         <div className="flex-1">
                             <p className="text-xs font-bold text-text-primary">Chat limit reached</p>
-                            <p className="text-[10px] text-text-muted">Request connection approval to continue chatting</p>
+                            <p className="text-[10px] text-text-muted">Choose an option below to continue chatting</p>
                         </div>
                     </div>
+
+                    {/* Option 1: Admin Approval */}
                     <a
                         href={approvalUrl}
                         target="_blank"
@@ -388,8 +390,23 @@ export default function ChatConversationPage({ params }) {
                     >
                         <Shield size={16} /> Request Connection Approval
                     </a>
+
+                    {/* Divider */}
+                    <div className="flex items-center gap-3">
+                        <div className="flex-1 h-px bg-black/10" />
+                        <span className="text-[10px] text-text-muted uppercase tracking-wider font-medium">or</span>
+                        <div className="flex-1 h-px bg-black/10" />
+                    </div>
+
+                    {/* Option 2: Membership Upgrade */}
+                    <a
+                        href="/subscribe"
+                        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-sm border-2 border-gold text-gold hover:bg-gold/5 active:scale-95 transition-all"
+                    >
+                        <Crown size={16} /> Upgrade Membership
+                    </a>
                     <p className="text-[10px] text-text-muted text-center">
-                        Contact Admin Mary G on Telegram to get approved and unlock unlimited chat
+                        🌟 Premium members get <strong>unlimited chat</strong>, voice notes, priority matches & more
                     </p>
                 </motion.div>
             )}
