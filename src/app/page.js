@@ -21,7 +21,7 @@ export default function HomePage() {
     }, [user, guest, loading, router]);
 
     return (
-        <div className="min-h-dvh flex flex-col items-center justify-center bg-white relative overflow-hidden">
+        <div className="min-h-dvh flex flex-col items-center justify-center bg-bg-dark relative overflow-hidden">
             {/* Floating background accents */}
             <div className="absolute inset-0 pointer-events-none">
                 <div

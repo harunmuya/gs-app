@@ -18,7 +18,7 @@ export default function TopBar() {
     };
 
     return (
-        <header className="sticky top-0 z-40 w-full bg-white" style={{ borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+        <header className="sticky top-0 z-40 w-full glass" style={{ borderBottom: 'var(--card-border)' }}>
             <div className="flex items-center justify-between px-4 py-2.5 max-w-lg mx-auto">
                 <button
                     onClick={handleLogoClick}

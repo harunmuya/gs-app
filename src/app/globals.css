@@ -81,11 +81,11 @@
 }
 
 @theme {
-  --color-primary: #EA580C;
-  --color-primary-light: #FB923C;
-  --color-primary-dark: #C2410C;
-  --color-secondary: #F97316;
-  --color-accent: #F59E0B;
+  --color-primary: var(--color-primary);
+  --color-primary-light: var(--color-primary-light);
+  --color-primary-dark: var(--color-primary-dark);
+  --color-secondary: var(--color-secondary);
+  --color-accent: var(--color-accent);
   --color-bg-dark: var(--color-bg-dark);
   --color-bg-card: var(--color-bg-card);
   --color-bg-input: var(--color-bg-input);

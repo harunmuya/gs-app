@@ -103,7 +103,7 @@ export default function AlertsPage() {
                             return (
                                 <motion.div key={item.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(index * 0.03, 0.5) }}
                                     onClick={handleAlertClick}
-                                    className={`relative flex items-start gap-3.5 p-3.5 rounded-2xl transition-colors ${item.read ? 'bg-white' : 'bg-bg-card card-shadow'} ${hasProfile ? 'cursor-pointer hover:bg-surface/50' : ''}`}
+                                    className={`relative flex items-start gap-3.5 p-3.5 rounded-2xl transition-colors ${item.read ? 'bg-bg-dark' : 'bg-bg-card card-shadow'} ${hasProfile ? 'cursor-pointer hover:bg-surface/50' : ''}`}
                                     style={{ border: '1px solid rgba(0,0,0,0.06)' }}>
 
                                     {/* Avatar / Icon */}

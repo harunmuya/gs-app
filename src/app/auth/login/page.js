@@ -199,7 +199,7 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-dvh flex flex-col bg-white overflow-hidden">
+        <div className="min-h-dvh flex flex-col bg-bg-dark overflow-hidden">
             {/* Background */}
             <div className="fixed inset-0 pointer-events-none">
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-orange-100 rounded-full blur-[120px] opacity-60" />
@@ -243,7 +243,7 @@ export default function LoginPage() {
 
                 {/* Back button for steps 2+ */}
                 {isRegister && regStep > 1 && (
-                    <button onClick={goBack} className="absolute top-6 left-6 p-2 rounded-full bg-white/80 backdrop-blur-sm shadow-sm z-10">
+                    <button onClick={goBack} className="absolute top-6 left-6 p-2 rounded-full bg-bg-card/80 backdrop-blur-sm shadow-sm z-10">
                         <ArrowLeft size={20} className="text-text-primary" />
                     </button>
                 )}
@@ -256,11 +256,11 @@ export default function LoginPage() {
                             <div className="mb-4">
                                 <div className="flex rounded-2xl p-1" style={{ background: 'var(--color-surface)' }}>
                                     <button type="button" onClick={() => { setMode('login'); setRegStep(1); setError(''); }}
-                                        className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${mode === 'login' ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted'}`}>
+                                        className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${mode === 'login' ? 'bg-bg-card text-text-primary shadow-sm' : 'text-text-muted'}`}>
                                         <LogIn size={14} /> Sign In
                                     </button>
                                     <button type="button" onClick={() => { setMode('register'); setRegStep(1); setError(''); }}
-                                        className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${mode === 'register' ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted'}`}>
+                                        className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${mode === 'register' ? 'bg-bg-card text-text-primary shadow-sm' : 'text-text-muted'}`}>
                                         <UserPlus size={14} /> Register
                                     </button>
                                 </div>
@@ -353,7 +353,7 @@ export default function LoginPage() {
                                         onClick={() => handleGenderSelect(opt.value)}
                                         className={`flex flex-col items-center gap-3 p-6 rounded-3xl border-2 transition-all ${gender === opt.value
                                             ? 'border-primary bg-primary/5 shadow-lg shadow-primary/10'
-                                            : 'border-black/8 bg-white hover:border-primary/30'
+                                            : 'border-black/8 bg-bg-card hover:border-primary/30'
                                             }`}
                                     >
                                         <span className="text-5xl">{opt.icon}</span>
@@ -380,7 +380,7 @@ export default function LoginPage() {
                                         onClick={() => handleRoleSelect(opt.value)}
                                         className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 transition-all text-left ${lookingFor === opt.value
                                             ? 'border-primary bg-primary/5 shadow-lg'
-                                            : 'border-black/8 bg-white hover:border-primary/30'
+                                            : 'border-black/8 bg-bg-card hover:border-primary/30'
                                             }`}
                                     >
                                         <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${opt.color} flex items-center justify-center text-2xl shadow-md shrink-0`}>
@@ -435,7 +435,7 @@ export default function LoginPage() {
                             </div>
 
                             {/* Public profile toggle */}
-                            <div className="flex items-center justify-between p-4 rounded-2xl border border-black/8 bg-white">
+                            <div className="flex items-center justify-between p-4 rounded-2xl border border-black/8 bg-bg-card">
                                 <div>
                                     <p className="text-sm font-bold text-text-primary">Public Profile</p>
                                     <p className="text-xs text-text-muted">Show my profile in Members section</p>
@@ -444,7 +444,7 @@ export default function LoginPage() {
                                     type="button" onClick={() => setIsPublic(!isPublic)}
                                     className={`w-12 h-7 rounded-full transition-all relative ${isPublic ? 'bg-primary' : 'bg-black/15'}`}
                                 >
-                                    <div className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow-sm transition-all ${isPublic ? 'left-6' : 'left-1'}`} />
+                                    <div className={`absolute top-1 w-5 h-5 rounded-full bg-bg-card shadow-sm transition-all ${isPublic ? 'left-6' : 'left-1'}`} />
                                 </button>
                             </div>
 
@@ -452,14 +452,14 @@ export default function LoginPage() {
                             <div className="p-4 rounded-2xl bg-surface space-y-2">
                                 <p className="text-xs font-bold text-text-primary">Your Profile Summary</p>
                                 <div className="flex flex-wrap gap-2">
-                                    <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-white border border-black/8">
+                                    <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-bg-card border border-black/8">
                                         {gender === 'male' ? '👨 Male' : '👩 Female'}
                                     </span>
-                                    <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-white border border-black/8">
+                                    <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-bg-card border border-black/8">
                                         {lookingFor === 'sugar_mummy' ? '💖 Looking for Sugar Mummy' : '💙 Looking for Sugar Daddy'}
                                     </span>
-                                    {age && <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-white border border-black/8">🎂 {age} years</span>}
-                                    {location && <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-white border border-black/8">📍 {location}</span>}
+                                    {age && <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-bg-card border border-black/8">🎂 {age} years</span>}
+                                    {location && <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-bg-card border border-black/8">📍 {location}</span>}
                                 </div>
                             </div>
 

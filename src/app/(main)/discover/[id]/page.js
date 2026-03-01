@@ -123,7 +123,7 @@ export default function SingleProfilePage({ params }) {
 
     if (loading) {
         return (
-            <div className="min-h-dvh bg-white">
+            <div className="min-h-dvh bg-bg-dark">
                 <div className="animate-pulse">
                     <div className="h-[50vh]" style={{ background: 'var(--color-surface)' }} />
                     <div className="p-5 space-y-4">
@@ -159,7 +159,7 @@ export default function SingleProfilePage({ params }) {
     const freshLabel = profile.daysSincePost < 3 ? 'Newly Available' : profile.daysSincePost <= 14 ? 'Featured' : null;
 
     return (
-        <div className="min-h-dvh pb-8 bg-white">
+        <div className="min-h-dvh pb-8 bg-bg-dark">
             {/* Hero */}
             <div className="relative" style={{ height: '55vh', minHeight: '350px' }}>
                 {profile.imageUrl ? (
