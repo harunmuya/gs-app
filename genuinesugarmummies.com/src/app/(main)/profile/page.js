@@ -11,7 +11,6 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import UserAvatar from '@/components/UserAvatar';
 import VerifiedBadge from '@/components/VerifiedBadge';
-import EmailSubscribe from '@/components/EmailSubscribe';
 
 const PREFERENCE_LABELS = {
     sugar_mummy: '💃 Sugar Mummy',
@@ -299,8 +298,6 @@ export default function ProfilePage() {
                 </div>
             )}
 
-            {/* ===== EMAIL SUBSCRIPTION ===== */}
-            <EmailSubscribe />
 
             {/* ===== SETTINGS ===== */}
             {isLoggedIn && (

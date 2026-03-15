@@ -6,7 +6,6 @@ import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-mo
 import { Heart, X, Star, MapPin, RefreshCw, Sparkles, ChevronDown } from 'lucide-react';
 import BlurImage from '@/components/BlurImage';
 import SkeletonCard from '@/components/SkeletonCard';
-import EmailSubscribe from '@/components/EmailSubscribe';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -21,7 +20,6 @@ export default function DiscoverPage() {
     const [loading, setLoading] = useState(true);
     const [hasMore, setHasMore] = useState(true);
     const [direction, setDirection] = useState(null);
-    const [showSubscribe, setShowSubscribe] = useState(false);
     const fetchedPages = useRef(new Set());
 
     // Load cached profiles (only if they have valid data)
@@ -86,12 +84,6 @@ export default function DiscoverPage() {
         }
     }, [currentIndex, profiles.length, hasMore, page, fetchProfiles]);
 
-    // Show subscribe after 3 swipes
-    useEffect(() => {
-        if (currentIndex === 3 && !showSubscribe) {
-            setShowSubscribe(true);
-        }
-    }, [currentIndex, showSubscribe]);
 
     // Filter already-swiped
     const availableProfiles = profiles.filter(p => !isProfileSwiped(p.wpId));
@@ -172,28 +164,12 @@ export default function DiscoverPage() {
                 >
                     <RefreshCw size={18} /> Refresh Profiles
                 </button>
-                <div className="mt-8">
-                    <EmailSubscribe />
-                </div>
             </div>
         );
     }
 
     return (
         <div className="relative px-4 py-4">
-            {/* Subscribe banner */}
-            <AnimatePresence>
-                {showSubscribe && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="mb-4 overflow-hidden"
-                    >
-                        <EmailSubscribe compact onClose={() => setShowSubscribe(false)} />
-                    </motion.div>
-                )}
-            </AnimatePresence>
 
             {/* Card Stack */}
             <div className="relative w-full max-w-sm mx-auto" style={{ aspectRatio: '3/4' }}>

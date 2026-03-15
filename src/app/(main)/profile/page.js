@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import VerifiedBadge from '@/components/VerifiedBadge';
-import EmailSubscribe from '@/components/EmailSubscribe';
 import UserAvatar from '@/components/UserAvatar';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -440,9 +439,6 @@ export default function ProfilePage() {
                 <ToggleRow icon={Bell} label="Push Notifications" checked={settings.notifications} onChange={v => updateSettings({ notifications: v })} />
                 <ToggleRow icon={Mail} label="Email Notifications" checked={settings.emailNotifications} onChange={v => updateSettings({ emailNotifications: v })} />
             </div>
-
-            {/* Email Subscription */}
-            <EmailSubscribe />
 
             <button onClick={() => { signOut(); router.push('/auth/login'); }}
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-text-secondary transition-colors" style={{ background: 'var(--color-surface)' }}>
