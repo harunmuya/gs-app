@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, X, Star, MapPin, MessageCircle, RefreshCw, Sparkles, Navigation, Database, SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -78,8 +79,9 @@ async function fetchWithTimeout(url, ms = 8000) {
 const KENYAN_LOCATIONS = ['All', 'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Thika', 'Kiambu', 'Westlands', 'Kilimani', 'Karen', 'Langata', 'Ruiru', 'Malindi', 'Nyeri', 'Machakos', 'Meru'];
 
 export default function DiscoverPage() {
-    const { user, addLike, addMatch, addPass, isProfileSwiped, addSuperLike, clearSwipeHistory, blockedUsers } = useAuth();
+    const { user, guest, addLike, addMatch, addPass, isProfileSwiped, addSuperLike, clearSwipeHistory, blockedUsers } = useAuth();
     const { location: userLocation, requestLocation } = useGeolocation();
+    const router = useRouter();
 
     const [allProfiles, setAllProfiles] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -88,7 +90,7 @@ export default function DiscoverPage() {
     const [viewedAll, setViewedAll] = useState(false);
     const [dbTotal, setDbTotal] = useState(0);
     const [showFilters, setShowFilters] = useState(false);
-    const [previewProfile, setPreviewProfile] = useState(null);
+    const [showGuestModal, setShowGuestModal] = useState(false);
     const fetchingRef = useRef(false);
 
     // Filters
@@ -232,19 +234,34 @@ export default function DiscoverPage() {
     // Swipe handler
     const handleSwipe = useCallback((dir, profile) => {
         if (!profile) return;
+        // Guest restriction: require sign-in to interact
+        if (guest && !user) {
+            setShowGuestModal(true);
+            return;
+        }
         setSwipeDir(dir);
         if (dir === 'right') {
-            addLike(profile);
-            const s = matchScore(profile, userLocation);
-            if (s >= 70) addMatch(profile, s);
+            addLike(profile).then(res => {
+                if (res?.limitReached) {
+                    router.push('/subscribe');
+                } else {
+                    const s = matchScore(profile, userLocation);
+                    if (s >= 70) addMatch(profile, s);
+                }
+            });
         } else if (dir === 'up') {
-            addSuperLike(profile);
-            addMatch(profile, Math.min(99, matchScore(profile, userLocation) + 10));
+            addSuperLike(profile).then(res => {
+                if (res?.limitReached) {
+                    router.push('/subscribe');
+                } else {
+                    addMatch(profile, Math.min(99, matchScore(profile, userLocation) + 10));
+                }
+            });
         } else {
             addPass(profile.wpId);
         }
         setTimeout(() => setSwipeDir(null), 300);
-    }, [addLike, addMatch, addPass, addSuperLike, userLocation]);
+    }, [addLike, addMatch, addPass, addSuperLike, userLocation, guest, user, router]);
 
     // Touch gesture handlers
     const handleTouchStart = (e) => {
@@ -296,7 +313,11 @@ export default function DiscoverPage() {
     if (loading && allProfiles.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-4">
-                <div className="w-16 h-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+                <img
+                    src="/gs.png"
+                    alt="Loading"
+                    className="w-16 h-16 object-contain animate-pulse-zoom"
+                />
                 <p className="text-sm text-text-muted">Loading profiles...</p>
             </div>
         );
@@ -324,7 +345,11 @@ export default function DiscoverPage() {
     if (!currentProfile && allProfiles.length > 0) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-4">
-                <div className="w-16 h-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+                <img
+                    src="/gs.png"
+                    alt="Loading"
+                    className="w-16 h-16 object-contain animate-pulse-zoom"
+                />
                 <p className="text-sm text-text-muted">Loading more profiles...</p>
             </div>
         );
@@ -512,10 +537,20 @@ export default function DiscoverPage() {
                                         </span>
                                     )}
                                 </div>
-                                <h2 className="text-2xl font-bold text-white flex items-center gap-2 mb-0.5">
+                                <h2 className="text-2xl font-bold text-white flex items-center gap-2 mb-0.5 flex-wrap">
                                     {currentProfile.name || 'Sugar Mummy'}
                                     {currentProfile.age && <span className="text-white/70 text-lg font-normal">{currentProfile.age}</span>}
-                                    <VerifiedBadge size={20} />
+                                    <VerifiedBadge size={18} verified={true} />
+                                    {currentProfile.subscription?.plan && currentProfile.subscription.plan !== 'free' && (
+                                        <VerifiedBadge size={18} badgeText={currentProfile.subscription.plan} />
+                                    )}
+                                    {(() => {
+                                        const badgeVal = (currentProfile.customBadge || currentProfile.custom_badge || '').trim();
+                                        if (badgeVal && badgeVal.toLowerCase() !== 'verified' && badgeVal.toLowerCase() !== currentProfile.subscription?.plan?.toLowerCase()) {
+                                            return <VerifiedBadge size={18} badgeText={badgeVal} />;
+                                        }
+                                        return null;
+                                    })()}
                                 </h2>
                                 {currentProfile.location && (
                                     <div className="flex items-center gap-1 text-white/80 mb-1.5">
@@ -570,6 +605,45 @@ export default function DiscoverPage() {
             <p className="text-center text-[10px] text-text-muted mt-3">
                 {displayProfiles.length} of {allProfiles.length} profiles remaining
             </p>
+
+            {/* Guest Sign-Up Modal */}
+            <AnimatePresence>
+                {showGuestModal && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-6"
+                        onClick={() => setShowGuestModal(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-bg-card rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="w-16 h-16 rounded-full gradient-primary flex items-center justify-center mx-auto mb-4">
+                                <Heart size={28} className="text-white" fill="white" />
+                            </div>
+                            <h3 className="text-lg font-bold text-text-primary mb-2">Create a Free Account</h3>
+                            <p className="text-sm text-text-secondary mb-5">Sign up to like, match, and connect with profiles. It only takes 30 seconds!</p>
+                            <button
+                                onClick={() => router.push('/auth/login')}
+                                className="w-full py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 transition-all active:scale-[0.98] text-sm mb-3"
+                            >
+                                Create Free Account
+                            </button>
+                            <button
+                                onClick={() => setShowGuestModal(false)}
+                                className="text-xs text-text-muted hover:text-text-primary"
+                            >
+                                Continue Browsing
+                            </button>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

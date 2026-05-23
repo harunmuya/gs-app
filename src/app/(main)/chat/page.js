@@ -37,7 +37,7 @@ export default function ChatPage() {
     }
 
     return (
-        <div className="px-4 pt-4 pb-24">
+        <div className="px-4 pt-4 pb-24 min-h-dvh bg-bg">
             {/* Header */}
             <div className="flex items-center gap-2 mb-4">
                 <MessageCircle size={22} className="text-primary" />
@@ -57,15 +57,14 @@ export default function ChatPage() {
                     placeholder="Search conversations..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full py-2.5 pl-9 pr-4 rounded-xl text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    style={{ background: 'var(--color-surface)' }}
+                    className="w-full py-2.5 pl-9 pr-4 rounded-xl text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 bg-bg-secondary border border-border"
                 />
             </div>
 
             {/* Conversation List */}
             {filteredConvs.length === 0 ? (
                 <div className="text-center py-16 space-y-4">
-                    <div className="w-16 h-16 rounded-full bg-surface flex items-center justify-center mx-auto">
+                    <div className="w-16 h-16 rounded-full bg-bg-secondary flex items-center justify-center mx-auto border border-border">
                         <MessageCircle size={32} className="text-text-muted" />
                     </div>
                     <h2 className="text-lg font-bold text-text-primary">No conversations yet</h2>
@@ -84,26 +83,23 @@ export default function ChatPage() {
                         >
                             <Link
                                 href={`/chat/${encodeURIComponent(conv.id)}`}
-                                className="flex items-center gap-3 p-3 rounded-2xl transition-colors hover:bg-surface/50"
-                                style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}
+                                className="flex items-center gap-3 p-3 rounded-2xl transition-colors hover:bg-bg-secondary/40 border border-border bg-bg-card shadow-sm"
                             >
                                 <div className="relative">
-                                    <div className="w-12 h-12 rounded-full overflow-hidden bg-surface shrink-0">
+                                    <div className="w-12 h-12 rounded-full overflow-hidden bg-bg-secondary shrink-0">
                                         {conv.matchImage ? (
                                             <img src={conv.matchImage} alt="" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none'; }} />
                                         ) : (
                                             <UserAvatar name={conv.matchName} size={48} />
                                         )}
                                     </div>
-                                    {/* Online dot */}
-                                    <div className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-success border-2 border-white" />
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center justify-between">
                                         <h3 className="text-sm font-bold text-text-primary truncate">{conv.matchName}</h3>
                                         <span className="text-[10px] text-text-muted shrink-0">{formatTime(conv.lastMessageAt)}</span>
                                     </div>
-                                    <p className="text-xs text-text-muted truncate mt-0.5">
+                                    <p className="text-xs text-text-secondary truncate mt-0.5">
                                         {conv.lastMessage || 'Start a conversation...'}
                                     </p>
                                 </div>

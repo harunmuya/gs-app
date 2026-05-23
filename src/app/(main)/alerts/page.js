@@ -1,26 +1,27 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, Heart, Eye, MessageCircle, Bookmark, User, LogIn, Star, Flame, Zap, Phone, Send, BellOff, Sparkles, UserCheck } from 'lucide-react';
+import { Bell, Heart, Eye, MessageCircle, Bookmark, User, LogIn, Star, Flame, Zap, BellOff, UserCheck, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 const ICON_MAP = {
-    like: { icon: Heart, color: 'bg-primary', fill: true },
-    match: { icon: Star, color: 'bg-gold', fill: true },
-    message: { icon: MessageCircle, color: 'bg-accent', fill: false },
-    save: { icon: Bookmark, color: 'bg-blue-500', fill: true },
-    view: { icon: Eye, color: 'bg-surface-light', fill: false },
-    login: { icon: LogIn, color: 'bg-success', fill: false },
-    profile_update: { icon: UserCheck, color: 'bg-surface-light', fill: false },
-    photo_added: { icon: User, color: 'bg-primary', fill: false },
-    request_hookup: { icon: Flame, color: 'bg-red-500', fill: true },
-    connection_request: { icon: Zap, color: 'bg-blue-500', fill: true },
-    meetup_ready: { icon: Flame, color: 'bg-orange-500', fill: true },
+    like: { icon: Heart, color: 'var(--color-primary)', fill: true },
+    match: { icon: Star, color: 'var(--color-gold)', fill: true },
+    message: { icon: MessageCircle, color: 'var(--color-primary)', fill: false },
+    save: { icon: Bookmark, color: '#3B82F6', fill: true },
+    view: { icon: Eye, color: 'var(--color-surface)', fill: false },
+    login: { icon: LogIn, color: 'var(--color-success)', fill: false },
+    profile_update: { icon: UserCheck, color: 'var(--color-surface)', fill: false },
+    photo_added: { icon: User, color: 'var(--color-primary)', fill: false },
+    request_hookup: { icon: Flame, color: '#EF4444', fill: true },
+    connection_request: { icon: Zap, color: '#3B82F6', fill: true },
+    meetup_ready: { icon: Flame, color: '#F97316', fill: true },
 };
 
 const HOOKUP_TYPES = new Set(['request_hookup', 'connection_request', 'meetup_ready']);
+const LONG_MESSAGE_THRESHOLD = 100;
 
 // Telegram SVG icon component
 function TelegramIcon({ size = 14, className = '' }) {
@@ -31,8 +32,290 @@ function TelegramIcon({ size = 14, className = '' }) {
     );
 }
 
+function ActivityItem({ item, index, router, requestConnection, markSingleActivityRead }) {
+    const [expanded, setExpanded] = useState(false);
+    const [showFullMessage, setShowFullMessage] = useState(false);
+
+    const iconData = ICON_MAP[item.type] || ICON_MAP.view;
+    const Icon = iconData.icon;
+    const hasProfile = !!item.profileId;
+    const isHookup = HOOKUP_TYPES.has(item.type);
+    const isLongMessage = item.message && item.message.length > LONG_MESSAGE_THRESHOLD;
+
+    // Build Telegram link with auto-fill message
+    const profileName = (item.title || '').replace(/^.*?([\w]+)\s*(is|wants|sent|liked|viewed|match).*$/i, '$1').trim() || 'a sugar mummy';
+    const telegramMsg = encodeURIComponent(`Hi, need a match connection with ${profileName}`);
+    const telegramLink = `https://t.me/GSADMINMARYGAGENCY?text=${telegramMsg}`;
+
+    const handleToggleExpand = useCallback((e) => {
+        e.stopPropagation();
+        setExpanded(prev => {
+            const next = !prev;
+            if (next && !item.read && markSingleActivityRead) {
+                markSingleActivityRead(item.id);
+            }
+            return next;
+        });
+    }, [item.id, item.read, markSingleActivityRead]);
+
+    const handleShowMore = useCallback((e) => {
+        e.stopPropagation();
+        setShowFullMessage(prev => !prev);
+    }, []);
+
+    const handleViewProfile = useCallback((e) => {
+        e.stopPropagation();
+        if (hasProfile) {
+            router.push(`/discover/${item.profileId}`);
+        }
+    }, [hasProfile, item.profileId, router]);
+
+    const displayMessage = item.message
+        ? (isLongMessage && !showFullMessage ? item.message.slice(0, LONG_MESSAGE_THRESHOLD) + '…' : item.message)
+        : null;
+
+    return (
+        <motion.div
+            key={item.id}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: Math.min(index * 0.03, 0.5) }}
+            onClick={handleToggleExpand}
+            style={{
+                background: item.read ? 'var(--color-bg)' : 'var(--color-bg-card)',
+                border: '1px solid var(--color-border)',
+                boxShadow: item.read ? 'none' : 'var(--card-shadow)',
+                borderRadius: '16px',
+                padding: '14px',
+                cursor: 'pointer',
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0',
+                transition: 'background 0.2s ease, box-shadow 0.2s ease',
+            }}
+        >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+                {/* Avatar / Icon */}
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                    <div
+                        style={{
+                            width: '44px',
+                            height: '44px',
+                            borderRadius: '50%',
+                            overflow: 'hidden',
+                            background: 'var(--color-surface)',
+                            boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.05)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}
+                    >
+                        {item.image ? (
+                            <img src={item.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                            <Icon size={18} style={{ color: 'var(--color-text-muted)' }} />
+                        )}
+                    </div>
+                    <div
+                        style={{
+                            position: 'absolute',
+                            bottom: '-2px',
+                            right: '-2px',
+                            width: '20px',
+                            height: '20px',
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            border: '2px solid var(--color-bg-card)',
+                            background: iconData.color,
+                        }}
+                    >
+                        <Icon size={10} style={{ color: '#fff' }} fill={iconData.fill ? 'white' : 'none'} />
+                    </div>
+                </div>
+
+                {/* Content */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '2px' }}>
+                        <h3
+                            style={{
+                                fontSize: '14px',
+                                fontWeight: 600,
+                                color: item.read ? 'var(--color-text-secondary)' : 'var(--color-text-primary)',
+                                margin: 0,
+                                lineHeight: 1.4,
+                            }}
+                        >
+                            {item.title}
+                        </h3>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                            <span style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}>{formatTime(item.timestamp)}</span>
+                            {expanded
+                                ? <ChevronUp size={14} style={{ color: 'var(--color-text-muted)' }} />
+                                : <ChevronDown size={14} style={{ color: 'var(--color-text-muted)' }} />
+                            }
+                        </div>
+                    </div>
+
+                    {/* Message text — full by default, show more toggle for long ones */}
+                    {displayMessage && (
+                        <div>
+                            <p style={{ fontSize: '12px', color: 'var(--color-text-muted)', margin: 0, lineHeight: 1.5 }}>
+                                {displayMessage}
+                            </p>
+                            {isLongMessage && (
+                                <button
+                                    onClick={handleShowMore}
+                                    style={{
+                                        fontSize: '11px',
+                                        fontWeight: 600,
+                                        color: 'var(--color-primary)',
+                                        background: 'none',
+                                        border: 'none',
+                                        padding: '2px 0',
+                                        cursor: 'pointer',
+                                        marginTop: '2px',
+                                    }}
+                                >
+                                    {showFullMessage ? 'Show less' : 'Show more'}
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Hookup: Request Connection button */}
+                    {isHookup && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                requestConnection?.(profileName, item.profileId);
+                                window.open(telegramLink, '_blank');
+                            }}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                marginTop: '8px',
+                                padding: '6px 12px',
+                                borderRadius: '9999px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                color: '#fff',
+                                background: '#26A5E4',
+                                border: 'none',
+                                cursor: 'pointer',
+                                boxShadow: '0 2px 6px rgba(38,165,228,0.3)',
+                                transition: 'box-shadow 0.2s ease, transform 0.1s ease',
+                            }}
+                        >
+                            <TelegramIcon size={12} />
+                            Request Connection
+                        </button>
+                    )}
+                </div>
+
+                {/* Unread indicator */}
+                {!item.read && (
+                    <div
+                        style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            background: 'var(--color-primary)',
+                            flexShrink: 0,
+                            marginTop: '8px',
+                            animation: 'pulseSoft 2s ease-in-out infinite',
+                        }}
+                    />
+                )}
+            </div>
+
+            {/* Expanded details panel */}
+            <AnimatePresence>
+                {expanded && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2, ease: 'easeInOut' }}
+                        style={{ overflow: 'hidden' }}
+                    >
+                        <div
+                            style={{
+                                marginTop: '12px',
+                                paddingTop: '12px',
+                                borderTop: '1px solid var(--color-border)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '8px',
+                            }}
+                        >
+                            {/* Full title */}
+                            <div>
+                                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Title</span>
+                                <p style={{ fontSize: '13px', color: 'var(--color-text-primary)', margin: '2px 0 0', lineHeight: 1.5 }}>
+                                    {item.title}
+                                </p>
+                            </div>
+
+                            {/* Full message */}
+                            {item.message && (
+                                <div>
+                                    <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Message</span>
+                                    <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', margin: '2px 0 0', lineHeight: 1.5 }}>
+                                        {item.message}
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Timestamp */}
+                            {item.timestamp && (
+                                <div>
+                                    <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Time</span>
+                                    <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', margin: '2px 0 0' }}>
+                                        {formatFullTime(item.timestamp)}
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Profile link */}
+                            {hasProfile && (
+                                <button
+                                    onClick={handleViewProfile}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        marginTop: '4px',
+                                        padding: '8px 16px',
+                                        borderRadius: '12px',
+                                        fontSize: '12px',
+                                        fontWeight: 600,
+                                        color: '#fff',
+                                        background: 'var(--color-primary)',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        boxShadow: 'var(--btn-shadow)',
+                                        transition: 'opacity 0.2s ease, transform 0.1s ease',
+                                        alignSelf: 'flex-start',
+                                    }}
+                                >
+                                    <ExternalLink size={12} />
+                                    View Profile
+                                </button>
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </motion.div>
+    );
+}
+
 export default function AlertsPage() {
-    const { user, guest, activity, markActivityRead, requestConnection } = useAuth();
+    const { user, guest, activity, markActivityRead, markSingleActivityRead, requestConnection } = useAuth();
     const router = useRouter();
 
     const unreadCount = useMemo(() => activity.filter(a => !a.read).length, [activity]);
@@ -40,7 +323,10 @@ export default function AlertsPage() {
     if (guest && !user) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center space-y-6">
-                <div className="w-24 h-24 rounded-full bg-surface flex items-center justify-center mb-2">
+                <div
+                    className="w-24 h-24 rounded-full flex items-center justify-center mb-2"
+                    style={{ background: 'var(--color-surface)' }}
+                >
                     <Bell size={40} className="text-primary" />
                 </div>
                 <h2 className="text-2xl font-bold text-text-primary">Activity</h2>
@@ -60,7 +346,10 @@ export default function AlertsPage() {
                     <Bell size={22} className="text-primary" />
                     <h1 className="text-xl font-bold text-text-primary">Activity</h1>
                     {unreadCount > 0 && (
-                        <span className="text-[10px] font-bold text-white bg-primary rounded-full w-5 h-5 flex items-center justify-center">
+                        <span
+                            className="text-[10px] font-bold text-white rounded-full w-5 h-5 flex items-center justify-center"
+                            style={{ background: 'var(--color-primary)' }}
+                        >
                             {unreadCount > 9 ? '9+' : unreadCount}
                         </span>
                     )}
@@ -74,85 +363,28 @@ export default function AlertsPage() {
 
             {activity.length === 0 ? (
                 <div className="text-center py-16 space-y-4">
-                    <div className="w-16 h-16 rounded-full bg-surface flex items-center justify-center mx-auto">
+                    <div
+                        className="w-16 h-16 rounded-full flex items-center justify-center mx-auto"
+                        style={{ background: 'var(--color-surface)' }}
+                    >
                         <BellOff size={32} className="text-text-muted" />
                     </div>
                     <h2 className="text-lg font-bold text-text-primary">No activity yet</h2>
                     <p className="text-text-secondary text-sm">Start swiping to see your activity here!</p>
                 </div>
             ) : (
-                <div className="space-y-2">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <AnimatePresence>
-                        {activity.map((item, index) => {
-                            const iconData = ICON_MAP[item.type] || ICON_MAP.view;
-                            const Icon = iconData.icon;
-                            const hasProfile = !!item.profileId;
-                            const isHookup = HOOKUP_TYPES.has(item.type);
-
-                            // Build Telegram link with auto-fill message
-                            const profileName = (item.title || '').replace(/^.*?([\w]+)\s*(is|wants|sent|liked|viewed|match).*$/i, '$1').trim() || 'a sugar mummy';
-                            const telegramMsg = encodeURIComponent(`Hi, need a match connection with ${profileName}`);
-                            const telegramLink = `https://t.me/GSADMINMARYGAGENCY?text=${telegramMsg}`;
-
-                            const handleAlertClick = () => {
-                                if (hasProfile) {
-                                    router.push(`/discover/${item.profileId}`);
-                                }
-                            };
-
-                            return (
-                                <motion.div key={item.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(index * 0.03, 0.5) }}
-                                    onClick={handleAlertClick}
-                                    className={`relative flex items-start gap-3.5 p-3.5 rounded-2xl transition-colors ${item.read ? 'bg-bg-dark' : 'bg-bg-card card-shadow'} ${hasProfile ? 'cursor-pointer hover:bg-surface/50' : ''}`}
-                                    style={{ border: '1px solid rgba(0,0,0,0.06)' }}>
-
-                                    {/* Avatar / Icon */}
-                                    <div className="relative shrink-0">
-                                        <div className="w-11 h-11 rounded-full overflow-hidden bg-surface ring-1 ring-black/5">
-                                            {item.image ? (
-                                                <img src={item.image} alt="" className="w-full h-full object-cover" />
-                                            ) : (
-                                                <div className="w-full h-full flex items-center justify-center">
-                                                    <Icon size={18} className="text-text-muted" />
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className={`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center border-2 border-white ${iconData.color}`}>
-                                            <Icon size={10} className="text-white" fill={iconData.fill ? 'white' : 'none'} />
-                                        </div>
-                                    </div>
-
-                                    {/* Content */}
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between gap-2 mb-0.5">
-                                            <h3 className={`text-sm font-semibold truncate ${item.read ? 'text-text-secondary' : 'text-text-primary'}`}>
-                                                {item.title}
-                                            </h3>
-                                            <span className="text-[10px] text-text-muted shrink-0">{formatTime(item.timestamp)}</span>
-                                        </div>
-                                        {item.message && <p className="text-xs text-text-muted truncate">{item.message}</p>}
-
-                                        {/* Request Connection button — opens Telegram (uses button to avoid nested <a>) */}
-                                        {isHookup && (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    requestConnection?.(profileName, item.profileId);
-                                                    window.open(telegramLink, '_blank');
-                                                }}
-                                                className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-full text-[11px] font-semibold text-white shadow-sm hover:shadow-md transition-all active:scale-95"
-                                                style={{ background: '#26A5E4' }}
-                                            >
-                                                <TelegramIcon size={12} />
-                                                Request Connection
-                                            </button>
-                                        )}
-                                    </div>
-
-                                    {!item.read && <div className="w-2 h-2 rounded-full bg-primary shrink-0 animate-pulse mt-2" />}
-                                </motion.div>
-                            );
-                        })}
+                        {activity.map((item, index) => (
+                            <ActivityItem
+                                key={item.id}
+                                item={item}
+                                index={index}
+                                router={router}
+                                requestConnection={requestConnection}
+                                markSingleActivityRead={markSingleActivityRead}
+                            />
+                        ))}
                     </AnimatePresence>
                 </div>
             )}
@@ -167,4 +399,21 @@ function formatTime(iso) {
     if (diff < 3600) return `${Math.floor(diff / 60)}m`;
     if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
     return `${Math.floor(diff / 86400)}d`;
+}
+
+function formatFullTime(iso) {
+    if (!iso) return '';
+    try {
+        const date = new Date(iso);
+        return date.toLocaleString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+        });
+    } catch {
+        return iso;
+    }
 }

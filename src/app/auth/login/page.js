@@ -1,13 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import Logo from '@/components/Logo';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Sparkles, ArrowRight, ArrowLeft, User, Mail, Heart, Lock, Eye, EyeOff,
-    UserPlus, LogIn, MapPin, Target, Crown, Search
+    UserPlus, LogIn, MapPin, Target, Search, Shield, Users, CheckCircle
 } from 'lucide-react';
 
 // Kenyan locations for reverse geocode fallback
@@ -48,11 +47,12 @@ function findNearestCity(lat, lng) {
     return nearest;
 }
 
-export default function LoginPage() {
-    const { signIn, signUp, skipLogin } = useAuth();
+function LoginPageInner() {
+    const { signIn, signUp, signInWithGoogle, resetPassword, skipLogin } = useAuth();
     const router = useRouter();
+    const searchParams = useSearchParams();
 
-    // Mode: login | register
+    // Mode: login | register | forgot
     const [mode, setMode] = useState('login');
     // Registration step: 1=credentials, 2=gender, 3=role, 4=age+location
     const [regStep, setRegStep] = useState(1);
@@ -65,18 +65,27 @@ export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false);
 
     // Step 2-4 fields
-    const [gender, setGender] = useState(''); // male | female
-    const [lookingFor, setLookingFor] = useState(''); // sugar_mummy | sugar_daddy
+    const [gender, setGender] = useState('');
+    const [lookingFor, setLookingFor] = useState('');
     const [age, setAge] = useState('');
     const [location, setLocation] = useState('');
     const [detectingLocation, setDetectingLocation] = useState(false);
     const [isPublic, setIsPublic] = useState(true);
 
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
     const [loading, setLoading] = useState(false);
+    const [googleLoading, setGoogleLoading] = useState(false);
 
     const isRegister = mode === 'register';
-    const totalSteps = 4;
+
+    // Check for OAuth error in URL params
+    useEffect(() => {
+        const errorParam = searchParams?.get('error');
+        if (errorParam) {
+            setError(decodeURIComponent(errorParam));
+        }
+    }, [searchParams]);
 
     // Auto-detect location
     const detectLocation = () => {
@@ -92,8 +101,7 @@ export default function LoginPage() {
                 setLocation(city);
                 setDetectingLocation(false);
             },
-            (err) => {
-                console.warn('Geolocation error:', err);
+            () => {
                 setLocation('Nairobi');
                 setDetectingLocation(false);
             },
@@ -107,18 +115,31 @@ export default function LoginPage() {
         else if (gender === 'female') setLookingFor('sugar_daddy');
     }, [gender]);
 
-    // Handle step 1 submission (login or first reg step)
+    // Handle Google Sign-In
+    const handleGoogleSignIn = async () => {
+        setGoogleLoading(true);
+        setError('');
+        try {
+            await signInWithGoogle();
+        } catch (err) {
+            setError(err.message || 'Google sign-in failed. Please try again.');
+            setGoogleLoading(false);
+        }
+    };
+
+    // Handle step 1 submission
     const handleStep1 = (e) => {
         e.preventDefault();
         setError('');
+        setSuccess('');
         if (!email.trim()) { setError('Please enter your email'); return; }
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Please enter a valid email'); return; }
         if (!password || password.length < 6) { setError('Password must be at least 6 characters'); return; }
 
         if (isRegister) {
             if (password !== confirmPassword) { setError('Passwords do not match'); return; }
-            if (!displayName.trim()) { setError('Please enter your name'); return; }
-            setRegStep(2); // Go to gender selection
+            if (!displayName.trim() || displayName.trim().length < 2) { setError('Please enter your full name (at least 2 characters)'); return; }
+            setRegStep(2);
         } else {
             handleLogin();
         }
@@ -130,7 +151,27 @@ export default function LoginPage() {
             await signIn(email, password);
             router.push('/discover');
         } catch (err) {
-            setError(err.message || 'Invalid credentials. Try again.');
+            setError(err.message || 'Invalid credentials. Please try again.');
+            setLoading(false);
+        }
+    };
+
+    // Handle forgot password
+    const handleForgotPassword = async (e) => {
+        e.preventDefault();
+        setError('');
+        setSuccess('');
+        if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            setError('Please enter a valid email address');
+            return;
+        }
+        setLoading(true);
+        try {
+            await resetPassword(email);
+            setSuccess('Password reset link sent! Check your email inbox.');
+            setLoading(false);
+        } catch (err) {
+            setError(err.message || 'Failed to send reset email. Please try again.');
             setLoading(false);
         }
     };
@@ -139,7 +180,6 @@ export default function LoginPage() {
     const handleGenderSelect = (g) => {
         setGender(g);
         setError('');
-        // Small delay for animation
         setTimeout(() => setRegStep(3), 300);
     };
 
@@ -149,12 +189,11 @@ export default function LoginPage() {
         setError('');
         setTimeout(() => {
             setRegStep(4);
-            // Auto-detect location when reaching step 4
             detectLocation();
         }, 300);
     };
 
-    // Handle step 4: age + location → complete registration
+    // Handle step 4: complete registration
     const handleCompleteRegistration = async () => {
         setError('');
         const ageNum = parseInt(age);
@@ -190,7 +229,10 @@ export default function LoginPage() {
 
     const goBack = () => {
         setError('');
-        if (isRegister && regStep > 1) {
+        setSuccess('');
+        if (mode === 'forgot') {
+            setMode('login');
+        } else if (isRegister && regStep > 1) {
             setRegStep(regStep - 1);
         } else {
             setMode('login');
@@ -198,16 +240,39 @@ export default function LoginPage() {
         }
     };
 
+    // Password strength indicator
+    const getPasswordStrength = (pwd) => {
+        if (!pwd) return { level: 0, label: '', color: '' };
+        let score = 0;
+        if (pwd.length >= 6) score++;
+        if (pwd.length >= 8) score++;
+        if (/[A-Z]/.test(pwd)) score++;
+        if (/[0-9]/.test(pwd)) score++;
+        if (/[^A-Za-z0-9]/.test(pwd)) score++;
+        if (score <= 1) return { level: 1, label: 'Weak', color: 'bg-danger' };
+        if (score <= 3) return { level: 2, label: 'Fair', color: 'bg-gold' };
+        return { level: 3, label: 'Strong', color: 'bg-success' };
+    };
+
+    const pwdStrength = isRegister ? getPasswordStrength(password) : null;
+
     return (
-        <div className="min-h-dvh flex flex-col bg-bg-dark overflow-hidden">
-            {/* Background */}
+        <div className="min-h-dvh flex flex-col bg-bg overflow-hidden relative">
+            {/* Background — uses CSS variables for dark mode compat */}
             <div className="fixed inset-0 pointer-events-none">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-orange-100 rounded-full blur-[120px] opacity-60" />
-                <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-amber-50 rounded-full blur-[100px] opacity-50" />
-                <div className="absolute top-1/3 left-0 w-[300px] h-[300px] bg-orange-50 rounded-full blur-[80px] opacity-40" />
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full blur-[120px] opacity-25" style={{ background: 'var(--color-primary)' }} />
+                <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full blur-[100px] opacity-15" style={{ background: 'var(--color-gold)' }} />
+                <div className="absolute top-1/3 left-0 w-[300px] h-[300px] rounded-full blur-[80px] opacity-10" style={{ background: 'var(--color-primary)' }} />
             </div>
 
             <div className="relative flex-1 flex flex-col items-center justify-center px-6 py-8">
+                {/* Back button */}
+                {(mode === 'forgot' || (isRegister && regStep > 1)) && (
+                    <button onClick={goBack} className="absolute top-6 left-6 p-2 rounded-full bg-bg-card/80 backdrop-blur-sm shadow-sm z-10 border border-border">
+                        <ArrowLeft size={20} className="text-text-primary" />
+                    </button>
+                )}
+
                 {/* Logo */}
                 <motion.div
                     initial={{ y: -30, opacity: 0 }}
@@ -215,51 +280,105 @@ export default function LoginPage() {
                     transition={{ duration: 0.6 }}
                     className="flex flex-col items-center mb-6"
                 >
-                    <div className="relative mb-3">
-                        <Logo size={64} />
-                        <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 2, repeat: Infinity }} className="absolute -top-2 -right-2">
-                            <Heart size={16} className="text-primary" fill="currentColor" />
-                        </motion.div>
+                    {/* GS Icon */}
+                    <div className="mb-3">
+                        <img
+                            src="/gs.png"
+                            alt="GS"
+                            className="w-14 h-14 object-contain"
+                        />
                     </div>
-                    <h1 className="text-xl font-extrabold text-gradient mb-0.5 text-center">
-                        {isRegister ? (regStep === 1 ? 'Create Account' : regStep === 2 ? 'About You' : regStep === 3 ? 'What Are You Looking For?' : 'Almost Done!') : 'Welcome Back'}
+
+                    {/* Brand Logo Image */}
+                    <img
+                        src="/genuine-logo.png"
+                        alt="Genuine Sugarmummies"
+                        className="h-8 object-contain mb-2"
+                    />
+
+                    <h1 className="text-lg font-extrabold text-gradient mb-0.5 text-center">
+                        {mode === 'forgot' ? 'Reset Password' :
+                         isRegister ? (regStep === 1 ? 'Create Account' : regStep === 2 ? 'About You' : regStep === 3 ? 'What Are You Looking For?' : 'Almost Done!') :
+                         'Welcome Back'}
                     </h1>
-                    <h2 className="text-base font-bold text-text-primary mb-1 text-center">Genuine Sugarmummies</h2>
+
                     {/* Step indicator for registration */}
                     {isRegister && regStep > 1 && (
                         <div className="flex items-center gap-1.5 mt-2">
                             {[1, 2, 3, 4].map(s => (
-                                <div key={s} className={`h-1.5 rounded-full transition-all ${s <= regStep ? 'w-6 gradient-primary' : 'w-4 bg-black/10'}`} />
+                                <div key={s} className={`h-1.5 rounded-full transition-all ${s <= regStep ? 'w-6 gradient-primary' : 'w-4 bg-border'}`} />
                             ))}
                         </div>
                     )}
-                    {!isRegister && (
-                        <p className="text-text-secondary text-xs flex items-center gap-1.5 text-center">
-                            <Sparkles size={12} className="text-gold shrink-0" />
+
+                    {mode === 'login' && (
+                        <p className="text-xs flex items-center gap-1.5 text-center mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                            <Sparkles size={12} style={{ color: 'var(--color-gold)' }} className="shrink-0" />
                             Kenya&apos;s #1 dating app for real connections
                         </p>
                     )}
                 </motion.div>
 
-                {/* Back button for steps 2+ */}
-                {isRegister && regStep > 1 && (
-                    <button onClick={goBack} className="absolute top-6 left-6 p-2 rounded-full bg-bg-card/80 backdrop-blur-sm shadow-sm z-10">
-                        <ArrowLeft size={20} className="text-text-primary" />
-                    </button>
-                )}
-
                 <AnimatePresence mode="wait">
+                    {/* ========== FORGOT PASSWORD ========== */}
+                    {mode === 'forgot' && (
+                        <motion.div key="forgot" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }} transition={{ duration: 0.3 }} className="w-full max-w-sm">
+                            <form onSubmit={handleForgotPassword} className="space-y-3">
+                                <p className="text-sm text-text-secondary text-center mb-4">
+                                    Enter your email address and we&apos;ll send you a password reset link.
+                                </p>
+                                <div className="relative">
+                                    <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
+                                    <input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required
+                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
+                                </div>
+                                <button type="submit" disabled={loading}
+                                    className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 transition-all active:scale-[0.98] disabled:opacity-60 text-sm">
+                                    <Mail size={18} />
+                                    {loading ? 'Sending...' : 'Send Reset Link'}
+                                </button>
+                            </form>
+                        </motion.div>
+                    )}
+
                     {/* ========== STEP 1: Login / Credentials ========== */}
                     {(mode === 'login' || (isRegister && regStep === 1)) && (
                         <motion.div key="step1" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }} transition={{ duration: 0.3 }} className="w-full max-w-sm">
+
+                            {/* Google Sign-In — prominent CTA */}
+                            <button
+                                type="button"
+                                onClick={handleGoogleSignIn}
+                                disabled={googleLoading || loading}
+                                className="w-full flex items-center justify-center gap-3 py-3.5 rounded-2xl font-semibold text-text-primary bg-bg-card border border-border hover:shadow-md transition-all active:scale-[0.98] disabled:opacity-60 text-sm mb-4"
+                            >
+                                {googleLoading ? (
+                                    <img src="/gs.png" alt="" className="w-5 h-5 object-contain animate-pulse-zoom" />
+                                ) : (
+                                    <svg width="20" height="20" viewBox="0 0 24 24">
+                                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+                                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                                    </svg>
+                                )}
+                                {googleLoading ? 'Connecting...' : 'Continue with Google'}
+                            </button>
+
+                            <div className="flex items-center gap-3 px-2 mb-4">
+                                <div className="flex-1 h-px bg-border" />
+                                <span className="text-xs text-text-muted uppercase tracking-wider font-medium">or use email</span>
+                                <div className="flex-1 h-px bg-border" />
+                            </div>
+
                             {/* Toggle Login/Register */}
                             <div className="mb-4">
-                                <div className="flex rounded-2xl p-1" style={{ background: 'var(--color-surface)' }}>
-                                    <button type="button" onClick={() => { setMode('login'); setRegStep(1); setError(''); }}
+                                <div className="flex rounded-2xl p-1 bg-surface">
+                                    <button type="button" onClick={() => { setMode('login'); setRegStep(1); setError(''); setSuccess(''); }}
                                         className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${mode === 'login' ? 'bg-bg-card text-text-primary shadow-sm' : 'text-text-muted'}`}>
                                         <LogIn size={14} /> Sign In
                                     </button>
-                                    <button type="button" onClick={() => { setMode('register'); setRegStep(1); setError(''); }}
+                                    <button type="button" onClick={() => { setMode('register'); setRegStep(1); setError(''); setSuccess(''); }}
                                         className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${mode === 'register' ? 'bg-bg-card text-text-primary shadow-sm' : 'text-text-muted'}`}>
                                         <UserPlus size={14} /> Register
                                     </button>
@@ -273,7 +392,7 @@ export default function LoginPage() {
                                         <motion.div key="name" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="relative overflow-hidden">
                                             <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted z-10" />
                                             <input type="text" placeholder="Your full name" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
-                                                className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-black/8 text-sm" />
+                                                className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
                                         </motion.div>
                                     )}
                                 </AnimatePresence>
@@ -282,18 +401,32 @@ export default function LoginPage() {
                                 <div className="relative">
                                     <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
                                     <input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required
-                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-black/8 text-sm" />
+                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
                                 </div>
 
                                 {/* Password */}
                                 <div className="relative">
                                     <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
                                     <input type={showPassword ? 'text' : 'password'} placeholder="Password (min 6 characters)" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6}
-                                        className="w-full py-3.5 pl-12 pr-12 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-black/8 text-sm" />
+                                        className="w-full py-3.5 pl-12 pr-12 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
                                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted">
                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                     </button>
                                 </div>
+
+                                {/* Password strength (register only) */}
+                                {isRegister && password && (
+                                    <div className="flex items-center gap-2 px-1">
+                                        <div className="flex-1 flex gap-1">
+                                            {[1, 2, 3].map(i => (
+                                                <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i <= pwdStrength.level ? pwdStrength.color : 'bg-border'}`} />
+                                            ))}
+                                        </div>
+                                        <span className={`text-[10px] font-medium ${pwdStrength.level === 1 ? 'text-danger' : pwdStrength.level === 2 ? 'text-gold' : 'text-success'}`}>
+                                            {pwdStrength.label}
+                                        </span>
+                                    </div>
+                                )}
 
                                 {/* Confirm password (register) */}
                                 <AnimatePresence mode="wait">
@@ -301,7 +434,7 @@ export default function LoginPage() {
                                         <motion.div key="confirm" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="relative overflow-hidden">
                                             <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted z-10" />
                                             <input type={showPassword ? 'text' : 'password'} placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-                                                className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-black/8 text-sm" />
+                                                className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
                                         </motion.div>
                                     )}
                                 </AnimatePresence>
@@ -316,23 +449,40 @@ export default function LoginPage() {
 
                                 {!isRegister && (
                                     <p className="text-center">
-                                        <button type="button" className="text-xs text-primary font-medium hover:underline">Forgot your password?</button>
+                                        <button type="button" onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }} className="text-xs text-primary font-medium hover:underline">
+                                            Forgot your password?
+                                        </button>
                                     </p>
                                 )}
 
                                 <div className="flex items-center gap-3 px-2 pt-1">
-                                    <div className="flex-1 h-px bg-black/10" />
+                                    <div className="flex-1 h-px bg-border" />
                                     <span className="text-xs text-text-muted uppercase tracking-wider font-medium">or</span>
-                                    <div className="flex-1 h-px bg-black/10" />
+                                    <div className="flex-1 h-px bg-border" />
                                 </div>
 
                                 <button type="button" onClick={handleSkip} disabled={loading}
-                                    className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-text-primary bg-surface hover:bg-surface-light transition-all active:scale-[0.98] border border-black/8 text-sm">
+                                    className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-text-primary bg-surface hover:bg-bg-input transition-all active:scale-[0.98] border border-border text-sm">
                                     <User size={18} /> Browse as Guest <ArrowRight size={16} />
                                 </button>
 
-                                <p className="text-center text-[10px] text-text-muted mt-4 px-4 leading-relaxed">
-                                    By continuing, you agree to our <a href="#" className="underline">Terms of Service</a> and <a href="#" className="underline">Privacy Policy</a>
+                                {/* Trust signals */}
+                                <div className="flex items-center justify-center gap-4 pt-2">
+                                    <span className="flex items-center gap-1 text-[10px] text-text-muted">
+                                        <Shield size={10} className="text-success" /> Encrypted
+                                    </span>
+                                    <span className="flex items-center gap-1 text-[10px] text-text-muted">
+                                        <Users size={10} className="text-primary" /> 10K+ Members
+                                    </span>
+                                    <span className="flex items-center gap-1 text-[10px] text-text-muted">
+                                        <CheckCircle size={10} className="text-gold" /> Verified
+                                    </span>
+                                </div>
+
+                                <p className="text-center text-[10px] text-text-muted mt-3 px-4 leading-relaxed">
+                                    By continuing, you agree to our{' '}
+                                    <a href="https://genuinesugarmummies.co.ke/terms-of-service/" className="underline hover:text-primary">Terms of Service</a> and{' '}
+                                    <a href="https://genuinesugarmummies.co.ke/privacy-policy/" className="underline hover:text-primary">Privacy Policy</a>
                                 </p>
                             </form>
                         </motion.div>
@@ -353,7 +503,7 @@ export default function LoginPage() {
                                         onClick={() => handleGenderSelect(opt.value)}
                                         className={`flex flex-col items-center gap-3 p-6 rounded-3xl border-2 transition-all ${gender === opt.value
                                             ? 'border-primary bg-primary/5 shadow-lg shadow-primary/10'
-                                            : 'border-black/8 bg-bg-card hover:border-primary/30'
+                                            : 'border-border bg-bg-card hover:border-primary/30'
                                             }`}
                                     >
                                         <span className="text-5xl">{opt.icon}</span>
@@ -380,7 +530,7 @@ export default function LoginPage() {
                                         onClick={() => handleRoleSelect(opt.value)}
                                         className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 transition-all text-left ${lookingFor === opt.value
                                             ? 'border-primary bg-primary/5 shadow-lg'
-                                            : 'border-black/8 bg-bg-card hover:border-primary/30'
+                                            : 'border-border bg-bg-card hover:border-primary/30'
                                             }`}
                                     >
                                         <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${opt.color} flex items-center justify-center text-2xl shadow-md shrink-0`}>
@@ -408,7 +558,7 @@ export default function LoginPage() {
                                 <input
                                     type="number" min="18" max="80" placeholder="e.g. 25"
                                     value={age} onChange={(e) => setAge(e.target.value)}
-                                    className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 border border-black/8 text-sm"
+                                    className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
                                 />
                             </div>
 
@@ -419,7 +569,7 @@ export default function LoginPage() {
                                     <MapPin size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
                                     <select
                                         value={location} onChange={(e) => setLocation(e.target.value)}
-                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-black/8 text-sm appearance-none"
+                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm appearance-none"
                                     >
                                         <option value="">Select location...</option>
                                         {KENYAN_CITIES.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
@@ -435,14 +585,14 @@ export default function LoginPage() {
                             </div>
 
                             {/* Public profile toggle */}
-                            <div className="flex items-center justify-between p-4 rounded-2xl border border-black/8 bg-bg-card">
+                            <div className="flex items-center justify-between p-4 rounded-2xl border border-border bg-bg-card">
                                 <div>
                                     <p className="text-sm font-bold text-text-primary">Public Profile</p>
                                     <p className="text-xs text-text-muted">Show my profile in Members section</p>
                                 </div>
                                 <button
                                     type="button" onClick={() => setIsPublic(!isPublic)}
-                                    className={`w-12 h-7 rounded-full transition-all relative ${isPublic ? 'bg-primary' : 'bg-black/15'}`}
+                                    className={`w-12 h-7 rounded-full transition-all relative ${isPublic ? 'bg-primary' : 'bg-border'}`}
                                 >
                                     <div className={`absolute top-1 w-5 h-5 rounded-full bg-bg-card shadow-sm transition-all ${isPublic ? 'left-6' : 'left-1'}`} />
                                 </button>
@@ -452,14 +602,14 @@ export default function LoginPage() {
                             <div className="p-4 rounded-2xl bg-surface space-y-2">
                                 <p className="text-xs font-bold text-text-primary">Your Profile Summary</p>
                                 <div className="flex flex-wrap gap-2">
-                                    <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-bg-card border border-black/8">
+                                    <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-bg-card border border-border">
                                         {gender === 'male' ? '👨 Male' : '👩 Female'}
                                     </span>
-                                    <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-bg-card border border-black/8">
+                                    <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-bg-card border border-border">
                                         {lookingFor === 'sugar_mummy' ? '💖 Looking for Sugar Mummy' : '💙 Looking for Sugar Daddy'}
                                     </span>
-                                    {age && <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-bg-card border border-black/8">🎂 {age} years</span>}
-                                    {location && <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-bg-card border border-black/8">📍 {location}</span>}
+                                    {age && <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-bg-card border border-border">🎂 {age} years</span>}
+                                    {location && <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-bg-card border border-border">📍 {location}</span>}
                                 </div>
                             </div>
 
@@ -476,7 +626,7 @@ export default function LoginPage() {
                     )}
                 </AnimatePresence>
 
-                {/* Error */}
+                {/* Error / Success messages */}
                 <AnimatePresence>
                     {error && (
                         <motion.p initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
@@ -484,8 +634,31 @@ export default function LoginPage() {
                             {error}
                         </motion.p>
                     )}
+                    {success && (
+                        <motion.p initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                            className="mt-3 text-xs text-center text-white bg-success/90 rounded-xl py-2.5 px-4 shadow-lg max-w-sm w-full">
+                            {success}
+                        </motion.p>
+                    )}
                 </AnimatePresence>
             </div>
         </div>
+    );
+}
+
+export default function LoginPage() {
+    return (
+        <Suspense fallback={
+            <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg, #fff)' }}>
+                <img
+                    src="/gs.png"
+                    alt="Loading"
+                    style={{ width: 56, height: 56, objectFit: 'contain', animation: 'pulseZoom 1.2s ease-in-out infinite' }}
+                />
+                <style>{`@keyframes pulseZoom{0%,100%{transform:scale(.88);opacity:.6}50%{transform:scale(1.1);opacity:1}}`}</style>
+            </div>
+        }>
+            <LoginPageInner />
+        </Suspense>
     );
 }

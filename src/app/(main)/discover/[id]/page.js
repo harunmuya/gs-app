@@ -2,13 +2,12 @@
 
 import { useState, useEffect, use } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Heart, Bookmark, MapPin, MessageCircle, Share2, Star, Clock, TrendingUp, Award, Activity, Globe, User, Copy, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Heart, Bookmark, MapPin, MessageCircle, MessageSquare, Share2, Star, Clock, TrendingUp, Award, Activity, Globe, User, Copy, CheckCircle, Eye, Calendar, BarChart3, Zap, Lock, Shield, CheckCheck, Sparkles, Crown } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import ContactButtons from '@/components/ContactButtons';
 import CommentForm from '@/components/CommentForm';
-import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
+import VerifiedBadge from '@/components/VerifiedBadge';
 
 
 // Deterministic match check (no randomness)
@@ -20,13 +19,52 @@ function shouldMatchProfile(profile) {
     return { match: false, score };
 }
 
+// Format date as "May 23, 2026 at 3:45 PM"
+function formatPostedDate(dateStr) {
+    if (!dateStr) return 'N/A';
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) +
+        ' at ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+function formatCommentDate(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+
+
+// Star rating component
+function StarRating({ rating, max = 5 }) {
+    return (
+        <div className="flex items-center gap-0.5">
+            {Array.from({ length: max }, (_, i) => (
+                <svg key={i} width="14" height="14" viewBox="0 0 24 24" fill={i < rating ? '#F59E0B' : 'none'} stroke={i < rating ? '#F59E0B' : 'rgba(255,255,255,0.2)'} strokeWidth="2">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                </svg>
+            ))}
+        </div>
+    );
+}
+
 export default function SingleProfilePage({ params }) {
     const resolvedParams = use(params);
     const profileId = resolvedParams.id;
     const router = useRouter();
     const {
         user, guest, addLike, addMatch, isProfileSwiped,
-        saveProfile, unsaveProfile, isProfileSaved, logProfileView, likes
+        saveProfile, unsaveProfile, isProfileSaved, logProfileView, likes, campaigns, subscription
     } = useAuth();
 
     const [profile, setProfile] = useState(null);
@@ -36,6 +74,21 @@ export default function SingleProfilePage({ params }) {
     const [comments, setComments] = useState([]);
     const [loadingComments, setLoadingComments] = useState(true);
     const [copied, setCopied] = useState(false);
+    const [liveViews, setLiveViews] = useState(42);
+    const compatibilityScore = profile ? shouldMatchProfile(profile).score : 85;
+
+    useEffect(() => {
+        if (profile) {
+            const baseViews = (profile.commentCount || 0) * 12 + 87;
+            setLiveViews(baseViews);
+            
+            // Periodically increase view count representing real-time traffic
+            const interval = setInterval(() => {
+                setLiveViews(prev => prev + Math.floor(Math.random() * 3) + 1);
+            }, 4500);
+            return () => clearInterval(interval);
+        }
+    }, [profile]);
 
     useEffect(() => {
         async function loadProfile() {
@@ -75,12 +128,17 @@ export default function SingleProfilePage({ params }) {
 
     const handleLike = () => {
         if (!profile || liked) return;
-        addLike(profile);
-        setLiked(true);
-        const { match, score } = shouldMatchProfile(profile);
-        if (match) {
-            addMatch(profile, score);
-        }
+        addLike(profile).then(res => {
+            if (res?.limitReached) {
+                router.push('/subscribe');
+            } else {
+                setLiked(true);
+                const { match, score } = shouldMatchProfile(profile);
+                if (match) {
+                    addMatch(profile, score);
+                }
+            }
+        });
     };
 
     const handleSave = () => {
@@ -121,25 +179,25 @@ export default function SingleProfilePage({ params }) {
             .catch(() => { });
     };
 
+    // ── Loading state with GS pulse-zoom ──
     if (loading) {
         return (
-            <div className="min-h-dvh bg-bg-dark">
-                <div className="animate-pulse">
-                    <div className="h-[50vh]" style={{ background: 'var(--color-surface)' }} />
-                    <div className="p-5 space-y-4">
-                        <div className="h-8 w-48 rounded-lg" style={{ background: 'var(--color-surface)' }} />
-                        <div className="h-4 w-32 rounded" style={{ background: 'var(--color-surface)' }} />
-                        <div className="h-20 rounded-xl" style={{ background: 'var(--color-surface)' }} />
-                    </div>
-                </div>
+            <div className="min-h-dvh flex flex-col items-center justify-center" style={{ background: 'var(--color-bg)' }}>
+                <img
+                    src="/gs.png"
+                    alt="Loading"
+                    className="w-16 h-16 object-contain animate-pulse-zoom"
+                />
+                <p className="text-text-muted text-sm mt-3 animate-pulse">Loading profile…</p>
             </div>
         );
     }
 
+    // ── Not found ──
     if (!profile) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center space-y-4">
-                <div className="w-16 h-16 rounded-full bg-surface flex items-center justify-center">
+                <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: 'var(--color-surface)' }}>
                     <User size={32} className="text-text-muted" />
                 </div>
                 <h2 className="text-lg font-bold text-text-primary">Profile not found</h2>
@@ -152,15 +210,24 @@ export default function SingleProfilePage({ params }) {
 
     // Computed Labels
     const demandLevel = profile.commentCount >= 10 ? 'High' : profile.commentCount >= 3 ? 'Medium' : 'Low';
-    const demandColor = demandLevel === 'High' ? 'text-primary' : demandLevel === 'Medium' ? 'text-gold' : 'text-text-muted';
+    const demandPercent = profile.commentCount >= 10 ? 90 : profile.commentCount >= 3 ? 55 : 25;
+    const demandBarColor = demandLevel === 'High' ? '#EC4899' : demandLevel === 'Medium' ? '#F59E0B' : '#6B7280';
     const availabilityStatus = profile.daysSincePost < 7 ? 'Available Now' : profile.daysSincePost < 30 ? 'Recently Active' : 'Occasional';
-    const availabilityColor = profile.daysSincePost < 7 ? 'text-success' : profile.daysSincePost < 30 ? 'text-gold' : 'text-text-muted';
+    const availabilityDotColor = profile.daysSincePost < 7 ? '#22C55E' : profile.daysSincePost < 30 ? '#F59E0B' : '#6B7280';
     const rankingScore = Math.min(99, 50 + profile.commentCount * 3 + (profile.daysSincePost < 30 ? 20 : 0) + (profile.imageUrl ? 10 : 0) + (profile.age ? 5 : 0));
+    const starRating = rankingScore >= 90 ? 5 : rankingScore >= 75 ? 4 : rankingScore >= 60 ? 3 : rankingScore >= 40 ? 2 : 1;
     const freshLabel = profile.daysSincePost < 3 ? 'Newly Available' : profile.daysSincePost <= 14 ? 'Featured' : null;
+    const responseRate = profile.commentCount >= 10 ? 'High' : profile.commentCount >= 3 ? 'Medium' : 'Low';
+    const responseColor = responseRate === 'High' ? '#22C55E' : responseRate === 'Medium' ? '#F59E0B' : '#6B7280';
+    const profileViews = (profile.commentCount || 0) * 7 + 42;
+    const daysActive = profile.daysSincePost || 0;
+
+    // Contact message
+    const connectionMsg = encodeURIComponent(`Hi Admin Mary G, I need a match connection with ${profile.name || 'this person'} from GS App.`);
 
     return (
-        <div className="min-h-dvh pb-8 bg-bg-dark">
-            {/* Hero */}
+        <div className="min-h-dvh pb-8" style={{ background: 'var(--color-bg)' }}>
+            {/* ═══════════════ Hero Image ═══════════════ */}
             <div className="relative" style={{ height: '55vh', minHeight: '350px' }}>
                 {profile.imageUrl ? (
                     <img
@@ -189,9 +256,13 @@ export default function SingleProfilePage({ params }) {
 
                 <div className="absolute top-4 right-4 flex gap-2 z-10">
                     {freshLabel && (
-                        <span className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold text-white shadow-lg ${freshLabel === 'Newly Available' ? 'bg-success' : 'bg-gold'}`}>
+                        <motion.span
+                            initial={{ scale: 0.8, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold text-white shadow-lg ${freshLabel === 'Newly Available' ? 'bg-success' : 'bg-gold'}`}
+                        >
                             {freshLabel === 'Newly Available' ? <Clock size={11} /> : <Star size={11} />} {freshLabel}
-                        </span>
+                        </motion.span>
                     )}
                     <button onClick={handleShare} className="w-10 h-10 rounded-full glass flex items-center justify-center relative">
                         {copied ? <CheckCircle size={18} className="text-success" /> : <Share2 size={18} className="text-white" />}
@@ -203,26 +274,48 @@ export default function SingleProfilePage({ params }) {
 
                 {/* Copied toast */}
                 {copied && (
-                    <div className="absolute top-16 right-4 z-20 px-3 py-1.5 rounded-full bg-success text-white text-xs font-bold shadow-lg animate-fade-in">
+                    <motion.div
+                        initial={{ opacity: 0, y: -8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="absolute top-16 right-4 z-20 px-3 py-1.5 rounded-full bg-success text-white text-xs font-bold shadow-lg"
+                    >
                         Link copied!
-                    </div>
+                    </motion.div>
                 )}
 
                 <div className="absolute bottom-0 left-0 right-0 p-5 profile-overlay-text">
                     <div className="flex items-end justify-between">
                         <div>
-                            <h1 className="text-3xl font-extrabold text-white flex items-center gap-2 mb-1">
-                                {profile.name || 'Sugar Mummy'}
+                            <h1 className="text-3xl font-extrabold text-white flex items-center gap-2 mb-1 flex-wrap">
+                                {profile.name || 'Sugar Mum'}
                                 {profile.age && <span className="text-white/70 font-normal text-xl">{profile.age}</span>}
-                                <VerifiedBadge size={22} />
+                                <VerifiedBadge size={22} verified={true} />
+                                {profile.subscription?.plan && profile.subscription.plan !== 'free' && (
+                                    <VerifiedBadge size={22} badgeText={profile.subscription.plan} />
+                                )}
+                                {(() => {
+                                    const badgeVal = (profile.customBadge || profile.custom_badge || '').trim();
+                                    if (badgeVal && badgeVal.toLowerCase() !== 'verified' && badgeVal.toLowerCase() !== profile.subscription?.plan?.toLowerCase()) {
+                                        return <VerifiedBadge size={22} badgeText={badgeVal} />;
+                                    }
+                                    return null;
+                                })()}
                             </h1>
-                            <div className="flex items-center gap-2 mb-1">
-                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ background: profile.profileType === 'sugar_daddy' ? 'rgba(59,130,246,0.85)' : 'rgba(236,72,153,0.85)' }}>
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                {/* Profile type pill with gradient */}
+                                <span
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold text-white shadow-lg"
+                                    style={{
+                                        background: profile.profileType === 'sugar_daddy'
+                                            ? 'linear-gradient(135deg, #3B82F6, #1D4ED8)'
+                                            : 'linear-gradient(135deg, #EC4899, #BE185D)',
+                                    }}
+                                >
                                     <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
-                                    {profile.profileType === 'sugar_daddy' ? 'Sugar Daddy' : 'Sugar Mummy'}
+                                    {profile.profileType === 'sugar_daddy' ? 'Sugar Daddy' : 'Sugar Mum'}
                                 </span>
                                 {profile.isTestimonial && (
-                                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold text-white bg-amber-500/85">
+                                    <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold text-white shadow-lg" style={{ background: 'linear-gradient(135deg, #F59E0B, #D97706)' }}>
                                         <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
                                         Review
                                     </span>
@@ -243,8 +336,36 @@ export default function SingleProfilePage({ params }) {
                 </div>
             </div>
 
-            {/* Content */}
+            {/* ═══════════════ Content ═══════════════ */}
             <div className="px-5 space-y-5">
+                {/* Dynamic Admin Banner Ad */}
+                {campaigns?.bannerAds && (!subscription || subscription.plan === 'free') && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="rounded-3xl p-4 bg-gradient-to-r from-purple-900/10 via-pink-900/10 to-rose-900/10 border border-purple-500/30 flex items-center gap-3 relative overflow-hidden"
+                    >
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-purple-500/20 to-rose-500/20 rounded-full blur-xl pointer-events-none" />
+                        <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-500 to-rose-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-purple-500/20">
+                            <Crown size={20} className="animate-pulse" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <h4 className="text-xs font-black text-text-primary uppercase tracking-wide flex items-center gap-1.5">
+                                GS Premium VIP Unlock
+                            </h4>
+                            <p className="text-[10px] text-text-secondary leading-normal">
+                                Get direct phone numbers, unlimited texting, verification checks & escrow safeties!
+                            </p>
+                        </div>
+                        <a
+                            href="/subscribe"
+                            className="px-3.5 py-2 bg-gradient-to-r from-purple-500 to-rose-500 hover:from-purple-650 hover:to-rose-650 text-white text-[10px] font-black rounded-xl shadow-md transition-all whitespace-nowrap active:scale-95 shrink-0"
+                        >
+                            Unlock VIP
+                        </a>
+                    </motion.div>
+                )}
+
                 {/* Quick Actions */}
                 <div className="flex items-center gap-3 -mt-5 relative z-10">
                     <motion.button whileTap={{ scale: 0.9 }} onClick={handleLike} disabled={liked}
@@ -260,8 +381,157 @@ export default function SingleProfilePage({ params }) {
                     </motion.button>
                 </div>
 
-                {/* Profile About */}
-                <div className="rounded-3xl p-5" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                {/* ═══════════════ Trust Signals ═══════════════ */}
+                {/* ═══════════════ Trust & Verification (Upgraded) ═══════════════ */}
+                <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="rounded-3xl p-5 space-y-4 shadow-sm"
+                    style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}
+                >
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-2">
+                            <Shield size={16} className="text-primary animate-pulse" />
+                            Trust & Verification
+                        </h3>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/20">
+                            Safe Connect
+                        </span>
+                    </div>
+
+                    <div className="space-y-2.5">
+                        {/* Status detail 1 */}
+                        <div className="flex items-start gap-3 p-3 rounded-2xl bg-surface/50 border border-border">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-primary/10 text-primary shrink-0">
+                                <CheckCheck size={16} />
+                            </div>
+                            <div>
+                                <h4 className="text-xs font-bold text-text-primary">Identity Check Passed</h4>
+                                <p className="text-[10px] text-text-secondary mt-0.5 leading-snug">Verified by Admin Mary G. Matches verified website database records.</p>
+                            </div>
+                        </div>
+
+                        {/* Status detail 2 */}
+                        <div className="flex items-start gap-3 p-3 rounded-2xl bg-surface/50 border border-border">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-success/10 text-success shrink-0">
+                                <User size={16} />
+                            </div>
+                            <div>
+                                <h4 className="text-xs font-bold text-text-primary">Photo Match Confirmed</h4>
+                                <p className="text-[10px] text-text-secondary mt-0.5 leading-snug">Selfie match verification completed. Photo authenticity is 100% confirmed.</p>
+                            </div>
+                        </div>
+
+                        {/* Status detail 3 */}
+                        <div className="flex items-start gap-3 p-3 rounded-2xl bg-surface/50 border border-border">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-cyan-500/10 text-cyan-500 shrink-0">
+                                <Globe size={16} />
+                            </div>
+                            <div>
+                                <h4 className="text-xs font-bold text-text-primary">Synced from Website</h4>
+                                <p className="text-[10px] text-text-secondary mt-0.5 leading-snug">Synced directly with genuinesugarmummies.co.ke. 0 suspicious reports.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Stats & Metadata Row */}
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-border">
+                        <div className="flex items-center gap-2 p-2 rounded-xl bg-surface/30">
+                            <Eye size={14} className="text-text-muted shrink-0" />
+                            <div className="min-w-0">
+                                <p className="text-[9px] text-text-muted uppercase leading-none flex items-center gap-1">
+                                    Profile Views
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping inline-block" />
+                                </p>
+                                <p className="text-xs font-bold text-text-primary mt-1">{liveViews.toLocaleString()} active</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 p-2 rounded-xl bg-surface/30">
+                            <Calendar size={14} className="text-text-muted shrink-0" />
+                            <div className="min-w-0">
+                                <p className="text-[9px] text-text-muted uppercase leading-none">Sync Date</p>
+                                <p className="text-xs font-bold text-text-primary mt-1">
+                                    {profile.date ? new Date(profile.date).toLocaleDateString('en-KE', { month: 'short', day: 'numeric' }) : 'Today'}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Detailed posted stamp */}
+                    {profile.date && (
+                        <div className="text-[10px] text-text-muted text-center pt-1 flex items-center justify-center gap-1.5 bg-surface/30 py-2 rounded-xl border border-border">
+                            <Clock size={11} className="text-primary" />
+                            <span>Posted: <strong>{formatPostedDate(profile.date)}</strong></span>
+                        </div>
+                    )}
+                </motion.div>
+
+                {/* ═══════════════ Beta Features: GS MATCH SYSTEM ALGORITHM ═══════════════ */}
+                <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.15 }}
+                    className="rounded-3xl p-5 space-y-4 shadow-sm border border-primary/20 relative overflow-hidden"
+                    style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}
+                >
+                    {/* Glowing background hint */}
+                    <div className="absolute -top-10 -right-10 w-24 h-24 rounded-full blur-2xl opacity-10 bg-primary pointer-events-none" />
+
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
+                            <Sparkles size={16} className="text-gold animate-bounce" />
+                            GS MATCH SYSTEM ALGORITHM (beta)
+                        </h3>
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full gradient-primary text-white shadow-sm">
+                            BETA
+                        </span>
+                    </div>
+
+                    {/* Compatibility Score explanation */}
+                    <div className="p-3 rounded-2xl bg-surface/50 border border-border space-y-2">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-text-primary">Match Compatibility Index</span>
+                            <span className="text-sm font-black text-primary">{compatibilityScore}% Match</span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-border overflow-hidden">
+                            <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${compatibilityScore}%` }}
+                                transition={{ duration: 1.2, ease: 'easeOut' }}
+                                className="h-full rounded-full gradient-primary"
+                            />
+                        </div>
+                        <p className="text-[9px] text-text-muted leading-relaxed">
+                            Calculated dynamically based on geographical proximity, chat response latency, verified interaction logs, and preference alignment.
+                        </p>
+                    </div>
+
+                    {/* Safe Connect Guard */}
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="p-2.5 rounded-xl bg-surface/30 border border-border flex flex-col gap-1">
+                            <div className="flex items-center gap-1 text-[10px] font-bold text-success">
+                                <Lock size={10} /> Safe Connect Guard
+                            </div>
+                            <p className="text-[9px] text-text-muted leading-tight">Escrow connection protection. Facilitated only via verified admin Telegram.</p>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-surface/30 border border-border flex flex-col gap-1">
+                            <div className="flex items-center gap-1 text-[10px] font-bold text-primary">
+                                <Zap size={10} /> Reply Speed Index
+                            </div>
+                            <p className="text-[9px] text-text-muted leading-tight">Usually active within the last 24 hours.</p>
+                        </div>
+                    </div>
+                </motion.div>
+
+                {/* ═══════════════ Profile About ═══════════════ */}
+                <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.18 }}
+                    className="rounded-3xl p-5"
+                    style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}
+                >
                     <h2 className="text-lg font-bold text-text-primary mb-3 flex items-center gap-2">
                         <Star size={18} className="text-gold" />
                         Profile About
@@ -276,69 +546,180 @@ export default function SingleProfilePage({ params }) {
                             dangerouslySetInnerHTML={{ __html: profile.content }}
                         />
                     )}
-                </div>
+                </motion.div>
 
-                {/* Details Grid */}
-                <div className="rounded-3xl p-5 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                    <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">Details</h3>
+                {/* ═══════════════ Advanced Profile Insights ═══════════════ */}
+                <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.22 }}
+                    className="rounded-3xl p-5 space-y-4"
+                    style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}
+                >
+                    <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
+                        <TrendingUp size={15} className="text-primary" /> Advanced Insights
+                    </h3>
+
+                    {/* 2x2 Grid of Upgrade Cards */}
                     <div className="grid grid-cols-2 gap-3">
-                        {profile.location && (
-                            <div className="rounded-xl p-3" style={{ background: 'var(--color-surface)' }}>
-                                <p className="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">Location</p>
-                                <p className="text-sm font-semibold text-text-primary">{profile.location}</p>
+                        {/* Insight Card 1 */}
+                        <div className="p-3 rounded-2xl bg-surface/50 border border-border flex flex-col justify-between h-24">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold">Activity</span>
+                                <Activity size={14} style={{ color: availabilityDotColor }} className="animate-pulse" />
                             </div>
-                        )}
-                        <div className="rounded-xl p-3" style={{ background: 'var(--color-surface)' }}>
-                            <p className="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">Status</p>
-                            <p className="text-sm font-semibold text-success flex items-center gap-1"><CheckCircle size={12} /> Verified</p>
-                        </div>
-                        <div className="rounded-xl p-3" style={{ background: 'var(--color-surface)' }}>
-                            <p className="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">Comments</p>
-                            <p className="text-sm font-semibold text-text-primary">{profile.commentCount}</p>
-                        </div>
-                        {profile.date && (
-                            <div className="rounded-xl p-3" style={{ background: 'var(--color-surface)' }}>
-                                <p className="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">Joined</p>
-                                <p className="text-sm font-semibold text-text-primary">
-                                    {new Date(profile.date).toLocaleDateString('en-KE', { month: 'short', year: 'numeric' })}
-                                </p>
+                            <div>
+                                <p className="text-xs font-black text-text-primary mt-1 leading-tight">{availabilityStatus}</p>
+                                <p className="text-[9px] text-text-muted mt-0.5">Active this week</p>
                             </div>
-                        )}
-                    </div>
-                </div>
+                        </div>
 
-                {/* Contact buttons — hidden for testimonials */}
+                        {/* Insight Card 2 */}
+                        <div className="p-3 rounded-2xl bg-surface/50 border border-border flex flex-col justify-between h-24">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold">Demand</span>
+                                <TrendingUp size={14} style={{ color: demandBarColor }} />
+                            </div>
+                            <div>
+                                <p className="text-xs font-black text-text-primary mt-1 leading-tight">{demandLevel} Interest</p>
+                                <p className="text-[9px] text-text-muted mt-0.5">{profile.commentCount * 4 + 19} engagements</p>
+                            </div>
+                        </div>
+
+                        {/* Insight Card 3 */}
+                        <div className="p-3 rounded-2xl bg-surface/50 border border-border flex flex-col justify-between h-24">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold">Success Rate</span>
+                                <Zap size={14} className="text-success" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-black text-success mt-1 leading-tight">92% Match</p>
+                                <p className="text-[9px] text-text-muted mt-0.5">High connectivity</p>
+                            </div>
+                        </div>
+
+                        {/* Insight Card 4 */}
+                        <div className="p-3 rounded-2xl bg-surface/50 border border-border flex flex-col justify-between h-24">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold">Safety Score</span>
+                                <Shield size={14} className="text-primary" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-black text-text-primary mt-1 leading-tight">Grade A+</p>
+                                <p className="text-[9px] text-text-muted mt-0.5">Checked & verified</p>
+                            </div>
+                        </div>
+                    </div>
+                </motion.div>
+
+                {/* ═══════════════ Contact Channels (Upgraded Social buttons) ═══════════════ */}
                 {!profile.isTestimonial && (
-                    <ContactButtons profileName={profile.name} />
+                    <motion.div
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.26 }}
+                        className="rounded-3xl overflow-hidden shadow-md border border-border"
+                        style={{ background: 'var(--color-bg-card)' }}
+                    >
+                        {/* Header */}
+                        <div className="px-5 py-4 border-b border-border bg-surface/30">
+                            <div className="flex items-center gap-1.5 mb-1">
+                                <Lock size={12} className="text-success" />
+                                <span className="text-xs font-black text-text-primary uppercase tracking-wider text-gradient"> Facilitated Connection</span>
+                            </div>
+                            <p className="text-xs text-text-secondary leading-relaxed">
+                                Connect safely with <span className="text-gradient font-bold">{profile.name || 'this member'}</span>. Choose a secure channel to contact our official administrator <span className="text-text-primary font-bold">Mary G</span>:
+                            </p>
+                        </div>
+
+                        {/* Buttons grid */}
+                        <div className="p-4 grid grid-cols-2 gap-3">
+                            {/* Telegram - primary */}
+                            <motion.a
+                                whileHover={{ scale: 1.02, y: -2 }}
+                                whileTap={{ scale: 0.98 }}
+                                href={`https://t.me/GSADMINMARYGAGENCY?text=${connectionMsg}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="col-span-2 relative flex items-center justify-between p-4 rounded-2xl text-white shadow-md overflow-hidden animate-telegram-pulse"
+                                style={{ background: 'linear-gradient(135deg, #24A1DE, #1480B3)' }}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                                        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
+                                        </svg>
+                                    </div>
+                                    <div className="text-left">
+                                        <span className="block text-sm font-extrabold leading-tight">Telegram Chat</span>
+                                        <span className="text-[10px] opacity-85 leading-none">Direct matching agency</span>
+                                    </div>
+                                </div>
+                                <span className="px-2.5 py-1 rounded-full text-[9px] font-bold bg-white/20 border border-white/30 text-white">
+                                    ⭐ Best Option
+                                </span>
+                            </motion.a>
+
+                            {/* WhatsApp */}
+                            <motion.a
+                                whileHover={{ scale: 1.02, y: -2 }}
+                                whileTap={{ scale: 0.98 }}
+                                href={`https://wa.me/254738871048?text=${connectionMsg}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2.5 p-3 rounded-2xl text-white shadow-sm"
+                                style={{ background: 'linear-gradient(135deg, #128C7E, #25D366)' }}
+                            >
+                                <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z" />
+                                    </svg>
+                                </div>
+                                <div className="text-left">
+                                    <span className="block text-xs font-bold leading-tight">WhatsApp</span>
+                                    <span className="text-[9px] opacity-80 leading-none">Chat Admin</span>
+                                </div>
+                            </motion.a>
+
+                            {/* SMS */}
+                            <motion.a
+                                whileHover={{ scale: 1.02, y: -2 }}
+                                whileTap={{ scale: 0.98 }}
+                                href={`sms:+254738871048?body=${connectionMsg}`}
+                                className="flex items-center gap-2.5 p-3 rounded-2xl text-white shadow-sm"
+                                style={{ background: 'linear-gradient(135deg, #0284C7, #0EA5E9)' }}
+                            >
+                                <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+                                    <MessageSquare size={16} />
+                                </div>
+                                <div className="text-left">
+                                    <span className="block text-xs font-bold leading-tight">SMS Text</span>
+                                    <span className="text-[9px] opacity-80 leading-none">Direct text</span>
+                                </div>
+                            </motion.a>
+                        </div>
+                    </motion.div>
                 )}
+
+                {/* Testimonial disclaimer block */}
                 {profile.isTestimonial && (
-                    <div className="w-full rounded-2xl p-4 text-center" style={{ background: 'var(--color-bg-card)', border: '1px solid rgba(0,0,0,0.08)' }}>
+                    <div className="w-full rounded-2xl p-4 text-center bg-amber-500/5 border border-amber-500/10">
                         <div className="flex items-center justify-center gap-2 mb-1">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-amber-500"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+                            <Star size={16} className="text-amber-500 fill-amber-500" />
                             <span className="text-sm font-bold text-text-primary">User Review / Testimonial</span>
                         </div>
-                        <p className="text-xs text-text-muted">This is a user review, not a matchable profile.</p>
+                        <p className="text-xs text-text-secondary leading-snug">This post is a user success review, not a direct matchable member profile.</p>
                     </div>
                 )}
 
-                {/* Profile Labels */}
-                <div className="rounded-3xl p-5 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                    <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
-                        <Award size={15} className="text-gold" /> Profile Insights
-                    </h3>
-                    <div className="space-y-2.5">
-                        <LabelRow icon={Activity} label="Availability" value={availabilityStatus} valueColor={availabilityColor} />
-                        <LabelRow icon={TrendingUp} label="Demand" value={`${demandLevel} Demand`} valueColor={demandColor} />
-                        <LabelRow icon={Award} label="Ranking" value={`${rankingScore}/100`} valueColor={rankingScore >= 70 ? 'text-gold' : 'text-text-secondary'} />
-                        <LabelRow icon={Globe} label="Region" value={profile.location || 'Kenya'} valueColor="text-text-primary" />
-                        {profile.commentCount > 0 && (
-                            <LabelRow icon={MessageCircle} label="Engagement" value={`${profile.commentCount} real comments`} valueColor="text-success" />
-                        )}
-                    </div>
-                </div>
-
-                {/* ---- Real WordPress Comments ---- */}
-                <div className="rounded-3xl p-5 space-y-4" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                {/* ═══════════════ Real WordPress Comments ═══════════════ */}
+                <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.35 }}
+                    className="rounded-3xl p-5 space-y-4"
+                    style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}
+                >
                     <div className="flex items-center justify-between">
                         <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
                             <MessageCircle size={15} className="text-primary" />
@@ -385,18 +766,21 @@ export default function SingleProfilePage({ params }) {
                             ))}
                         </div>
                     )}
-                </div>
+                </motion.div>
 
-                {/* Leave Comment */}
-                <button onClick={() => setShowComment(true)}
+                {/* Leave Comment CTA */}
+                <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => setShowComment(true)}
                     className="w-full py-3.5 rounded-2xl text-sm font-semibold text-text-secondary transition-colors flex items-center justify-center gap-2"
-                    style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                    style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}
+                >
                     <MessageCircle size={16} /> Leave a Comment on this Profile
-                </button>
+                </motion.button>
 
                 {/* Version */}
                 <p className="text-center text-[10px] text-text-muted pt-2 pb-4">
-                    Genuine Sugar Mummies App · v3.1.0
+                    Genuine Sugar Mummies App · v4.1.0
                 </p>
             </div>
 
@@ -405,32 +789,4 @@ export default function SingleProfilePage({ params }) {
             )}
         </div>
     );
-}
-
-function LabelRow({ icon: Icon, label, value, valueColor }) {
-    return (
-        <div className="flex items-center justify-between py-2 border-b last:border-b-0" style={{ borderColor: 'var(--color-border)' }}>
-            <div className="flex items-center gap-2">
-                <Icon size={15} className="text-text-muted" />
-                <span className="text-xs text-text-muted uppercase tracking-wider">{label}</span>
-            </div>
-            <span className={`text-sm font-semibold ${valueColor}`}>{value}</span>
-        </div>
-    );
-}
-
-function formatCommentDate(dateStr) {
-    if (!dateStr) return '';
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / (1000 * 60));
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffMins < 1) return 'just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' });
 }

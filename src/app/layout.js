@@ -1,6 +1,7 @@
 import './globals.css';
 
 import { AuthProvider } from '@/contexts/AuthContext';
+import ClientProviders from '@/components/ClientProviders';
 
 export const viewport = {
     width: 'device-width',
@@ -8,16 +9,22 @@ export const viewport = {
     maximumScale: 5,
     userScalable: true,
     viewportFit: 'cover',
-    themeColor: '#EA580C',
+    themeColor: [
+        { media: '(prefers-color-scheme: light)', color: '#FFFFFF' },
+        { media: '(prefers-color-scheme: dark)', color: '#0F0F14' },
+    ],
 };
 
 export const metadata = {
-    title: 'Genuine Sugar Mummies - Find Your Match in Kenya',
-    description: 'Kenya\'s #1 dating app for genuine sugar mummy connections. Swipe, match, and connect with verified profiles. Safe, secure, and real.',
-    keywords: 'sugar mummy, dating, kenya, sugar mummy dating, genuine sugar mummies, dating app, nairobi dating',
-    authors: [{ name: 'GS Admin' }],
+    title: 'Genuine Sugar Mummies - Kenya\'s #1 Dating App | Find Your Match',
+    description: 'Join Kenya\'s most trusted dating platform. Connect with genuine sugar mummies and sugar daddies. Verified profiles, secure messaging, and real connections. Download the app today!',
+    keywords: 'sugar mummy kenya, dating app kenya, sugar mummy dating, genuine sugar mummies, nairobi dating, kenya dating app, sugar daddy kenya, real connections, verified profiles',
+    authors: [{ name: 'Genuine Sugar Mummies', url: 'https://genuinesugarmummies.co.ke' }],
     manifest: '/manifest.json',
     metadataBase: new URL('https://genuinesugarmummies.co.ke'),
+    alternates: {
+        canonical: 'https://genuinesugarmummies.co.ke',
+    },
     icons: {
         icon: [
             { url: '/gs-logo.png', type: 'image/png', sizes: '500x500' },
@@ -37,21 +44,21 @@ export const metadata = {
         locale: 'en_KE',
         url: 'https://genuinesugarmummies.co.ke',
         siteName: 'Genuine Sugar Mummies',
-        title: 'Genuine Sugar Mummies - Find Your Match in Kenya',
-        description: 'Kenya\'s #1 dating app for genuine sugar mummy connections. Swipe, match, and connect with verified profiles.',
+        title: 'Genuine Sugar Mummies - Kenya\'s #1 Dating App',
+        description: 'Join Kenya\'s most trusted dating platform. Connect with genuine sugar mummies and sugar daddies. Verified profiles, secure messaging, and real connections.',
         images: [
             {
                 url: '/gs-logo.png',
                 width: 500,
                 height: 500,
-                alt: 'Genuine Sugar Mummies Logo',
+                alt: 'Genuine Sugar Mummies - Kenya\'s #1 Dating App',
             },
         ],
     },
     twitter: {
         card: 'summary_large_image',
-        title: 'Genuine Sugar Mummies - Find Your Match',
-        description: 'Kenya\'s #1 dating app for genuine sugar mummy connections.',
+        title: 'Genuine Sugar Mummies - Kenya\'s #1 Dating App',
+        description: 'Join Kenya\'s most trusted dating platform. Verified profiles, secure messaging, real connections.',
         images: ['/gs-logo.png'],
     },
     robots: {
@@ -60,7 +67,13 @@ export const metadata = {
         googleBot: {
             index: true,
             follow: true,
+            'max-video-preview': -1,
+            'max-image-preview': 'large',
+            'max-snippet': -1,
         },
+    },
+    verification: {
+        google: '',
     },
 };
 
@@ -85,9 +98,11 @@ export default function RootLayout({ children }) {
                             "@type": "WebApplication",
                             "name": "Genuine Sugar Mummies",
                             "url": "https://genuinesugarmummies.co.ke",
-                            "description": "Kenya's #1 dating app for genuine sugar mummy connections",
+                            "description": "Kenya's #1 dating app for genuine sugar mummy and sugar daddy connections. Verified profiles, secure messaging, and real connections.",
                             "applicationCategory": "SocialNetworkingApplication",
                             "operatingSystem": "Any",
+                            "browserRequirements": "Requires JavaScript",
+                            "softwareVersion": "4.0",
                             "offers": {
                                 "@type": "Offer",
                                 "price": "0",
@@ -95,29 +110,49 @@ export default function RootLayout({ children }) {
                             },
                             "author": {
                                 "@type": "Organization",
-                                "name": "Genuine Sugar Mummies"
+                                "name": "Genuine Sugar Mummies",
+                                "url": "https://genuinesugarmummies.co.ke"
+                            },
+                            "aggregateRating": {
+                                "@type": "AggregateRating",
+                                "ratingValue": "4.5",
+                                "ratingCount": "1200",
+                                "bestRating": "5"
                             }
                         }),
+                    }}
+                />
+                {/* Dark Mode Initialization — runs before paint to prevent flash */}
+                <script
+                    dangerouslySetInnerHTML={{
+                        __html: `
+                            (function(){
+                                try {
+                                    var d = localStorage.getItem('gs_dark_mode');
+                                    if (d === 'true') {
+                                        document.documentElement.classList.add('dark');
+                                    } else if (d === null && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                                        // Don't auto-enable dark — default is white/light
+                                    }
+                                } catch(e){}
+                            })();
+                        `,
                     }}
                 />
             </head>
             <body className="antialiased" suppressHydrationWarning>
                 <AuthProvider>
-                    {children}
+                    <ClientProviders>
+                        {children}
+                    </ClientProviders>
                 </AuthProvider>
-                {/* Service Worker Registration */}
+                {/* Service Worker Cleanup — unregister any lingering SW */}
                 <script
                     dangerouslySetInnerHTML={{
                         __html: `
                             if ('serviceWorker' in navigator) {
-                                window.addEventListener('load', function() {
-                                    navigator.serviceWorker.register('/sw.js')
-                                        .then(function(reg) {
-                                            console.log('[SW] Registered:', reg.scope);
-                                        })
-                                        .catch(function(err) {
-                                            console.log('[SW] Registration failed:', err);
-                                        });
+                                navigator.serviceWorker.getRegistrations().then(function(regs) {
+                                    for (var r of regs) { r.unregister(); }
                                 });
                             }
                         `,

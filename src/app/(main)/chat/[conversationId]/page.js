@@ -23,7 +23,7 @@ export default function ChatConversationPage({ params }) {
     const resolvedParams = use(params);
     const conversationId = decodeURIComponent(resolvedParams.conversationId);
     const router = useRouter();
-    const { user, conversations, getChatMessages, sendChatMessage, markChatSeen } = useAuth();
+    const { user, conversations, getChatMessages, sendChatMessage, markChatSeen, subscription, campaigns } = useAuth();
 
     const [messages, setMessages] = useState([]);
     const [inputText, setInputText] = useState('');
@@ -48,10 +48,14 @@ export default function ChatConversationPage({ params }) {
                 setMessages(msgs || []);
                 await markChatSeen(conversationId);
 
+                // Count user sent messages to enforce free plan limits
+                const userSentMsgs = (msgs || []).filter(m => m.senderId === user?.id || m.senderId === user?.email).length;
+                const isFreeLimit = campaigns?.lockMessageLimit && (!subscription || subscription.plan === 'free') && userSentMsgs >= 3;
+
                 // Count existing AI replies
                 const aiReplies = (msgs || []).filter(m => m.senderId !== user?.email).length;
                 replyCountRef.current = aiReplies;
-                if (aiReplies >= MAX_FREE_REPLIES) setChatLocked(true);
+                if (aiReplies >= MAX_FREE_REPLIES || isFreeLimit) setChatLocked(true);
             } catch (err) {
                 console.error('Failed to load messages:', err);
             } finally {
@@ -59,7 +63,7 @@ export default function ChatConversationPage({ params }) {
             }
         }
         if (conversationId) load();
-    }, [conversationId]);
+    }, [conversationId, subscription, user, campaigns]);
 
     // Auto-scroll
     useEffect(() => {
@@ -145,6 +149,14 @@ export default function ChatConversationPage({ params }) {
     // ---- Send Message ----
     const handleSend = async () => {
         if (!inputText.trim() || sending || chatLocked) return;
+
+        // Double check limits before sending
+        const userSentMsgs = messages.filter(m => m.senderId === user?.id || m.senderId === user?.email).length;
+        if (campaigns?.lockMessageLimit && (!subscription || subscription.plan === 'free') && userSentMsgs >= 3) {
+            setChatLocked(true);
+            return;
+        }
+
         const rawText = inputText.trim();
         setInputText('');
         setSending(true);
@@ -197,13 +209,13 @@ export default function ChatConversationPage({ params }) {
     const approvalUrl = getApprovalUrl(user?.display_name || user?.email?.split('@')[0] || '');
 
     return (
-        <div className="flex flex-col h-[100dvh]" style={{ background: 'var(--color-bg-dark)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="flex flex-col h-[100dvh] bg-bg" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
             {/* Header */}
-            <div className="flex items-center gap-3 px-4 py-3 border-b" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-card)' }}>
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-bg-card shadow-sm">
                 <button onClick={() => router.back()} className="p-1">
                     <ArrowLeft size={22} className="text-text-primary" />
                 </button>
-                <div className="relative w-10 h-10 rounded-full overflow-hidden bg-surface shrink-0">
+                <div className="relative w-10 h-10 rounded-full overflow-hidden bg-bg-secondary shrink-0">
                     {conversation.matchImage ? (
                         <img src={conversation.matchImage} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer"
                             onError={(e) => { e.target.style.display = 'none'; }} />
@@ -212,13 +224,16 @@ export default function ChatConversationPage({ params }) {
                     )}
                     {/* Online dot */}
                     {onlineStatus.status === 'online' && (
-                        <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-success border-2 border-white" />
+                        <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-success border-2 border-[#18181b]" />
                     )}
                 </div>
                 <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                         <h2 className="text-sm font-bold text-text-primary truncate">{conversation.matchName}</h2>
                         <VerifiedBadge size={14} verified={true} />
+                        {conversation.matchCustomBadge && conversation.matchCustomBadge.toLowerCase() !== 'verified' && (
+                            <VerifiedBadge size={14} badgeText={conversation.matchCustomBadge} />
+                        )}
                     </div>
                     <p className={`text-[10px] font-medium ${isTyping ? 'text-primary' : onlineStatus.status === 'online' ? 'text-success' : 'text-text-muted'}`}>
                         {isTyping ? 'Typing…' : onlineStatus.text}
@@ -226,12 +241,12 @@ export default function ChatConversationPage({ params }) {
                 </div>
                 {/* Call icons (premium locked) */}
                 <div className="flex items-center gap-2">
-                    <button className="relative p-2 rounded-full" style={{ background: 'var(--color-surface)' }} title="Premium feature">
-                        <Phone size={16} className="text-text-muted" />
+                    <button className="relative p-2 rounded-full bg-bg-secondary border border-border" title="Premium feature">
+                        <Phone size={16} className="text-text-secondary" />
                         <Lock size={8} className="absolute -top-0.5 -right-0.5 text-gold" />
                     </button>
-                    <button className="relative p-2 rounded-full" style={{ background: 'var(--color-surface)' }} title="Premium feature">
-                        <Video size={16} className="text-text-muted" />
+                    <button className="relative p-2 rounded-full bg-bg-secondary border border-border" title="Premium feature">
+                        <Video size={16} className="text-text-secondary" />
                         <Lock size={8} className="absolute -top-0.5 -right-0.5 text-gold" />
                     </button>
                 </div>
@@ -258,14 +273,18 @@ export default function ChatConversationPage({ params }) {
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
                 {loading ? (
                     <div className="flex items-center justify-center py-10">
-                        <div className="w-8 h-8 rounded-full border-3 border-primary/20 border-t-primary animate-spin" />
+                        <img
+                            src="/gs.png"
+                            alt="Loading"
+                            className="w-12 h-12 object-contain animate-pulse-zoom"
+                        />
                     </div>
                 ) : messages.length === 0 ? (
                     <div className="text-center py-10 space-y-3">
-                        <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+                        <div className="w-16 h-16 rounded-full bg-bg-secondary flex items-center justify-center mx-auto border border-border">
                             <MessageCircle size={24} className="text-primary" />
                         </div>
-                        <p className="text-sm text-text-muted">Say hi to {conversation.matchName}!</p>
+                        <p className="text-sm text-text-secondary">Say hi to {conversation.matchName}!</p>
                         <p className="text-xs text-text-muted">Start the conversation with a friendly message.</p>
                     </div>
                 ) : (
@@ -281,7 +300,7 @@ export default function ChatConversationPage({ params }) {
                                 className={`flex ${isMe ? 'justify-end' : 'justify-start'} gap-2`}
                             >
                                 {!isMe && showAvatar && (
-                                    <div className="w-7 h-7 rounded-full overflow-hidden bg-surface shrink-0 mt-auto">
+                                    <div className="w-7 h-7 rounded-full overflow-hidden bg-bg-secondary shrink-0 mt-auto border border-border">
                                         {conversation.matchImage ? (
                                             <img src={conversation.matchImage} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                         ) : (
@@ -292,11 +311,10 @@ export default function ChatConversationPage({ params }) {
                                 {!isMe && !showAvatar && <div className="w-7 shrink-0" />}
                                 <div className={`max-w-[78%] ${isMe ? 'order-1' : ''}`}>
                                     <div
-                                        className={`px-4 py-2.5 text-sm leading-relaxed ${isMe
+                                        className={`px-4 py-2.5 text-sm leading-relaxed shadow-sm ${isMe
                                             ? 'rounded-2xl rounded-br-md text-white gradient-primary'
-                                            : 'rounded-2xl rounded-bl-md text-text-primary'
+                                            : 'rounded-2xl rounded-bl-md text-text-primary bg-bg-secondary border border-border'
                                             }`}
-                                        style={!isMe ? { background: 'var(--color-bg-card)', border: 'var(--card-border)' } : {}}
                                     >
                                         {msg.text}
                                     </div>
@@ -331,14 +349,14 @@ export default function ChatConversationPage({ params }) {
                             exit={{ opacity: 0, y: -5 }}
                             className="flex justify-start gap-2"
                         >
-                            <div className="w-7 h-7 rounded-full overflow-hidden bg-surface shrink-0 mt-auto">
+                            <div className="w-7 h-7 rounded-full overflow-hidden bg-bg-secondary shrink-0 mt-auto border border-border">
                                 {conversation.matchImage ? (
                                     <img src={conversation.matchImage} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                 ) : (
                                     <UserAvatar name={conversation.matchName} size={28} />
                                 )}
                             </div>
-                            <div className="px-4 py-3 rounded-2xl rounded-bl-md" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                            <div className="px-4 py-3 rounded-2xl rounded-bl-md bg-bg-secondary border border-border shadow-sm">
                                 <div className="flex items-center gap-1">
                                     {[0, 1, 2].map(i => (
                                         <div
@@ -361,43 +379,68 @@ export default function ChatConversationPage({ params }) {
                 <motion.div
                     initial={{ y: 20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
-                    className="px-4 py-4 space-y-3 border-t"
-                    style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-card)' }}
+                    className="px-4 py-4 space-y-3 border-t border-border bg-bg-card"
                 >
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-gold/10 flex items-center justify-center">
-                            <Lock size={16} className="text-gold" />
-                        </div>
-                        <div className="flex-1">
-                            <p className="text-xs font-bold text-text-primary">Chat limit reached</p>
-                            <p className="text-[10px] text-text-muted">Choose an option below to continue chatting</p>
-                        </div>
-                    </div>
+                    {(() => {
+                        const userSentMsgsCount = messages.filter(m => m.senderId === user?.id || m.senderId === user?.email).length;
+                        const isFreeLimit = campaigns?.lockMessageLimit && (!subscription || subscription.plan === 'free') && userSentMsgsCount >= 3;
+                        return (
+                            <>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                        <Lock size={16} className="text-primary animate-pulse" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-xs font-bold text-text-primary">
+                                            {isFreeLimit ? 'Free Plan Message Limit' : 'Chat limit reached'}
+                                        </p>
+                                        <p className="text-[10px] text-text-secondary">
+                                            {isFreeLimit 
+                                                ? 'You have sent the maximum of 3 messages allowed on the free plan.' 
+                                                : 'Choose an option below to continue chatting'
+                                            }
+                                        </p>
+                                    </div>
+                                </div>
 
-                    {/* Option 1: Admin Approval */}
-                    <a
-                        href={approvalUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-white gradient-primary text-sm active:scale-95 transition-transform"
-                    >
-                        <Shield size={16} /> Request Connection Approval
-                    </a>
+                                {isFreeLimit ? (
+                                    <a
+                                        href="/subscribe"
+                                        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-white gradient-primary text-sm active:scale-95 transition-all shadow-md shadow-primary/20"
+                                    >
+                                        <Crown size={16} /> Upgrade Membership to Continue
+                                    </a>
+                                ) : (
+                                    <>
+                                        {/* Option 1: Admin Approval */}
+                                        <a
+                                            href={approvalUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-white gradient-primary text-sm active:scale-95 transition-transform"
+                                        >
+                                            <Shield size={16} /> Request Connection Approval
+                                        </a>
 
-                    {/* Divider */}
-                    <div className="flex items-center gap-3">
-                        <div className="flex-1 h-px bg-black/10" />
-                        <span className="text-[10px] text-text-muted uppercase tracking-wider font-medium">or</span>
-                        <div className="flex-1 h-px bg-black/10" />
-                    </div>
+                                        {/* Divider */}
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex-1 h-px bg-border" />
+                                            <span className="text-[10px] text-text-muted uppercase tracking-wider font-semibold">or</span>
+                                            <div className="flex-1 h-px bg-border" />
+                                        </div>
 
-                    {/* Option 2: Membership Upgrade */}
-                    <a
-                        href="/subscribe"
-                        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-sm border-2 border-gold text-gold hover:bg-gold/5 active:scale-95 transition-all"
-                    >
-                        <Crown size={16} /> Upgrade Membership
-                    </a>
+                                        {/* Option 2: Membership Upgrade */}
+                                        <a
+                                            href="/subscribe"
+                                            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-sm border-2 border-gold text-gold hover:bg-gold/5 active:scale-95 transition-all"
+                                        >
+                                            <Crown size={16} /> Upgrade Membership
+                                        </a>
+                                    </>
+                                )}
+                            </>
+                        );
+                    })()}
                     <p className="text-[10px] text-text-muted text-center">
                         🌟 Premium members get <strong>unlimited chat</strong>, voice notes, priority matches & more
                     </p>
@@ -406,10 +449,10 @@ export default function ChatConversationPage({ params }) {
 
             {/* Input Area (hidden when locked) */}
             {!chatLocked && (
-                <div className="px-3 py-2 border-t flex items-end gap-2" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-card)' }}>
+                <div className="px-3 py-2 border-t border-border flex items-end gap-2 bg-bg-card shadow-lg">
                     {/* Voice note button (premium locked) */}
-                    <button className="relative w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ background: 'var(--color-surface)' }} title="Premium feature">
-                        <Mic size={16} className="text-text-muted" />
+                    <button className="relative w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-bg-secondary border border-border" title="Premium feature">
+                        <Mic size={16} className="text-text-secondary" />
                         <Lock size={7} className="absolute -top-0.5 -right-0.5 text-gold" />
                     </button>
                     <div className="flex-1 relative">
@@ -420,14 +463,13 @@ export default function ChatConversationPage({ params }) {
                             onKeyDown={handleKeyDown}
                             placeholder="Type a message..."
                             rows={1}
-                            className="w-full py-2.5 px-4 rounded-2xl text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none max-h-24"
-                            style={{ background: 'var(--color-surface)' }}
+                            className="w-full py-2.5 px-4 rounded-2xl text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none max-h-24 bg-bg-secondary border border-border"
                         />
                     </div>
                     <button
                         onClick={handleSend}
                         disabled={!inputText.trim() || sending || isTyping}
-                        className="w-10 h-10 rounded-full flex items-center justify-center gradient-primary text-white shrink-0 transition-all disabled:opacity-40 active:scale-90"
+                        className="w-10 h-10 rounded-full flex items-center justify-center gradient-primary text-white shrink-0 transition-all disabled:opacity-40 active:scale-90 cursor-pointer shadow-md shadow-primary/20"
                     >
                         <Send size={18} />
                     </button>
@@ -436,7 +478,7 @@ export default function ChatConversationPage({ params }) {
 
             {/* Remaining replies indicator */}
             {!chatLocked && repliesUsed > 0 && (
-                <div className="px-4 pb-1 text-center" style={{ background: 'var(--color-bg-card)' }}>
+                <div className="px-4 pb-1 text-center bg-bg-card border-t border-border/30">
                     <p className="text-[9px] text-text-muted">
                         {repliesLeft > 0
                             ? `${repliesLeft} free ${repliesLeft === 1 ? 'reply' : 'replies'} remaining`

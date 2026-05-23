@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Users, Search, MapPin, Grid, List, Crown, Clock } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
 import Link from 'next/link';
 
@@ -96,7 +95,11 @@ export default function MembersPage() {
 
             {loading ? (
                 <div className="flex items-center justify-center py-16">
-                    <div className="w-10 h-10 rounded-full border-3 border-primary/20 border-t-primary animate-spin" />
+                    <img
+                        src="/gs.png"
+                        alt="Loading"
+                        className="w-12 h-12 object-contain animate-pulse-zoom"
+                    />
                 </div>
             ) : filteredProfiles.length === 0 ? (
                 <div className="text-center py-16 space-y-3">
@@ -127,8 +130,12 @@ export default function MembersPage() {
                                         </div>
                                     )}
                                     <div className="absolute inset-0 gradient-card" />
-                                    {/* Online indicator */}
-                                    <div className="absolute top-2 right-2 w-3 h-3 rounded-full bg-success border-2 border-white" />
+                                    {/* Available label */}
+                                    <div className="absolute top-2 right-2">
+                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[8px] font-bold text-white bg-black/40 backdrop-blur-sm">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-success" /> Available
+                                        </span>
+                                    </div>
                                     {/* Role label */}
                                     <div className="absolute top-2 left-2">
                                         <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-bold text-white" style={{ background: profile.profileType === 'sugar_daddy' ? 'rgba(59,130,246,0.85)' : 'rgba(236,72,153,0.85)' }}>
@@ -175,13 +182,12 @@ export default function MembersPage() {
                                             <UserAvatar name={profile.name} size={48} />
                                         )}
                                     </div>
-                                    <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-success border-2 border-white" />
+
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <h3 className="text-sm font-bold text-text-primary truncate flex items-center gap-1">
                                         {profile.name || 'Member'}
                                         {profile.age && <span className="text-text-muted text-xs font-normal">· {profile.age}</span>}
-                                        <VerifiedBadge size={14} />
                                     </h3>
                                     <div className="flex items-center gap-2">
                                         {profile.location && (

@@ -11,17 +11,11 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
+import TelegramIcon from '@/components/TelegramIcon';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-// Telegram SVG icon
-function TelegramIcon({ size = 18, className = '' }) {
-    return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
-            <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
-        </svg>
-    );
-}
+
 
 const MENU_ITEMS = [
     { key: 'profile', icon: User, label: 'My Profile' },
@@ -37,15 +31,26 @@ const MENU_ITEMS = [
 
 export default function ProfilePage() {
     const router = useRouter();
-    const { user, guest, profile, updateProfile, addPhoto, removePhoto, saved, signOut, deleteAccount, settings, updateSettings, verificationStatus, verifyProfile, clearVerification, messages, markMessagesRead } = useAuth();
+    const { user, guest, profile, likes, matches, updateProfile, addPhoto, removePhoto, saved, signOut, deleteAccount, settings, updateSettings, verificationStatus, verifyProfile, clearVerification, messages, markMessagesRead, markSingleMessageRead, subscription } = useAuth();
     const [activeSection, setActiveSection] = useState(null);
     const [editMode, setEditMode] = useState(false);
     const [editData, setEditData] = useState({});
     const [selfieData, setSelfieData] = useState(null);
     const [idDocData, setIdDocData] = useState(null);
+    const [expandedMessages, setExpandedMessages] = useState({});
     const fileInputRef = useRef(null);
     const selfieInputRef = useRef(null);
     const idDocInputRef = useRef(null);
+
+    const handleMessageClick = async (msg) => {
+        setExpandedMessages(prev => ({
+            ...prev,
+            [msg.id]: !prev[msg.id]
+        }));
+        if (!msg.read) {
+            await markSingleMessageRead(msg.id);
+        }
+    };
 
     if (guest && !user) {
         return (
@@ -219,7 +224,15 @@ export default function ProfilePage() {
                         </div>
                         <h3 className="text-lg font-bold text-success">Profile Verified ✓</h3>
                         <p className="text-sm text-text-secondary">Your identity has been confirmed. Other users can see your blue verification badge.</p>
-                        <div className="flex justify-center"><VerifiedBadge size={28} verified={true} /></div>
+                        <div className="flex justify-center gap-2 flex-wrap">
+                            <VerifiedBadge size={28} verified={true} />
+                            {subscription && subscription.plan && subscription.plan !== 'free' && (
+                                <VerifiedBadge size={28} badgeText={subscription.plan} />
+                            )}
+                            {user.customBadge && user.customBadge.toLowerCase() !== 'verified' && user.customBadge.toLowerCase() !== subscription?.plan?.toLowerCase() && (
+                                <VerifiedBadge size={28} badgeText={user.customBadge} />
+                            )}
+                        </div>
                     </>
                 ) : verificationStatus === 'pending_review' ? (
                     <>
@@ -365,37 +378,61 @@ export default function ProfilePage() {
                         <p className="text-sm text-text-muted">No messages yet</p>
                     </div>
                 ) : (
-                    msgs.map(msg => (
-                        <div key={msg.id} className={`rounded-2xl p-4 transition-colors ${msg.read ? '' : 'card-shadow'}`} style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                            <div className="flex items-start gap-3">
-                                <div className="w-10 h-10 rounded-full overflow-hidden bg-surface shrink-0 flex items-center justify-center">
-                                    {msg.senderImage ? (
-                                        <img src={msg.senderImage} alt="" className="w-full h-full object-cover" />
-                                    ) : msg.type === 'gs_support' ? (
-                                        <ShieldCheck size={18} className="text-primary" />
-                                    ) : msg.type === 'verification' ? (
-                                        <ShieldCheck size={18} className="text-success" />
-                                    ) : (
-                                        <User size={18} className="text-text-muted" />
-                                    )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-0.5">
-                                        <span className="text-xs font-bold text-text-primary">{msg.sender}</span>
-                                        {!msg.read && <div className="w-1.5 h-1.5 rounded-full bg-primary" />}
-                                        <span className="text-[10px] text-text-muted ml-auto">{formatTime(msg.timestamp)}</span>
+                    msgs.map(msg => {
+                        const isExpanded = !!expandedMessages[msg.id];
+                        return (
+                            <div
+                                key={msg.id}
+                                onClick={() => handleMessageClick(msg)}
+                                className={`rounded-2xl p-4 transition-all cursor-pointer ${
+                                    msg.read 
+                                        ? 'bg-opacity-50 opacity-90' 
+                                        : 'card-shadow border-primary/20 bg-primary/5 ring-1 ring-primary/5'
+                                }`}
+                                style={{ 
+                                    background: 'var(--color-bg-card)', 
+                                    border: msg.read ? 'var(--card-border)' : '1px solid var(--color-primary)' 
+                                }}
+                            >
+                                <div className="flex items-start gap-3">
+                                    <div className="w-10 h-10 rounded-full overflow-hidden bg-surface shrink-0 flex items-center justify-center">
+                                        {msg.senderImage ? (
+                                            <img src={msg.senderImage} alt="" className="w-full h-full object-cover" />
+                                        ) : msg.type === 'gs_support' ? (
+                                            <ShieldCheck size={18} className="text-primary" />
+                                        ) : msg.type === 'verification' ? (
+                                            <ShieldCheck size={18} className="text-success" />
+                                        ) : (
+                                            <User size={18} className="text-text-muted" />
+                                        )}
                                     </div>
-                                    <h4 className="text-sm font-semibold text-text-primary mb-0.5">{msg.title}</h4>
-                                    <p className="text-xs text-text-secondary leading-relaxed">{msg.body}</p>
-                                    {msg.profileId && (
-                                        <Link href={`/discover/${msg.profileId}`} className="inline-block mt-2 text-[11px] text-primary font-semibold hover:underline">
-                                            View Profile →
-                                        </Link>
-                                    )}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-0.5">
+                                            <span className="text-xs font-bold text-text-primary">{msg.sender}</span>
+                                            {!msg.read && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 animate-pulse" />}
+                                            <span className="text-[10px] text-text-muted ml-auto">{formatTime(msg.timestamp)}</span>
+                                        </div>
+                                        <h4 className="text-sm font-semibold text-text-primary mb-0.5">{msg.title}</h4>
+                                        <p className={`text-xs text-text-secondary leading-relaxed transition-all ${isExpanded ? '' : 'line-clamp-2'}`}>
+                                            {msg.body}
+                                        </p>
+                                        {isExpanded && msg.profileId && (
+                                            <motion.div
+                                                initial={{ opacity: 0, y: -5 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                className="mt-2"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <Link href={`/discover/${msg.profileId}`} className="inline-block text-[11px] text-primary font-semibold hover:underline">
+                                                    View Profile →
+                                                </Link>
+                                            </motion.div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    ))
+                        );
+                    })
                 )}
             </div>
         );
@@ -472,7 +509,7 @@ export default function ProfilePage() {
             <FaqItem q="How does verification work?" a="Go to Account → Verify Profile and upload a clear selfie. If your selfie matches your profile picture, you'll receive a blue verification badge." />
             <FaqItem q="How do comments work?" a="Comments you post are sent to the website for admin moderation. Once approved, they appear publicly on the profile page." />
             <FaqItem q="How do I get a match?" a="Like profiles, and the algorithm will match you with sugar mummies based on compatibility, activity, and location." />
-            <FaqItem q="Is my data private?" a="Your profile data is stored locally on your device. We don't share your information with third parties." />
+            <FaqItem q="Is my data private?" a="Your profile data is securely stored with Supabase (encrypted at rest). We never share your personal information with third parties." />
         </div>
     );
 
@@ -504,24 +541,25 @@ export default function ProfilePage() {
                                         <UserAvatar name={user.display_name} size={96} />
                                     )}
                                 </div>
-                                {verificationStatus === 'verified' && (
-                                    <div className="absolute -bottom-1 -right-1">
-                                        <VerifiedBadge size={26} verified={true} />
-                                    </div>
-                                )}
                             </div>
                             <div className="text-center">
-                                <h1 className="text-xl font-bold text-text-primary flex items-center gap-1.5 justify-center">
+                                <h1 className="text-xl font-bold text-text-primary flex items-center gap-2 justify-center flex-wrap">
                                     {user.display_name || 'User'}
                                     {verificationStatus === 'verified' && <VerifiedBadge size={18} verified={true} />}
+                                    {subscription && subscription.plan && subscription.plan !== 'free' && (
+                                        <VerifiedBadge size={18} badgeText={subscription.plan} />
+                                    )}
+                                    {user.customBadge && user.customBadge.toLowerCase() !== 'verified' && user.customBadge.toLowerCase() !== subscription?.plan?.toLowerCase() && (
+                                        <VerifiedBadge size={18} badgeText={user.customBadge} />
+                                    )}
                                 </h1>
                                 <p className="text-sm text-text-muted">{user.email}</p>
                             </div>
 
                             {/* Quick stats */}
                             <div className="flex items-center gap-6 mt-2">
-                                <StatBadge icon={Heart} label="Likes" value={(user && user.id) ? (getStored('gsm_likes', [])?.length || 0) : 0} />
-                                <StatBadge icon={Star} label="Matches" value={(user && user.id) ? (getStored('gsm_matches', [])?.length || 0) : 0} />
+                                <StatBadge icon={Heart} label="Likes" value={likes?.length || 0} />
+                                <StatBadge icon={Star} label="Matches" value={matches?.length || 0} />
                                 <StatBadge icon={Bookmark} label="Saved" value={saved?.length || 0} />
                             </div>
                         </div>
@@ -555,7 +593,7 @@ export default function ProfilePage() {
 
                         {/* Version */}
                         <p className="text-center text-[10px] text-text-muted mt-6">
-                            Genuine Sugarmummies App · v3.1.0
+                            Genuine Sugarmummies App · v4.0.0
                         </p>
                     </motion.div>
                 )}
@@ -564,11 +602,7 @@ export default function ProfilePage() {
     );
 }
 
-// ---- Helper Components ----
-function getStored(key, fallback = null) {
-    if (typeof window === 'undefined') return fallback;
-    try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
-}
+
 
 function InputField({ label, value, onChange, multiline, placeholder }) {
     const shared = "w-full rounded-xl p-3 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm";
