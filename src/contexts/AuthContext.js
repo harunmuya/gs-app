@@ -166,28 +166,33 @@ export function AuthProvider({ children }) {
 
         // Listen for auth changes (login, logout, token refresh)
         const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange(
-            async (event, session) => {
+            (event, session) => {
                 if (!mounted) return;
 
-                try {
-                    if (event === 'SIGNED_IN' && session?.user) {
-                        const userData = await fetchUserProfile(session.user.id, session.user);
-                        if (mounted) {
-                            setUser(userData);
-                            setGuest(false);
-                            localStorage.removeItem('guest_mode');
-                            await loadUserData(session.user.id);
+                // Defer async operations to the next event loop tick to prevent deadlocks
+                // inside Supabase's internal state transitions (e.g. during exchangeCodeForSession)
+                setTimeout(async () => {
+                    if (!mounted) return;
+                    try {
+                        if (event === 'SIGNED_IN' && session?.user) {
+                            const userData = await fetchUserProfile(session.user.id, session.user);
+                            if (mounted) {
+                                setUser(userData);
+                                setGuest(false);
+                                localStorage.removeItem('guest_mode');
+                                await loadUserData(session.user.id);
+                            }
+                        } else if (event === 'SIGNED_OUT') {
+                            if (mounted) {
+                                setUser(null);
+                                setGuest(false);
+                                resetState();
+                            }
                         }
-                    } else if (event === 'SIGNED_OUT') {
-                        if (mounted) {
-                            setUser(null);
-                            setGuest(false);
-                            resetState();
-                        }
+                    } catch (err) {
+                        console.error('[Auth] Error handling auth state change:', err);
                     }
-                } catch (err) {
-                    console.error('[Auth] Error handling auth state change:', err);
-                }
+                }, 0);
             }
         );
 

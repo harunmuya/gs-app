@@ -19,6 +19,7 @@ function CallbackHandler({ setStatus, setErrMsg }) {
   const searchParams = useSearchParams();
 
   useEffect(() => {
+    let active = true;
     const code = searchParams.get('code');
     const error = searchParams.get('error');
     const errorDescription = searchParams.get('error_description');
@@ -27,49 +28,70 @@ function CallbackHandler({ setStatus, setErrMsg }) {
       setStatus('error');
       setErrMsg(errorDescription || error);
       setTimeout(() => {
-        router.replace(`/auth/login?error=${encodeURIComponent(errorDescription || error)}`);
+        if (active) router.replace(`/auth/login?error=${encodeURIComponent(errorDescription || error)}`);
       }, 2500);
       return;
     }
 
-    // Pre-check: session may already exist (e.g. page reload)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setStatus('success');
-        setTimeout(() => router.replace('/discover'), 600);
-        return;
-      }
+    const timeout = (ms) => new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Sign-in verification timed out. Please try again.')), ms)
+    );
 
-      if (code) {
-        supabase.auth.exchangeCodeForSession(code)
-          .then(({ error: exchangeError }) => {
-            if (exchangeError) {
-              console.error('[Auth Callback] Exchange error:', exchangeError.message);
-              setStatus('error');
-              setErrMsg(exchangeError.message);
-              setTimeout(() => {
-                router.replace(`/auth/login?error=${encodeURIComponent(exchangeError.message)}`);
-              }, 2500);
-            } else {
-              setStatus('success');
-              setTimeout(() => router.replace('/discover'), 600);
-            }
-          })
-          .catch((err) => {
-            console.error('[Auth Callback] Unexpected error:', err);
-            setStatus('error');
-            setErrMsg('Authentication failed. Please try again.');
-            setTimeout(() => router.replace('/auth/login?error=Authentication+failed'), 2500);
-          });
-      } else {
-        // No code — just redirect home
-        router.replace('/discover');
+    const runAuthFlow = async () => {
+      try {
+        // Pre-check: session may already exist (e.g. page reload) with 6s timeout
+        const sessionResult = await Promise.race([
+          supabase.auth.getSession(),
+          timeout(6000)
+        ]);
+
+        if (sessionResult?.data?.session) {
+          if (active) {
+            setStatus('success');
+            setTimeout(() => {
+              if (active) router.replace('/discover');
+            }, 600);
+          }
+          return;
+        }
+
+        if (code) {
+          // Exchange code with 12s timeout
+          const exchangeResult = await Promise.race([
+            supabase.auth.exchangeCodeForSession(code),
+            timeout(12000)
+          ]);
+
+          if (exchangeResult?.error) {
+            throw exchangeResult.error;
+          }
+
+          if (active) {
+            setStatus('success');
+            setTimeout(() => {
+              if (active) router.replace('/discover');
+            }, 600);
+          }
+        } else {
+          if (active) router.replace('/discover');
+        }
+      } catch (err) {
+        console.error('[Auth Callback] Auth flow error:', err);
+        if (active) {
+          setStatus('error');
+          setErrMsg(err.message || 'Authentication failed. Please try again.');
+          setTimeout(() => {
+            if (active) router.replace(`/auth/login?error=${encodeURIComponent(err.message || 'Authentication failed')}`);
+          }, 2500);
+        }
       }
-    }).catch(() => {
-      setStatus('error');
-      setErrMsg('Could not connect. Please check your internet and try again.');
-      setTimeout(() => router.replace('/auth/login'), 3000);
-    });
+    };
+
+    runAuthFlow();
+
+    return () => {
+      active = false;
+    };
   }, [searchParams, router, setStatus, setErrMsg]);
 
   return null;
