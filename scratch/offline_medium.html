@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline - Genuine Sugarmummies</title>
+    <style>:root{--p:#E8634A;--bg:#0A0A0F;--c:rgba(20,20,32,0.8);--b:rgba(255,255,255,0.08);--t:#FFF;--m:#9E9EAF}*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}body{font-family:system-ui,-apple-system,sans-serif;background:radial-gradient(circle at top,#1e0e0e 0%,var(--bg) 70%);color:var(--t);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.5rem;overflow:hidden}.card{width:100%;max-width:380px;background:var(--c);backdrop-filter:blur(20px);border:1px solid var(--b);border-radius:24px;padding:2rem 1.5rem;text-align:center;box-shadow:0 20px 40px rgba(0,0,0,0.5)}.ts{display:grid;grid-template-columns:1fr 1fr;background:rgba(255,255,255,0.03);padding:0.25rem;border-radius:12px;margin-bottom:1.5rem;border:1px solid rgba(255,255,255,0.05)}.tb{background:0 0;border:0;color:var(--m);padding:0.5rem;font-size:0.85rem;font-weight:600;cursor:pointer;border-radius:9px;display:flex;align-items:center;justify-content:center}.tb.active{background:rgba(255,255,255,0.08);color:var(--t)}.tc{display:none}.tc.active{display:block;animation:f 0.3s ease}@keyframes f{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}.lb{width:68px;height:68px;background:linear-gradient(135deg,#E8634A,#FF8A6B);border-radius:18px;margin:0 auto 1rem;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(232,99,74,0.3);font-size:2.25rem}.bd{display:inline-flex;align-items:center;gap:0.4rem;padding:0.3rem 0.8rem;border-radius:100px;background:rgba(232,99,74,0.1);border:1px solid rgba(232,99,74,0.2);color:#FF8A6B;font-size:0.75rem;font-weight:600;margin-bottom:0.75rem}.bd.on{background:rgba(81,207,102,0.15);border-color:rgba(81,207,102,0.3);color:#51CF66}.dt{width:6px;height:6px;border-radius:50%;background:currentColor}h1{font-size:1.35rem;font-weight:800;margin-bottom:0.5rem;letter-spacing:-0.02em}p{font-size:0.85rem;color:var(--m);line-height:1.45;margin-bottom:1.5rem}.bn{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;width:100%;padding:0.8rem;border-radius:14px;background:linear-gradient(135deg,#E8634A,#FF8A6B);border:none;color:#FFF;font-size:0.9rem;font-weight:700;cursor:pointer}.bn:active{transform:scale(0.98)}.dg{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);border-radius:14px;padding:0.9rem;margin-top:1.5rem;text-align:left}.dg-t{font-size:0.72rem;font-weight:700;text-transform:uppercase;color:var(--m);margin-bottom:0.6rem;display:flex;justify-content:space-between}.dg-r{display:flex;justify-content:space-between;align-items:center;font-size:0.78rem;padding:0.35rem 0;border-bottom:1px solid rgba(255,255,255,0.03)}.dg-r:last-child{border:none;padding-bottom:0}.gd{color:#51CF66;font-weight:600}.bd-c{color:#FF6B6B;font-weight:600}.ld{color:var(--m);animation:fl 1s infinite}@keyframes fl{50%{opacity:0.5}}.g-top{display:flex;justify-content:space-between;width:100%;margin-bottom:0.5rem;font-size:0.8rem;font-weight:700}canvas{background:#111118;border:1px solid var(--b);border-radius:12px;width:100%;height:160px;display:block;touch-action:none}.go{position:absolute;inset:0;background:rgba(10,10,15,0.95);border-radius:24px;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:10}.go h3{color:#FF6B6B;margin-bottom:0.25rem}.go p{margin-bottom:1rem;font-size:0.8rem}.bn-s{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);color:#FFF;padding:0.4rem 1rem;border-radius:8px;font-size:0.75rem;cursor:pointer}.cts{display:flex;gap:1rem;width:100%;justify-content:center;margin-top:0.7rem}.cb{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#FFF;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none}.cb:active{background:rgba(232,99,74,0.2)}.tst{position:fixed;top:20px;background:#2B8A3E;color:#FFF;padding:0.7rem 1.2rem;border-radius:12px;display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;font-weight:600;transform:translateY(-80px);opacity:0;transition:all 0.3s;z-index:100}.tst.s{transform:translateY(0);opacity:1}.spn{animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}</style>
+</head>
+<body>
+    <div class="tst" id="toast">✔ Connection restored! Reconnecting in 3s...</div>
+    <div class="card">
+        <div class="ts">
+            <button class="tb active" onclick="tab('s-tab', this)">Connection</button>
+            <button class="tb" onclick="tab('g-tab', this)">Play Game</button>
+        </div>
+        <div id="s-tab" class="tc active">
+            <div class="lb">❤️</div>
+            <div class="bd" id="badge"><span class="dt"></span><span id="bd-txt">Device Offline</span></div>
+            <h1 id="hl">You are Offline</h1>
+            <p id="desc">Your internet took a brief break. Your matches and chats will automatically sync once you're back online.</p>
+            <button class="bn" id="retry" onclick="retry()">
+                <svg id="r-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                <span id="r-txt">Try Reconnecting</span>
+            </button>
+            <div class="dg">
+                <div class="dg-t"><span>Diagnostics</span><span onclick="check()" style="color:var(--p);cursor:pointer;">Refresh</span></div>
+                <div class="dg-r"><span>Adapter</span><span id="d-net" class="ld">Checking...</span></div>
+                <div class="dg-r"><span>Ping</span><span id="d-ping" class="ld">Checking...</span></div>
+            </div>
+        </div>
+        <div id="g-tab" class="tc">
+            <div class="g-top"><span>Score: <b id="score">0</b></span><span>High: <b id="hi">0</b></span></div>
+            <div style="position:relative;">
+                <canvas id="canvas" width="348" height="160"></canvas>
+                <div class="go" id="go">
+                    <h3>Game Over</h3>
+                    <p>Score: <span id="f-score">0</span></p>
+                    <button class="bn-s" onclick="startG()">Restart</button>
+                </div>
+            </div>
+            <div class="cts">
+                <button class="cb" onmousedown="k.dx=-k.sp" onmouseup="k.dx=0" ontouchstart="event.preventDefault(); k.dx=-k.sp" ontouchend="k.dx=0">◀</button>
+                <button class="cb" onmousedown="k.dx=k.sp" onmouseup="k.dx=0" ontouchstart="event.preventDefault(); k.dx=k.sp" ontouchend="k.dx=0">▶</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        const $=i=>document.getElementById(i);
+        function tab(i,e){document.querySelectorAll('.tc').forEach(c=>c.classList.remove('active'));document.querySelectorAll('.tb').forEach(b=>b.classList.remove('active'));$(i).classList.add('active');e.classList.add('active');i==='g-tab'?startG():stopG()}
+        function check(){const n=$('d-net'),p=$('d-ping');n.className=navigator.onLine?'gd':'bd-c';n.textContent=navigator.onLine?'Connected':'Offline';p.className='ld';p.textContent='Pinging...';fetch(window.location.origin+'/favicon.ico?t='+Date.now(),{method:'HEAD',mode:'no-cors'}).then(()=>{p.className='gd';p.textContent='Online';showOn()}).catch(()=>{p.className='bd-c';p.textContent='Offline'})}
+        function showOn(){$('toast').classList.add('s');$('badge').className='bd on';$('bd-txt').textContent='Online';$('hl').textContent='Back Online!';$('desc').textContent='Redirecting you back to your matches and chats...';setTimeout(()=>window.location.reload(),3000)}
+        function retry(){const i=$('r-icon'),t=$('r-txt');i.classList.add('spn');t.textContent='Checking...';check();setTimeout(()=>{i.classList.remove('spn');t.textContent='Try Reconnecting'},1000)}
+        window.addEventListener('online',showOn);window.addEventListener('load',check);
+        const cv=$('canvas'),cx=cv.getContext('2d');let active=false,o=[],score=0,h=parseInt(localStorage.getItem('g_hi')||'0'),frame;const k={x:149,y:145,w:50,h:10,sp:6,dx:0};$('hi').textContent=h;
+        function drawB(){cx.fillStyle='#E8634A';cx.beginPath();cx.roundRect(k.x,k.y,k.w,k.h,5);cx.fill()}
+        function spawn(){if(Math.random()<0.04){const t=[{c:'💖',p:10,s:1.8},{c:'⭐',p:15,s:2.1},{c:'🖤',p:-10,s:2.0}];const y=t[Math.floor(Math.random()*t.length)];o.push({x:Math.random()*(cv.width-20)+10,y:-10,c:y.c,p:y.p,s:Math.random()*1.2+y.s})}}
+        function updateG(){cx.clearRect(0,0,cv.width,cv.height);k.x=Math.max(0,Math.min(cv.width-k.w,k.x+k.dx));drawB();spawn();for(let i=o.length-1;i>=0;i--){const t=o[i];t.y+=t.s;cx.font='14px sans-serif';cx.textAlign='center';cx.fillText(t.c,t.x,t.y);if(t.y>=k.y&&t.x>=k.x-5&&t.x<=k.x+k.w+5){score=Math.max(0,score+t.p);$('score').textContent=score;if(score>h){h=score;localStorage.setItem('g_hi',h);$('hi').textContent=h}o.splice(i,1)}else if(t.y>cv.height+10){o.splice(i,1)}}if(active)frame=requestAnimationFrame(updateG)}
+        window.onkeydown=(e)=>{if(e.key==='ArrowLeft')k.dx=-k.sp;if(e.key==='ArrowRight')k.dx=k.sp};window.onkeyup=()=>k.dx=0;
+        function startG(){$('go').style.display='none';score=0;$('score').textContent=0;o=[];active=true;updateG()}
+        function stopG(){active=false;cancelAnimationFrame(frame)}
+    </script>
+</body>
+</html>

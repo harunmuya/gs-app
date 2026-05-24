@@ -131,9 +131,8 @@ export default function RootLayout({ children }) {
                                     var d = localStorage.getItem('gs_dark_mode');
                                     if (d === 'true') {
                                         document.documentElement.classList.add('dark');
-                                    } else if (d === null && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-                                        // Don't auto-enable dark — default is white/light
                                     }
+                                    // Never auto-enable dark from system preference — default is always white/light
                                 } catch(e){}
                             })();
                         `,
@@ -146,18 +145,6 @@ export default function RootLayout({ children }) {
                         {children}
                     </ClientProviders>
                 </AuthProvider>
-                {/* Service Worker Cleanup — unregister any lingering SW */}
-                <script
-                    dangerouslySetInnerHTML={{
-                        __html: `
-                            if ('serviceWorker' in navigator) {
-                                navigator.serviceWorker.getRegistrations().then(function(regs) {
-                                    for (var r of regs) { r.unregister(); }
-                                });
-                            }
-                        `,
-                    }}
-                />
             </body>
         </html>
     );
