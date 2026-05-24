@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Sparkles, ArrowRight, ArrowLeft, User, Mail, Heart, Lock, Eye, EyeOff,
-    UserPlus, LogIn, MapPin, Target, Search, Shield, Users, CheckCircle
+    UserPlus, LogIn, MapPin, Target, Search, Shield, Users, CheckCircle, Calendar
 } from 'lucide-react';
 
 // Kenyan locations for reverse geocode fallback
@@ -494,8 +494,8 @@ function LoginPageInner() {
                             <p className="text-sm text-text-secondary text-center mb-4">Select your gender to help us find the best matches for you</p>
                             <div className="grid grid-cols-2 gap-4">
                                 {[
-                                    { value: 'male', label: 'Male', icon: '👨', desc: 'I am a man' },
-                                    { value: 'female', label: 'Female', icon: '👩', desc: 'I am a woman' },
+                                    { value: 'male', label: 'Male', desc: 'I am a man' },
+                                    { value: 'female', label: 'Female', desc: 'I am a woman' },
                                 ].map(opt => (
                                     <motion.button
                                         key={opt.value}
@@ -506,7 +506,9 @@ function LoginPageInner() {
                                             : 'border-border bg-bg-card hover:border-primary/30'
                                             }`}
                                     >
-                                        <span className="text-5xl">{opt.icon}</span>
+                                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm shrink-0 ${opt.value === 'male' ? 'bg-blue-500/10 text-blue-500' : 'bg-pink-500/10 text-pink-500'}`}>
+                                            <User size={32} />
+                                        </div>
                                         <span className="font-bold text-text-primary text-sm">{opt.label}</span>
                                         <span className="text-xs text-text-muted">{opt.desc}</span>
                                     </motion.button>
@@ -521,8 +523,8 @@ function LoginPageInner() {
                             <p className="text-sm text-text-secondary text-center mb-4">What type of connection are you looking for?</p>
                             <div className="space-y-3">
                                 {[
-                                    { value: 'sugar_mummy', label: 'Sugar Mummy', icon: '💖', desc: 'I want to connect with a Sugar Mummy', color: 'from-pink-500 to-orange-500' },
-                                    { value: 'sugar_daddy', label: 'Sugar Daddy', icon: '💙', desc: 'I want to connect with a Sugar Daddy', color: 'from-blue-500 to-purple-500' },
+                                    { value: 'sugar_mummy', label: 'Sugar Mummy', desc: 'I want to connect with a Sugar Mummy', color: 'from-pink-500 to-orange-500' },
+                                    { value: 'sugar_daddy', label: 'Sugar Daddy', desc: 'I want to connect with a Sugar Daddy', color: 'from-blue-500 to-purple-500' },
                                 ].map(opt => (
                                     <motion.button
                                         key={opt.value}
@@ -533,8 +535,8 @@ function LoginPageInner() {
                                             : 'border-border bg-bg-card hover:border-primary/30'
                                             }`}
                                     >
-                                        <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${opt.color} flex items-center justify-center text-2xl shadow-md shrink-0`}>
-                                            {opt.icon}
+                                        <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${opt.color} flex items-center justify-center text-white shadow-md shrink-0`}>
+                                            <Heart size={24} fill="currentColor" />
                                         </div>
                                         <div className="flex-1">
                                             <span className="font-bold text-text-primary text-sm block">{opt.label}</span>
@@ -580,7 +582,7 @@ function LoginPageInner() {
                                     className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-medium text-primary bg-primary/5 hover:bg-primary/10 transition-colors"
                                 >
                                     <Target size={14} className={detectingLocation ? 'animate-spin' : ''} />
-                                    {detectingLocation ? 'Detecting location...' : '📍 Auto-detect my location'}
+                                    {detectingLocation ? 'Detecting location...' : 'Auto-detect my location'}
                                 </button>
                             </div>
 
@@ -602,14 +604,26 @@ function LoginPageInner() {
                             <div className="p-4 rounded-2xl bg-surface space-y-2">
                                 <p className="text-xs font-bold text-text-primary">Your Profile Summary</p>
                                 <div className="flex flex-wrap gap-2">
-                                    <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-bg-card border border-border">
-                                        {gender === 'male' ? '👨 Male' : '👩 Female'}
+                                    <span className="px-3 py-1.5 rounded-full text-[10px] font-medium bg-bg-card border border-border flex items-center gap-1.5">
+                                        <User size={12} className={gender === 'male' ? 'text-blue-500' : 'text-pink-500'} />
+                                        {gender === 'male' ? 'Male' : 'Female'}
                                     </span>
-                                    <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-bg-card border border-border">
-                                        {lookingFor === 'sugar_mummy' ? '💖 Looking for Sugar Mummy' : '💙 Looking for Sugar Daddy'}
+                                    <span className="px-3 py-1.5 rounded-full text-[10px] font-medium bg-bg-card border border-border flex items-center gap-1.5">
+                                        <Heart size={12} className="text-primary" fill="currentColor" />
+                                        {lookingFor === 'sugar_mummy' ? 'Looking for Sugar Mummy' : 'Looking for Sugar Daddy'}
                                     </span>
-                                    {age && <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-bg-card border border-border">🎂 {age} years</span>}
-                                    {location && <span className="px-3 py-1 rounded-full text-[10px] font-medium bg-bg-card border border-border">📍 {location}</span>}
+                                    {age && (
+                                        <span className="px-3 py-1.5 rounded-full text-[10px] font-medium bg-bg-card border border-border flex items-center gap-1.5">
+                                            <Calendar size={12} className="text-gold" />
+                                            {age} years
+                                        </span>
+                                    )}
+                                    {location && (
+                                        <span className="px-3 py-1.5 rounded-full text-[10px] font-medium bg-bg-card border border-border flex items-center gap-1.5">
+                                            <MapPin size={12} className="text-primary" />
+                                            {location}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
 
