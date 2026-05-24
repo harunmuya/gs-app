@@ -367,7 +367,7 @@ export default function DiscoverPage() {
     const showSuperIndicator = isDragging && touchDelta.y < -50;
 
     return (
-        <div className="px-3 pt-1 pb-20">
+        <div className="px-3 pt-1 pb-2">
             {/* Header */}
             <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -437,7 +437,7 @@ export default function DiscoverPage() {
             </AnimatePresence>
 
             {/* Card Stack */}
-            <div className="relative w-full aspect-[3/4] max-h-[50vh] rounded-3xl overflow-hidden mb-2.5">
+            <div className="relative w-full aspect-[3/4] max-h-[50vh] rounded-3xl overflow-hidden mb-1.5">
                 {/* Next card preview */}
                 {nextProfile && (
                     <div className="absolute inset-2 rounded-2xl overflow-hidden bg-surface" style={{ transform: 'scale(0.95)', opacity: 0.6 }}>
@@ -575,12 +575,12 @@ export default function DiscoverPage() {
             </div>
 
             {/* Swipe hint */}
-            <p className="text-center text-[10px] text-text-muted mb-2">
+            <p className="text-center text-[10px] text-text-muted mb-1.5">
                 ← Swipe left to pass · Swipe right to like → · ↑ Super like
             </p>
 
             {/* Action Buttons */}
-            <div className="flex items-center justify-center gap-4">
+            <div className="flex items-center justify-center gap-3">
                 <motion.button whileTap={{ scale: 0.85 }}
                     onClick={() => handleSwipe('left', currentProfile)}
                     className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-colors"
@@ -602,7 +602,7 @@ export default function DiscoverPage() {
             </div>
 
             {/* Count */}
-            <p className="text-center text-[10px] text-text-muted mt-2">
+            <p className="text-center text-[10px] text-text-muted mt-1.5">
                 {displayProfiles.length} of {allProfiles.length} profiles remaining
             </p>
 

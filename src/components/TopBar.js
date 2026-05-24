@@ -50,7 +50,7 @@ export default function TopBar() {
     <header className="sticky top-0 z-50 border-b border-border w-full" style={{ background: 'var(--color-bg)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}>
       <div className="w-full max-w-[450px] mx-auto flex items-center justify-between px-2 h-14">
         {/* GS Logo — only the brand logo, no duplicate avatar */}
-        <button onClick={handleLogoClick} className="flex items-center active:scale-95 transition-transform min-w-0 flex-1 mr-2">
+        <button onClick={handleLogoClick} className="flex items-center active:scale-95 transition-transform min-w-0 mr-2">
           <img
             src="/genuine-logo.png"
             alt="Genuine Sugarmummies"
