@@ -367,9 +367,9 @@ export default function DiscoverPage() {
     const showSuperIndicator = isDragging && touchDelta.y < -50;
 
     return (
-        <div className="px-4 pt-2 pb-24">
+        <div className="px-3 pt-1 pb-20">
             {/* Header */}
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                     <Sparkles size={20} className="text-primary" />
                     <h1 className="text-lg font-bold text-text-primary">Discover</h1>
@@ -437,7 +437,7 @@ export default function DiscoverPage() {
             </AnimatePresence>
 
             {/* Card Stack */}
-            <div className="relative w-full aspect-[3/4] max-h-[65vh] rounded-3xl overflow-hidden mb-4">
+            <div className="relative w-full aspect-[3/4] max-h-[50vh] rounded-3xl overflow-hidden mb-2.5">
                 {/* Next card preview */}
                 {nextProfile && (
                     <div className="absolute inset-2 rounded-2xl overflow-hidden bg-surface" style={{ transform: 'scale(0.95)', opacity: 0.6 }}>
@@ -575,7 +575,7 @@ export default function DiscoverPage() {
             </div>
 
             {/* Swipe hint */}
-            <p className="text-center text-[10px] text-text-muted mb-3">
+            <p className="text-center text-[10px] text-text-muted mb-2">
                 ← Swipe left to pass · Swipe right to like → · ↑ Super like
             </p>
 
@@ -602,7 +602,7 @@ export default function DiscoverPage() {
             </div>
 
             {/* Count */}
-            <p className="text-center text-[10px] text-text-muted mt-3">
+            <p className="text-center text-[10px] text-text-muted mt-2">
                 {displayProfiles.length} of {allProfiles.length} profiles remaining
             </p>
 
