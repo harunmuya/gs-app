@@ -58,10 +58,138 @@ function StarRating({ rating, max = 5 }) {
     );
 }
 
+function cleanSentence(s) {
+    let clean = s.trim();
+    clean = clean.charAt(0).toUpperCase() + clean.slice(1);
+    if (!/[.!?]$/.test(clean)) clean += '.';
+    clean = clean.replace(/\+?\d{9,13}/g, '[Verified Contact]');
+    return clean;
+}
+
+function parseBioText(contentHtml, excerptText, profileName, profileType) {
+    let cleanText = (contentHtml || excerptText || '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&#8217;/g, "'")
+        .replace(/&#8211;/g, '–')
+        .replace(/&amp;/g, '&')
+        .replace(/&hellip;/g, '...')
+        .replace(/continue\s+reading.*$/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    cleanText = cleanText.replace(/whatsapp me/i, 'contact me')
+        .replace(/join our agency/i, 'join')
+        .replace(/genuine sugar mummies/i, 'premium matching')
+        .replace(/genuine sugar daddies/i, 'premium matching');
+
+    const sentences = cleanText.split(/(?<=[.!?])\s+/)
+        .map(s => s.trim())
+        .filter(s => s.length > 12 && !s.toLowerCase().includes('mary g') && !s.toLowerCase().includes('escrow') && !s.toLowerCase().includes('t.me'));
+
+    const introSentences = [];
+    const rawOfferings = [];
+    const rawRequirements = [];
+
+    const offeringKeywords = [
+        'allowance', 'kes', 'ksh', 'money', 'shop', 'trip', 'travel', 'provide', 'offer', 'bills', 
+        'pay', 'rent', 'finance', 'support', 'gift', 'weekly', 'monthly', 'sponsor', 'business',
+        'funding', 'luxury', 'vacation', 'allowances', 'shopping'
+    ];
+    const requirementKeywords = [
+        'look', 'seek', 'want', 'boy', 'man', 'partner', 'companion', 'honest', 'respect', 'neat', 
+        'ready', 'meet', 'age', 'discreet', 'privacy', 'clean', 'trust', 'romance', 'relationship',
+        'gentleman', 'understanding', 'loving', 'passionate'
+    ];
+
+    sentences.forEach((sentence) => {
+        const lower = sentence.toLowerCase();
+        if (introSentences.length < 2 && (lower.includes('my name') || lower.includes('meet') || lower.includes('am a') || lower.includes('i am') || lower.includes('years old') || lower.includes('old sugar'))) {
+            introSentences.push(sentence);
+            return;
+        }
+
+        let isOffering = offeringKeywords.some(kw => lower.includes(kw));
+        let isRequirement = requirementKeywords.some(kw => lower.includes(kw));
+
+        if (isOffering && rawOfferings.length < 3) {
+            rawOfferings.push(sentence);
+        } else if (isRequirement && rawRequirements.length < 3) {
+            rawRequirements.push(sentence);
+        } else if (introSentences.length < 2) {
+            introSentences.push(sentence);
+        }
+    });
+
+    if (introSentences.length === 0) {
+        if (sentences.length > 0) {
+            introSentences.push(sentences[0]);
+            if (sentences.length > 1) introSentences.push(sentences[1]);
+        } else {
+            introSentences.push(`Hello! I am a verified ${profileType === 'sugar_daddy' ? 'Sugar Daddy' : 'Sugar Mummy'} seeking a genuine and respectful connection.`);
+        }
+    }
+
+    const defaultOfferings = [
+        "Generous allowance, bills payment, and financial support",
+        "Lifestyle upgrading, luxury dining, and shopping trips",
+        "Empowering career mentorship and business guidance"
+    ];
+    const defaultRequirements = [
+        "Complete discretion, respect, and mutual privacy",
+        "Active, honest, and open communication",
+        "Companion ready for real-life meetups and quality time"
+    ];
+
+    const finalOfferings = [...rawOfferings];
+    while (finalOfferings.length < 3) {
+        const def = defaultOfferings[finalOfferings.length];
+        if (!finalOfferings.some(o => o.toLowerCase().includes(def.split(' ')[0].toLowerCase()))) {
+            finalOfferings.push(def);
+        } else {
+            finalOfferings.push(defaultOfferings[(finalOfferings.length + 1) % 3]);
+        }
+    }
+
+    const finalRequirements = [...rawRequirements];
+    while (finalRequirements.length < 3) {
+        const def = defaultRequirements[finalRequirements.length];
+        if (!finalRequirements.some(r => r.toLowerCase().includes(def.split(' ')[0].toLowerCase()))) {
+            finalRequirements.push(def);
+        } else {
+            finalRequirements.push(defaultRequirements[(finalRequirements.length + 1) % 3]);
+        }
+    }
+
+    const introduction = introSentences.join(' ');
+
+    return {
+        introduction,
+        offerings: finalOfferings.slice(0, 3).map(cleanSentence),
+        requirements: finalRequirements.slice(0, 3).map(cleanSentence)
+    };
+}
+
 export default function SingleProfilePage({ params }) {
     const resolvedParams = use(params);
     const profileId = resolvedParams.id;
     const router = useRouter();
+
+    // Dynamic Canonical Link Update for SEO deduplication
+    useEffect(() => {
+        if (typeof window !== 'undefined' && profileId) {
+            const canonicalUrl = `${window.location.origin}/discover/${profileId}`;
+            let canonical = document.querySelector('link[rel="canonical"]');
+            if (canonical) {
+                canonical.setAttribute('href', canonicalUrl);
+            } else {
+                canonical = document.createElement('link');
+                canonical.setAttribute('rel', 'canonical');
+                canonical.setAttribute('href', canonicalUrl);
+                document.head.appendChild(canonical);
+            }
+        }
+    }, [profileId]);
     const {
         user, addLike, addMatch, isProfileSwiped,
         saveProfile, unsaveProfile, isProfileSaved, logProfileView, likes, campaigns, subscription,
@@ -244,6 +372,7 @@ export default function SingleProfilePage({ params }) {
     const daysActive = profile.daysSincePost || 0;
 
     // Contact message
+    const parsedBio = parseBioText(profile.content, profile.excerpt, profile.name, profile.profileType);
     const connectionMsg = encodeURIComponent(`Hi Admin Mary G, I need a match connection with ${profile.name || 'this person'} from GS App.`);
 
     return (
@@ -556,23 +685,53 @@ export default function SingleProfilePage({ params }) {
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.18 }}
-                    className="rounded-3xl p-5"
+                    className="rounded-3xl p-5 space-y-4"
                     style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}
                 >
-                    <h2 className="text-lg font-bold text-text-primary mb-3 flex items-center gap-2">
-                        <Star size={18} className="text-gold" />
-                        Profile About
+                    <h2 className="text-sm font-black text-text-primary uppercase tracking-wider mb-2 flex items-center gap-2 border-b border-white/5 pb-3">
+                        <User size={18} className="text-primary" />
+                        About Me
                     </h2>
-                    {profile.excerpt ? (
-                        <p className="text-text-secondary leading-relaxed text-sm">{profile.excerpt}</p>
-                    ) : (
-                        <p className="text-text-muted text-sm italic">No description available.</p>
-                    )}
-                    {profile.content && (
-                        <div className="mt-3 text-text-secondary text-sm leading-relaxed"
-                            dangerouslySetInnerHTML={{ __html: profile.content }}
-                        />
-                    )}
+                    
+                    {/* Unique Summarized Introduction */}
+                    <div className="space-y-2">
+                        <p className="text-text-secondary leading-relaxed text-sm font-medium">
+                            {parsedBio.introduction}
+                        </p>
+                    </div>
+
+                    {/* Highly Premium structured grids of What I Offer vs What I Seek */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1.5">
+                        {/* Offerings (What I Provide) */}
+                        <div className="p-4 rounded-2xl bg-success/5 border border-success/10 space-y-2">
+                            <h3 className="text-[10px] font-black text-success uppercase tracking-wider flex items-center gap-1.5">
+                                <Sparkles size={12} /> Arrangement Offerings
+                            </h3>
+                            <ul className="space-y-2">
+                                {parsedBio.offerings.map((item, index) => (
+                                    <li key={index} className="text-[11px] text-text-secondary leading-relaxed flex items-start gap-2">
+                                        <span className="text-success font-black select-none">•</span>
+                                        <span>{item}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+
+                        {/* Requirements (Ideal Match) */}
+                        <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10 space-y-2">
+                            <h3 className="text-[10px] font-black text-primary uppercase tracking-wider flex items-center gap-1.5">
+                                <Star size={12} className="text-gold fill-gold" /> Ideal Partner Seeked
+                            </h3>
+                            <ul className="space-y-2">
+                                {parsedBio.requirements.map((item, index) => (
+                                    <li key={index} className="text-[11px] text-text-secondary leading-relaxed flex items-start gap-2">
+                                        <span className="text-primary font-black select-none">•</span>
+                                        <span>{item}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
                 </motion.div>
 
                 {/* ═══════════════ Advanced Profile Insights ═══════════════ */}

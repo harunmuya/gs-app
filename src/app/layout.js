@@ -21,9 +21,9 @@ export const metadata = {
     keywords: 'sugar mummy kenya, dating app kenya, sugar mummy dating, genuine sugar mummies, nairobi dating, kenya dating app, sugar daddy kenya, real connections, verified profiles',
     authors: [{ name: 'Genuine Sugar Mummies', url: 'https://genuinesugarmummies.co.ke' }],
     manifest: '/manifest.json',
-    metadataBase: new URL('https://genuinesugarmummies.co.ke'),
+    metadataBase: new URL('https://genuine-sugarmummies-app.vercel.app'),
     alternates: {
-        canonical: 'https://genuinesugarmummies.co.ke',
+        canonical: './',
     },
     icons: {
         icon: [
