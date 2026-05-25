@@ -144,8 +144,8 @@ export default function OnboardingPage() {
                             <p className="text-center text-sm font-semibold text-text-primary mb-2">What is your gender?</p>
                             <div className="grid grid-cols-2 gap-4">
                                 {[
-                                    { value: 'male', label: 'Male', emoji: '👨', color: 'bg-blue-500/10 text-blue-500' },
-                                    { value: 'female', label: 'Female', emoji: '👩', color: 'bg-pink-500/10 text-pink-500' },
+                                    { value: 'male', label: 'Male', color: 'bg-blue-500/10 text-blue-500' },
+                                    { value: 'female', label: 'Female', color: 'bg-pink-500/10 text-pink-500' },
                                 ].map(opt => (
                                     <motion.button
                                         key={opt.value}
@@ -153,7 +153,9 @@ export default function OnboardingPage() {
                                         onClick={() => handleGenderSelect(opt.value)}
                                         className={`flex flex-col items-center gap-3 p-7 rounded-3xl border-2 transition-all ${gender === opt.value ? 'border-primary bg-primary/5 shadow-lg' : 'border-border bg-bg-card hover:border-primary/40'}`}
                                     >
-                                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-3xl ${opt.color}`}>{opt.emoji}</div>
+                                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${opt.color}`}>
+                                            <User size={32} />
+                                        </div>
                                         <span className="font-bold text-text-primary">{opt.label}</span>
                                     </motion.button>
                                 ))}
@@ -166,8 +168,8 @@ export default function OnboardingPage() {
                         <motion.div key="role" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }} className="w-full max-w-sm space-y-3">
                             <p className="text-center text-sm font-semibold text-text-primary mb-2">What are you looking for?</p>
                             {[
-                                { value: 'sugar_mummy', label: 'Sugar Mummy', desc: 'Connect with a Sugar Mummy', emoji: '👩‍❤️‍👨', color: 'from-pink-500 to-rose-600' },
-                                { value: 'sugar_daddy', label: 'Sugar Daddy', desc: 'Connect with a Sugar Daddy', emoji: '👨‍❤️‍👩', color: 'from-blue-500 to-indigo-600' },
+                                { value: 'sugar_mummy', label: 'Sugar Mummy', desc: 'Connect with a Sugar Mummy', color: 'from-pink-500 to-rose-600' },
+                                { value: 'sugar_daddy', label: 'Sugar Daddy', desc: 'Connect with a Sugar Daddy', color: 'from-blue-500 to-indigo-600' },
                             ].map(opt => (
                                 <motion.button
                                     key={opt.value}
@@ -175,7 +177,9 @@ export default function OnboardingPage() {
                                     onClick={() => handleRoleSelect(opt.value)}
                                     className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 transition-all text-left ${lookingFor === opt.value ? 'border-primary bg-primary/5' : 'border-border bg-bg-card hover:border-primary/40'}`}
                                 >
-                                    <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${opt.color} flex items-center justify-center text-2xl shadow-md shrink-0`}>{opt.emoji}</div>
+                                    <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${opt.color} flex items-center justify-center text-white shadow-md shrink-0`}>
+                                        {opt.value === 'sugar_mummy' ? <Heart size={24} fill="currentColor" /> : <Sparkles size={24} />}
+                                    </div>
                                     <div>
                                         <span className="font-bold text-text-primary block">{opt.label}</span>
                                         <span className="text-xs text-text-muted">{opt.desc}</span>

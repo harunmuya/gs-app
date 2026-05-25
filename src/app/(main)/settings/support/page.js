@@ -7,11 +7,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, LifeBuoy, Send, ChevronDown, CheckCircle, MessageSquare, RefreshCw } from 'lucide-react';
 
 const CATEGORIES = [
-    { value: 'payment', label: '💳 Payment Issue' },
-    { value: 'account', label: '👤 Account Problem' },
-    { value: 'verification', label: '✅ Verification Help' },
-    { value: 'technical', label: '⚙️ Technical Issue' },
-    { value: 'other', label: '💬 Other' },
+    { value: 'payment', label: 'Payment Issue' },
+    { value: 'account', label: 'Account Problem' },
+    { value: 'verification', label: 'Verification Help' },
+    { value: 'technical', label: 'Technical Issue' },
+    { value: 'other', label: 'Other' },
 ];
 
 const STATUS_CONFIG = {
