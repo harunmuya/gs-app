@@ -112,13 +112,36 @@ function LoginPageInner() {
         else if (gender === 'female') setLookingFor('sugar_daddy');
     }, [gender]);
 
+    // Listen to Google Sign-In Popup events
+    useEffect(() => {
+        const handleAuthMessage = (event) => {
+            if (event.origin !== window.location.origin) return;
+            if (event.data?.type === 'auth-success') {
+                router.push(event.data.nextUrl || '/discover');
+            } else if (event.data?.type === 'auth-error') {
+                setError(event.data.error || 'Authentication failed');
+                setGoogleLoading(false);
+            }
+        };
+
+        window.addEventListener('message', handleAuthMessage);
+        return () => window.removeEventListener('message', handleAuthMessage);
+    }, [router]);
+
     // Handle Google Sign-In
     const handleGoogleSignIn = async () => {
         setGoogleLoading(true);
         setError('');
         try {
-            await signInWithGoogle();
-            // Google redirects externally — loading state stays until page unloads
+            const res = await signInWithGoogle();
+            if (res && res.isPopup && res.popup) {
+                const checkClosed = setInterval(() => {
+                    if (res.popup.closed) {
+                        clearInterval(checkClosed);
+                        setGoogleLoading(false);
+                    }
+                }, 1000);
+            }
         } catch (err) {
             setError(err.message || 'Google sign-in failed. Please try again.');
             setGoogleLoading(false);

@@ -27,7 +27,14 @@ function CallbackHandler({ setStatus, setErrMsg }) {
       setStatus('error');
       setErrMsg(errorDescription || error);
       setTimeout(() => {
-        if (active) router.replace(`/auth/login?error=${encodeURIComponent(errorDescription || error)}`);
+        if (active) {
+          if (window.opener) {
+            window.opener.postMessage({ type: 'auth-error', error: errorDescription || error }, window.location.origin);
+            window.close();
+          } else {
+            router.replace(`/auth/login?error=${encodeURIComponent(errorDescription || error)}`);
+          }
+        }
       }, 2500);
       return;
     }
@@ -66,26 +73,40 @@ function CallbackHandler({ setStatus, setErrMsg }) {
             !session.user.user_metadata?.looking_for
           );
 
-          // Also check the users table
+          // Check users table with error shielding
+          let profileIncomplete = true;
           if (session?.user?.id) {
-            const { data: profile } = await supabase
-              .from('users')
-              .select('gender, looking_for, age')
-              .eq('id', session.user.id)
-              .single();
+            try {
+              const { data: profile, error: profileErr } = await supabase
+                .from('users')
+                .select('gender, looking_for, age')
+                .eq('id', session.user.id)
+                .single();
 
-            const profileIncomplete = !profile?.gender || !profile?.looking_for || !profile?.age;
-
-            setTimeout(() => {
-              if (active) {
-                router.replace(profileIncomplete ? '/onboarding' : '/discover');
+              if (!profileErr && profile) {
+                profileIncomplete = !profile.gender || !profile.looking_for || !profile.age;
+              } else {
+                const meta = session.user.user_metadata || {};
+                profileIncomplete = !meta.gender || !meta.looking_for;
               }
-            }, 600);
-          } else {
-            setTimeout(() => {
-              if (active) router.replace('/discover');
-            }, 600);
+            } catch (err) {
+              const meta = session.user.user_metadata || {};
+              profileIncomplete = !meta.gender || !meta.looking_for;
+            }
           }
+
+          const nextUrl = profileIncomplete ? '/onboarding' : '/discover';
+
+          setTimeout(() => {
+            if (active) {
+              if (window.opener) {
+                window.opener.postMessage({ type: 'auth-success', nextUrl }, window.location.origin);
+                window.close();
+              } else {
+                router.replace(nextUrl);
+              }
+            }
+          }, 600);
         }
       } catch (err) {
         console.error('[Auth Callback] Auth flow error:', err);
@@ -93,7 +114,14 @@ function CallbackHandler({ setStatus, setErrMsg }) {
           setStatus('error');
           setErrMsg(err.message || 'Authentication failed. Please try again.');
           setTimeout(() => {
-            if (active) router.replace(`/auth/login?error=${encodeURIComponent(err.message || 'Authentication failed')}`);
+            if (active) {
+              if (window.opener) {
+                window.opener.postMessage({ type: 'auth-error', error: err.message || 'Authentication failed' }, window.location.origin);
+                window.close();
+              } else {
+                router.replace(`/auth/login?error=${encodeURIComponent(err.message || 'Authentication failed')}`);
+              }
+            }
           }, 2500);
         }
       }

@@ -802,6 +802,41 @@ export function AuthProvider({ children }) {
 
     async function signInWithGoogle() {
         try {
+            const canUsePopup = typeof window !== 'undefined' && window.open;
+            
+            if (canUsePopup) {
+                const { data, error } = await supabase.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: {
+                        redirectTo: `${window.location.origin}/auth/callback`,
+                        queryParams: {
+                            access_type: 'offline',
+                            prompt: 'consent',
+                        },
+                        skipBrowserRedirect: true,
+                    },
+                });
+
+                if (error) throw new Error(error.message);
+                if (data?.url) {
+                    const width = 500;
+                    const height = 650;
+                    const left = window.screen.width / 2 - width / 2;
+                    const top = window.screen.height / 2 - height / 2;
+                    
+                    const popup = window.open(
+                        data.url,
+                        'Google Login',
+                        `width=${width},height=${height},top=${top},left=${left},status=no,resizable=yes,scrollbars=yes`
+                    );
+
+                    if (popup) {
+                        return { isPopup: true, popup };
+                    }
+                }
+            }
+
+            // Fallback for standard redirection if popup is blocked or unsupported
             const { error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
@@ -814,7 +849,7 @@ export function AuthProvider({ children }) {
             });
 
             if (error) throw new Error(error.message);
-            // User will be redirected to Google, then back to /auth/callback
+            return { isPopup: false };
         } catch (err) {
             throw err;
         }
