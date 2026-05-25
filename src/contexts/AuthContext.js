@@ -103,6 +103,67 @@ export function AuthProvider({ children }) {
     useEffect(() => {
         let mounted = true;
 
+        // Register GoNative/Median Native Google Sign-In Callback
+        if (typeof window !== 'undefined') {
+            window.gonativeGoogleSignInCallback = async (authData) => {
+                console.log('[Native Google Auth] Callback received:', authData);
+                
+                let payload = authData;
+                if (typeof authData === 'string') {
+                    try {
+                        payload = JSON.parse(authData);
+                    } catch (e) {
+                        console.error('[Native Google Auth] Failed to parse authData string:', e);
+                    }
+                }
+
+                if (payload && payload.idToken) {
+                    setLoading(true);
+                    try {
+                        const { data: authRes, error: authErr } = await supabase.auth.signInWithIdToken({
+                            provider: 'google',
+                            token: payload.idToken
+                        });
+
+                        if (authErr) throw authErr;
+
+                        if (authRes?.user) {
+                            // Perform welcome upsert server-side to guarantee profile is created
+                            const displayName = payload.name || payload.email?.split('@')[0] || 'User';
+                            fetch('/api/welcome', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    userId: authRes.user.id,
+                                    email: payload.email || authRes.user.email,
+                                    displayName: displayName,
+                                    extraData: {
+                                        avatar_url: payload.imageUrl || '',
+                                    }
+                                }),
+                            }).catch(err => console.warn('[Native Google Auth] Welcome API failed:', err));
+
+                            const userData = await fetchUserProfile(authRes.user.id, authRes.user);
+                            if (mounted) {
+                                setUser(userData);
+                                await loadUserData(authRes.user.id);
+                                window.location.href = '/discover';
+                            }
+                        }
+                    } catch (err) {
+                        console.error('[Native Google Auth] Sign-in error:', err);
+                        alert('Native Google Sign-in failed: ' + (err.message || err));
+                    } finally {
+                        if (mounted) setLoading(false);
+                    }
+                } else {
+                    const errText = payload?.error || 'No ID Token received from device.';
+                    console.error('[Native Google Auth] Invalid payload:', payload);
+                    alert('Google Sign-in failed: ' + errText);
+                }
+            };
+        }
+
         // Fast loading: check localStorage and cookies synchronously to resolve loading instantly if no session
         let tokenExists = false;
         let hasAuthCookie = false;
@@ -143,7 +204,7 @@ export function AuthProvider({ children }) {
                     const userData = await fetchUserProfile(session.user.id, session.user);
                     if (mounted) {
                         setUser(userData);
-                        loadUserData(session.user.id);
+                        await loadUserData(session.user.id);
                     }
                 } else if (mounted) {
                     // No session — user will be redirected to login by AuthGuard
@@ -293,6 +354,7 @@ export function AuthProvider({ children }) {
             photos: profile.images || [],
             bio: profile.bio || '',
             interests: profile.interests || [],
+            hobbies: profile.hobbies || [],
             gender: profile.gender || '',
             lookingFor: profile.looking_for || '',
             age: profile.age || null,
@@ -306,6 +368,53 @@ export function AuthProvider({ children }) {
             isBanned: profile.is_banned || false,
             customBadge: profile.custom_badge || '',
         };
+    }
+
+    // Helper to resolve the last unlocked message for each conversation
+    async function resolveConversations(convs, userId) {
+        if (!convs || convs.length === 0) return [];
+        try {
+            const convIds = convs.map(c => c.id);
+            const { data: latestMsgs } = await supabase
+                .from('messages')
+                .select('conversation_id, content, created_at')
+                .in('conversation_id', convIds)
+                .lte('created_at', new Date().toISOString())
+                .order('created_at', { ascending: false });
+
+            const latestMap = {};
+            if (latestMsgs) {
+                latestMsgs.forEach(m => {
+                    if (!latestMap[m.conversation_id]) {
+                        latestMap[m.conversation_id] = m;
+                    }
+                });
+            }
+
+            return convs.map(c => {
+                const latest = latestMap[c.id];
+                return {
+                    id: c.id,
+                    matchWpId: c.match_wp_id,
+                    matchName: c.match_name,
+                    matchImage: c.match_image,
+                    lastMessage: latest ? latest.content : c.last_message,
+                    lastMessageAt: latest ? latest.created_at : c.last_message_at,
+                    unreadCount: c.unread_count,
+                };
+            });
+        } catch (err) {
+            console.error('Failed to resolve conversations:', err);
+            return convs.map(c => ({
+                id: c.id,
+                matchWpId: c.match_wp_id,
+                matchName: c.match_name,
+                matchImage: c.match_image,
+                lastMessage: c.last_message,
+                lastMessageAt: c.last_message_at,
+                unreadCount: c.unread_count,
+            }));
+        }
     }
 
     // ---- Load all user data from Supabase ----
@@ -356,18 +465,14 @@ export function AuthProvider({ children }) {
                 id: n.id, type: n.type, sender: n.sender,
                 senderImage: n.sender_image, title: n.title,
                 body: n.body, profileId: n.profile_id,
-                read: n.is_read, createdAt: n.created_at,
+                read: n.is_read, createdAt: n.created_at, timestamp: n.created_at
             })));
 
             // --- Welcome message is now sent server-side via /api/welcome on new user creation ---
             // (See fetchUserProfile above — only fires once per user, idempotent)
 
-            setConversations((convRes.data || []).map(c => ({
-                id: c.id, matchWpId: c.match_wp_id,
-                matchName: c.match_name, matchImage: c.match_image,
-                lastMessage: c.last_message, lastMessageAt: c.last_message_at,
-                unreadCount: c.unread_count,
-            })));
+            const resolvedConvs = await resolveConversations(convRes.data || [], userId);
+            setConversations(resolvedConvs);
 
             let activeSub = subRes.data || null;
             if (!activeSub) {
@@ -688,7 +793,7 @@ export function AuthProvider({ children }) {
                     id: entry.id, type: entry.type, sender: entry.sender,
                     senderImage: entry.sender_image, title: entry.title,
                     body: entry.body, profileId: entry.profile_id,
-                    read: false, createdAt: entry.created_at,
+                    read: false, createdAt: entry.created_at, timestamp: entry.created_at
                 }, ...prev].slice(0, 200));
             }
         } catch { }
@@ -718,6 +823,20 @@ export function AuthProvider({ children }) {
         } catch { }
     }, [user?.id]);
 
+    const deleteMessage = useCallback(async (messageId) => {
+        if (!user?.id) return;
+        try {
+            await supabase
+                .from('notifications')
+                .delete()
+                .eq('id', messageId)
+                .eq('user_id', user.id);
+            setMessages(prev => prev.filter(m => m.id !== messageId));
+        } catch (err) {
+            console.error('[AuthContext] Failed to delete notification:', err);
+        }
+    }, [user?.id]);
+
     // ---- Auth Methods ----
     async function signUp(email, password, displayName, extraData = {}) {
         try {
@@ -739,18 +858,36 @@ export function AuthProvider({ children }) {
             if (!data.user) throw new Error('Registration failed. Please try again.');
 
             // Upsert the user profile with extra data to avoid race conditions with database triggers
-            const { error: profileError } = await supabase
+            const profilePayload = {
+                id: data.user.id,
+                email: email,
+                display_name: displayName || email.split('@')[0],
+                gender: extraData.gender || null,
+                looking_for: extraData.lookingFor || null,
+                age: extraData.age || null,
+                location: extraData.location || '',
+                interests: extraData.interests || [],
+                hobbies: extraData.hobbies || [],
+                is_public: extraData.isPublic !== false,
+            };
+
+            let { error: profileError } = await supabase
                 .from('users')
-                .upsert({
-                    id: data.user.id,
-                    email: email,
-                    display_name: displayName || email.split('@')[0],
-                    gender: extraData.gender || null,
-                    looking_for: extraData.lookingFor || null,
-                    age: extraData.age || null,
-                    location: extraData.location || '',
-                    is_public: extraData.isPublic !== false,
-                });
+                .upsert(profilePayload);
+
+            if (profileError && (
+                profileError.message?.includes('hobbies') || 
+                profileError.code === 'PGRST100' || 
+                profileError.code === '42703'
+            )) {
+                console.warn('[Auth] hobbies column missing on signup upsert, retrying without it...');
+                const fallbackPayload = { ...profilePayload };
+                delete fallbackPayload.hobbies;
+                const retry = await supabase
+                    .from('users')
+                    .upsert(fallbackPayload);
+                profileError = retry.error;
+            }
 
             if (profileError) {
                 console.error('[Auth] Profile update after signup error:', profileError);
@@ -760,12 +897,23 @@ export function AuthProvider({ children }) {
             setUser(userData);
 
             // Send welcome message server-side — safe, idempotent, bypasses RLS
+            // Performs server-side upsert using service_role key to prevent client RLS block
             fetch('/api/welcome', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: data.user.id,
-                    displayName: userData.display_name,
+                    email: email,
+                    displayName: displayName || email.split('@')[0],
+                    extraData: {
+                        gender: extraData.gender || null,
+                        lookingFor: extraData.lookingFor || null,
+                        age: extraData.age || null,
+                        location: extraData.location || '',
+                        interests: extraData.interests || [],
+                        hobbies: extraData.hobbies || [],
+                        isPublic: extraData.isPublic !== false,
+                    }
                 }),
             }).catch(err => console.warn('[Auth] Welcome API call failed (signup):', err));
 
@@ -787,6 +935,9 @@ export function AuthProvider({ children }) {
 
             const userData = await fetchUserProfile(data.user.id, data.user);
             setUser(userData);
+            
+            // Load matches, likes, saves, and notifications immediately on login
+            await loadUserData(data.user.id);
 
             // Log login activity
             await logActivity('login', {
@@ -802,13 +953,82 @@ export function AuthProvider({ children }) {
 
     async function signInWithGoogle() {
         try {
-            const canUsePopup = typeof window !== 'undefined' && window.open;
-            
-            if (canUsePopup) {
+            // Check if device is mobile (to bypass popup block issues entirely)
+            const isMobileDevice = typeof window !== 'undefined' && 
+                (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+
+            // Detect if running inside any WebView (to bypass Google disallowed_useragent blocks)
+            let isWebView = false;
+            if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
+                const ua = navigator.userAgent;
+                const isAndroidWebView = /Android/i.test(ua) && (/Version\/[0-9.]+/i.test(ua) || ua.includes('wv'));
+                const isIOSWebView = /(iPhone|iPod|iPad).*AppleWebKit(?!.*Safari)/i.test(ua);
+                
+                if (isAndroidWebView || 
+                    isIOSWebView || 
+                    window.gonative || 
+                    window.median ||
+                    window.webkit?.messageHandlers?.gonative || 
+                    window.webkit?.messageHandlers?.median ||
+                    ua.includes('GoNative') || 
+                    ua.includes('Median') ||
+                    localStorage.getItem('is_gonative') === 'true') {
+                    isWebView = true;
+                }
+            }
+
+            // 1. FOR WEBVIEWS: Try Native Google Sign-In first (pop up Gmail selector on device)
+            // We ONLY trigger native if the actual JS Bridge or iOS webkit handlers exist.
+            if (isWebView) {
+                let nativeTriggered = false;
+                try {
+                    // Try Median JS API
+                    if (window.median && window.median.google && typeof window.median.google.signIn === 'function') {
+                        console.log('[Native Google Auth] Triggering Median JS API...');
+                        window.median.google.signIn({ callback: 'gonativeGoogleSignInCallback' });
+                        nativeTriggered = true;
+                    } 
+                    // Try GoNative JS API
+                    else if (window.gonative && window.gonative.google && typeof window.gonative.google.signIn === 'function') {
+                        console.log('[Native Google Auth] Triggering GoNative JS API...');
+                        window.gonative.google.signIn({ callback: 'gonativeGoogleSignInCallback' });
+                        nativeTriggered = true;
+                    } 
+                    // Try iOS Median message handler
+                    else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.medianGoogleSignIn) {
+                        console.log('[Native Google Auth] Triggering iOS Median postMessage...');
+                        window.webkit.messageHandlers.medianGoogleSignIn.postMessage({ callback: 'gonativeGoogleSignInCallback' });
+                        nativeTriggered = true;
+                    }
+                    // Try iOS GoNative message handler
+                    else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.gonativeGoogleSignIn) {
+                        console.log('[Native Google Auth] Triggering iOS GoNative postMessage...');
+                        window.webkit.messageHandlers.gonativeGoogleSignIn.postMessage({ callback: 'gonativeGoogleSignInCallback' });
+                        nativeTriggered = true;
+                    }
+                } catch (nativeErr) {
+                    console.warn('[Native Google Auth] Failed to trigger native flow, falling back to secure browser sync...', nativeErr);
+                }
+
+                if (nativeTriggered) {
+                    return { isPopup: false };
+                }
+
+                // --- Fallback: Secure system browser sync flow (with sync_code) ---
+                // Generate a one-time sync code
+                const syncCode = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+                
+                // Initialize the sync session record in public app_settings table
+                await supabase.from('app_settings').upsert({
+                    key: `auth_sync_${syncCode}`,
+                    value: { status: 'pending', createdAt: Date.now() }
+                }, { onConflict: 'key' });
+
+                // Generate Google sign-in URL with the sync_code query parameter
                 const { data, error } = await supabase.auth.signInWithOAuth({
                     provider: 'google',
                     options: {
-                        redirectTo: `${window.location.origin}/auth/callback`,
+                        redirectTo: `${window.location.origin}/auth/callback?sync_code=${syncCode}`,
                         queryParams: {
                             access_type: 'offline',
                             prompt: 'consent',
@@ -818,26 +1038,222 @@ export function AuthProvider({ children }) {
                 });
 
                 if (error) throw new Error(error.message);
-                if (data?.url) {
-                    const width = 500;
-                    const height = 650;
-                    const left = window.screen.width / 2 - width / 2;
-                    const top = window.screen.height / 2 - height / 2;
-                    
-                    const popup = window.open(
-                        data.url,
-                        'Google Login',
-                        `width=${width},height=${height},top=${top},left=${left},status=no,resizable=yes,scrollbars=yes`
-                    );
+                if (!data?.url) throw new Error('Failed to generate Google Sign-In URL');
 
-                    if (popup) {
-                        return { isPopup: true, popup };
+                // Define a failproof function to trigger opening in native/external browser
+                const openExternalBrowser = (url) => {
+                    let opened = false;
+                    try {
+                        if (typeof window !== 'undefined') {
+                            if (window.median && window.median.browser && typeof window.median.browser.open === 'function') {
+                                window.median.browser.open({ url });
+                                opened = true;
+                            } else if (window.gonative && window.gonative.browser && typeof window.gonative.browser.open === 'function') {
+                                window.gonative.browser.open({ url });
+                                opened = true;
+                            } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.median) {
+                                window.webkit.messageHandlers.median.postMessage({
+                                    browser: {
+                                        open: url
+                                    }
+                                });
+                                opened = true;
+                            } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.gonative) {
+                                window.webkit.messageHandlers.gonative.postMessage({
+                                    browser: {
+                                        open: url
+                                    }
+                                });
+                                opened = true;
+                            }
+                        }
+                    } catch (bridgeErr) {
+                        console.error('[GoNative/Median Bridge Open Error]', bridgeErr);
                     }
+
+                    if (!opened) {
+                        try {
+                            const iframe = document.createElement('iframe');
+                            iframe.style.display = 'none';
+                            iframe.src = 'gonative://browser/open?url=' + encodeURIComponent(url);
+                            document.body.appendChild(iframe);
+                            setTimeout(() => iframe.remove(), 500);
+                            opened = true;
+                        } catch (e) {
+                            try {
+                                const iframe = document.createElement('iframe');
+                                iframe.style.display = 'none';
+                                iframe.src = 'median://browser/open?url=' + encodeURIComponent(url);
+                                document.body.appendChild(iframe);
+                                setTimeout(() => iframe.remove(), 500);
+                                opened = true;
+                            } catch (e2) {
+                                window.location.href = 'gonative://browser/open?url=' + encodeURIComponent(url);
+                                opened = true;
+                            }
+                        }
+                    }
+                };
+
+                // Automatically trigger external browser opening on start
+                openExternalBrowser(data.url);
+
+                // Show a beautiful full-screen loading overlay inside the app WebView
+                let overlay = null;
+                if (typeof document !== 'undefined') {
+                    overlay = document.createElement('div');
+                    overlay.id = 'gs-google-sync-overlay';
+                    overlay.style.position = 'fixed';
+                    overlay.style.inset = '0';
+                    overlay.style.zIndex = '99999';
+                    overlay.style.display = 'flex';
+                    overlay.style.flexDirection = 'column';
+                    overlay.style.alignItems = 'center';
+                    overlay.style.justifyContent = 'center';
+                    overlay.style.background = 'rgba(15, 15, 20, 0.96)';
+                    overlay.style.backdropFilter = 'blur(10px)';
+                    overlay.style.color = '#FFFFFF';
+                    overlay.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+                    overlay.style.padding = '24px';
+                    overlay.style.textAlign = 'center';
+                    overlay.innerHTML = `
+                        <div style="animation: spin 1s linear infinite; width: 44px; height: 44px; border: 3.5px solid rgba(255,255,255,0.1); border-top-color: #FF5A5F; border-radius: 50%; margin-bottom: 20px;"></div>
+                        <h3 style="font-size: 18px; font-weight: 800; margin: 0 0 8px 0; color: #FFFFFF;">Waiting for Google Sign-In</h3>
+                        <p style="font-size: 13px; color: rgba(255,255,255,0.7); max-width: 265px; margin: 0 0 24px 0; line-height: 1.5;">We have opened Google Sign-In in your secure device browser. Please sign in there to connect.</p>
+                        
+                        <!-- Recovery Buttons -->
+                        <div style="display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 240px; margin-bottom: 12px;">
+                            <button id="gs-manual-open-btn" style="background: linear-gradient(135deg, #FF5A5F 0%, #FF2A6D 100%); border: none; color: #FFFFFF; font-size: 13px; font-weight: 700; padding: 12px 20px; border-radius: 14px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 15px rgba(255,90,95,0.3); outline: none; -webkit-tap-highlight-color: transparent;">Open Sign-In Browser</button>
+                            <button id="gs-cancel-sync-btn" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #FFFFFF; font-size: 13px; font-weight: 600; padding: 11px 20px; border-radius: 14px; cursor: pointer; transition: all 0.2s; outline: none; -webkit-tap-highlight-color: transparent;">Cancel</button>
+                        </div>
+                        <p style="font-size: 11px; color: rgba(255,255,255,0.4); max-width: 220px; margin: 0; line-height: 1.4;">If the sign-in page did not open automatically, click the red button above.</p>
+                        
+                        <style>
+                            @keyframes spin { to { transform: rotate(360deg); } }
+                            #gs-manual-open-btn:active { transform: scale(0.96); opacity: 0.9; }
+                            #gs-cancel-sync-btn:active { background: rgba(255,255,255,0.18); transform: scale(0.96); }
+                        </style>
+                    `;
+                    document.body.appendChild(overlay);
                 }
+
+                // Poll the Supabase app_settings table for the session token
+                let pollCount = 0;
+                const pollInterval = setInterval(async () => {
+                    pollCount++;
+                    // Timeout after 5 minutes (200 polls of 1.5s)
+                    if (pollCount > 200) {
+                        clearInterval(pollInterval);
+                        if (overlay) overlay.remove();
+                        supabase.from('app_settings').delete().eq('key', `auth_sync_${syncCode}`).catch(() => {});
+                        alert('Sign-in timed out. Please try again.');
+                        return;
+                    }
+
+                    try {
+                        const { data: syncRes } = await supabase
+                            .from('app_settings')
+                            .select('value')
+                            .eq('key', `auth_sync_${syncCode}`)
+                            .maybeSingle();
+
+                        if (syncRes?.value && syncRes.value.status === 'completed') {
+                            clearInterval(pollInterval);
+                            const sessionData = syncRes.value.session;
+
+                            // Apply session to main WebView Supabase client
+                            const { error: setSessionErr } = await supabase.auth.setSession({
+                                access_token: sessionData.access_token,
+                                refresh_token: sessionData.refresh_token
+                            });
+
+                            if (overlay) overlay.remove();
+                            
+                            // Delete sync code row from database
+                            await supabase.from('app_settings').delete().eq('key', `auth_sync_${syncCode}`).catch(() => {});
+
+                            if (!setSessionErr) {
+                                window.location.href = '/discover';
+                            } else {
+                                alert('Failed to sync session: ' + setSessionErr.message);
+                            }
+                        }
+                    } catch (pollErr) {
+                        console.error('[Google OAuth Poll] Error:', pollErr);
+                    }
+                }, 1500);
+
+                // Wire manual open button
+                const manualOpenBtn = document.getElementById('gs-manual-open-btn');
+                if (manualOpenBtn) {
+                    manualOpenBtn.onclick = () => {
+                        openExternalBrowser(data.url);
+                    };
+                }
+
+                // Wire cancel button
+                const cancelBtn = document.getElementById('gs-cancel-sync-btn');
+                if (cancelBtn) {
+                    cancelBtn.onclick = async () => {
+                        clearInterval(pollInterval);
+                        if (overlay) overlay.remove();
+                        await supabase.from('app_settings').delete().eq('key', `auth_sync_${syncCode}`).catch(() => {});
+                    };
+                }
+
+                return { isPopup: false };
             }
 
-            // Fallback for standard redirection if popup is blocked or unsupported
-            const { error } = await supabase.auth.signInWithOAuth({
+            // 2. FOR MOBILE BROWSERS: Always use standard page redirection to avoid popup blockers
+            if (isMobileDevice) {
+                const { error } = await supabase.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: {
+                        redirectTo: `${window.location.origin}/auth/callback`,
+                        queryParams: {
+                            access_type: 'offline',
+                            prompt: 'consent',
+                        },
+                    },
+                });
+
+                if (error) throw new Error(error.message);
+                return { isPopup: false };
+            }
+
+            // 3. FOR DESKTOP BROWSERS: Try popup first, fallback to standard redirect if blocked
+            const { data, error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: `${window.location.origin}/auth/callback`,
+                    queryParams: {
+                        access_type: 'offline',
+                        prompt: 'consent',
+                    },
+                    skipBrowserRedirect: true,
+                },
+            });
+
+            if (error) throw new Error(error.message);
+            if (!data?.url) throw new Error('Failed to generate Google Sign-In URL');
+
+            const width = 500;
+            const height = 650;
+            const left = window.screen.width / 2 - width / 2;
+            const top = window.screen.height / 2 - height / 2;
+            
+            const popup = window.open(
+                data.url,
+                'Google Login',
+                `width=${width},height=${height},top=${top},left=${left},status=no,resizable=yes,scrollbars=yes`
+            );
+
+            if (popup) {
+                return { isPopup: true, popup };
+            }
+
+            // Fallback for desktop browser if popup is blocked
+            const { error: redirectError } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
                     redirectTo: `${window.location.origin}/auth/callback`,
@@ -848,7 +1264,7 @@ export function AuthProvider({ children }) {
                 },
             });
 
-            if (error) throw new Error(error.message);
+            if (redirectError) throw new Error(redirectError.message);
             return { isPopup: false };
         } catch (err) {
             throw err;
@@ -910,6 +1326,7 @@ export function AuthProvider({ children }) {
             if (updates.display_name !== undefined) dbUpdates.display_name = updates.display_name;
             if (updates.bio !== undefined) dbUpdates.bio = updates.bio;
             if (updates.interests !== undefined) dbUpdates.interests = updates.interests;
+            if (updates.hobbies !== undefined) dbUpdates.hobbies = updates.hobbies;
             if (updates.age !== undefined) dbUpdates.age = updates.age;
             if (updates.location !== undefined) dbUpdates.location = updates.location;
             if (updates.gender !== undefined) dbUpdates.gender = updates.gender;
@@ -919,14 +1336,34 @@ export function AuthProvider({ children }) {
             if (updates.isPublic !== undefined) dbUpdates.is_public = updates.isPublic;
             if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
 
-            const { data: updated, error } = await supabase
+            let { data: updated, error } = await supabase
                 .from('users')
                 .update(dbUpdates)
                 .eq('id', user.id)
                 .select()
                 .single();
 
-            if (error) throw error;
+            if (error) {
+                if (dbUpdates.hobbies !== undefined && (
+                    error.message?.includes('hobbies') || 
+                    error.code === 'PGRST100' || 
+                    error.code === '42703'
+                )) {
+                    console.warn('[Profile] hobbies column missing, retrying update without it...');
+                    const fallbackUpdates = { ...dbUpdates };
+                    delete fallbackUpdates.hobbies;
+                    const retry = await supabase
+                        .from('users')
+                        .update(fallbackUpdates)
+                        .eq('id', user.id)
+                        .select()
+                        .single();
+                    if (retry.error) throw retry.error;
+                    updated = retry.data;
+                } else {
+                    throw error;
+                }
+            }
 
             const newUser = formatUserData(updated);
             setUser(newUser);
@@ -936,12 +1373,79 @@ export function AuthProvider({ children }) {
         }
     }
 
-    function addPhoto(dataUrl) {
+    // Helper to upload base64 images directly to Supabase Storage (zero server load!)
+    async function uploadBase64Image(base64Data, bucket, filenamePrefix) {
+        if (!base64Data || !base64Data.startsWith('data:image/')) {
+            return base64Data; // Return as-is if already a URL or empty
+        }
+
+        try {
+            // Convert data URL to Blob
+            const arr = base64Data.split(',');
+            const mime = arr[0].match(/:(.*?);/)[1];
+            const bstr = atob(arr[1]);
+            let n = bstr.length;
+            const u8arr = new Uint8Array(n);
+            while (n--) {
+                u8arr[n] = bstr.charCodeAt(n);
+            }
+            const blob = new Blob([u8arr], { type: mime });
+
+            const ext = mime.split('/')[1] || 'jpg';
+            const filename = `${filenamePrefix}_${Date.now()}.${ext}`;
+
+            // Try direct signed URL upload
+            const signedRes = await fetch(`/api/admin/setup?userId=${user?.id || 'guest'}&filename=${encodeURIComponent(filename)}&bucket=${bucket}`);
+            if (signedRes.ok) {
+                const signedData = await signedRes.json();
+                if (signedData.signedUrl && !signedData.fallbackMode) {
+                    const uploadRes = await fetch(signedData.signedUrl, {
+                        method: 'PUT',
+                        body: blob,
+                        headers: { 'Content-Type': mime }
+                    });
+                    if (uploadRes.ok) {
+                        return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${bucket}/${signedData.path}`;
+                    }
+                }
+            }
+
+            // Fallback to Next.js API PUT route
+            const b64Res = await fetch('/api/admin/setup', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: user?.id || 'guest',
+                    filename,
+                    base64Data,
+                    mimeType: mime,
+                    bucket
+                })
+            });
+            const b64Data = await b64Res.json();
+            if (b64Data.url) return b64Data.url;
+
+        } catch (err) {
+            console.error('[Storage Upload Helper Error]', err);
+        }
+
+        return base64Data; // Fallback to base64 if everything fails
+    }
+
+    async function addPhoto(dataUrl) {
         if (!user) return;
-        const photos = [...(user.photos || []), dataUrl].slice(0, 6);
-        const updates = { photos };
-        if (!user.avatar_url && photos.length > 0) updates.avatar_url = photos[0];
-        updateProfile(updates);
+        setVerificationStatus('processing');
+        try {
+            const uploadedUrl = await uploadBase64Image(dataUrl, 'avatars', 'photo');
+            const photos = [...(user.photos || []), uploadedUrl].slice(0, 6);
+            const updates = { photos };
+            if (!user.avatar_url && photos.length > 0) updates.avatar_url = photos[0];
+            await updateProfile(updates);
+        } catch (err) {
+            console.error('[Profile Add Photo Error]', err);
+        } finally {
+            setVerificationStatus(null);
+        }
     }
 
     function removePhoto(index) {
@@ -985,6 +1489,10 @@ export function AuthProvider({ children }) {
         setVerificationStatus('processing');
 
         try {
+            // Upload to private/public verification bucket on Supabase Storage
+            const selfieUrl = await uploadBase64Image(selfieDataUrl, 'verification-docs', 'selfie');
+            const idDocUrl = await uploadBase64Image(idDocumentDataUrl, 'verification-docs', 'id_doc');
+
             // 1. Try standard table insert
             let dbError = null;
             try {
@@ -992,8 +1500,8 @@ export function AuthProvider({ children }) {
                     .from('verification_requests')
                     .upsert({
                         user_id: user.id,
-                        selfie_url: selfieDataUrl,
-                        id_doc_url: idDocumentDataUrl,
+                        selfie_url: selfieUrl,
+                        id_doc_url: idDocUrl,
                         status: 'pending_review',
                         submitted_at: new Date().toISOString(),
                     });
@@ -1022,8 +1530,8 @@ export function AuthProvider({ children }) {
                 ledger.verifications[user.id] = {
                     user_id: user.id,
                     status: 'pending_review',
-                    selfie_url: selfieDataUrl,
-                    id_doc_url: idDocumentDataUrl,
+                    selfie_url: selfieUrl,
+                    id_doc_url: idDocUrl,
                     submitted_at: new Date().toISOString()
                 };
 
@@ -1191,12 +1699,8 @@ export function AuthProvider({ children }) {
                 .order('last_message_at', { ascending: false });
 
             if (convs) {
-                setConversations(convs.map(c => ({
-                    id: c.id, matchWpId: c.match_wp_id,
-                    matchName: c.match_name, matchImage: c.match_image,
-                    lastMessage: c.last_message, lastMessageAt: c.last_message_at,
-                    unreadCount: c.unread_count,
-                })));
+                const resolved = await resolveConversations(convs, user.id);
+                setConversations(resolved);
             }
 
             await logActivity('match', {
@@ -1344,33 +1848,31 @@ export function AuthProvider({ children }) {
         return saved.some(s => s.wpId === wpId);
     }, [saved]);
 
-    // ---- Chat ----
-    const sendChatMessage = useCallback(async (conversationId, text) => {
+    const getOrCreateConversation = useCallback(async (profileWpId, profileName = '', profileImage = '') => {
         if (!user?.id) return null;
         try {
-            const { data: msg, error } = await supabase
-                .from('messages')
-                .insert({
-                    conversation_id: conversationId,
-                    sender_id: user.id,
-                    sender_name: user.display_name,
-                    content: text,
+            const { data: existing } = await supabase
+                .from('conversations')
+                .select('*')
+                .eq('user_id', user.id)
+                .eq('match_wp_id', profileWpId)
+                .maybeSingle();
+
+            if (existing) return existing;
+
+            const { data: newConv, error } = await supabase
+                .from('conversations')
+                .upsert({
+                    user_id: user.id,
+                    match_wp_id: profileWpId,
+                    match_name: profileName || 'Sugar Mummy',
+                    match_image: profileImage || '',
                 })
                 .select()
                 .single();
 
             if (error) throw error;
 
-            // Update conversation last message
-            await supabase
-                .from('conversations')
-                .update({
-                    last_message: text.substring(0, 100),
-                    last_message_at: new Date().toISOString(),
-                })
-                .eq('id', conversationId);
-
-            // Refresh conversations
             const { data: convs } = await supabase
                 .from('conversations')
                 .select('*')
@@ -1378,72 +1880,144 @@ export function AuthProvider({ children }) {
                 .order('last_message_at', { ascending: false });
 
             if (convs) {
-                setConversations(convs.map(c => ({
-                    id: c.id, matchWpId: c.match_wp_id,
-                    matchName: c.match_name, matchImage: c.match_image,
-                    lastMessage: c.last_message, lastMessageAt: c.last_message_at,
-                    unreadCount: c.unread_count,
-                })));
+                const resolved = await resolveConversations(convs, user.id);
+                setConversations(resolved);
             }
 
-            return msg;
-        } catch {
+            return newConv;
+        } catch (err) {
+            console.error('Failed to get/create conversation:', err);
             return null;
         }
-    }, [user?.id, user?.display_name]);
+    }, [user?.id]);
 
-    const getChatMessages = useCallback(async (conversationId) => {
-        try {
-            const { data: msgs } = await supabase
-                .from('messages')
-                .select('*')
-                .eq('conversation_id', conversationId)
-                .order('created_at', { ascending: true });
-
-            return (msgs || []).map(m => ({
-                id: m.id,
-                senderId: m.sender_id,
-                senderName: m.sender_name,
-                content: m.content,
-                isRead: m.is_read,
-                createdAt: m.created_at,
-            }));
-        } catch {
-            return [];
-        }
-    }, []);
-
-    const markChatSeen = useCallback(async (conversationId) => {
+    const deleteConversation = useCallback(async (conversationId) => {
         if (!user?.id) return;
         try {
             await supabase
                 .from('messages')
-                .update({ is_read: true })
-                .eq('conversation_id', conversationId)
-                .neq('sender_id', user.id);
+                .delete()
+                .eq('conversation_id', conversationId);
 
             await supabase
                 .from('conversations')
-                .update({ unread_count: 0 })
-                .eq('id', conversationId);
+                .delete()
+                .eq('id', conversationId)
+                .eq('user_id', user.id);
 
-            // Refresh
-            const { data: convs } = await supabase
-                .from('conversations')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('last_message_at', { ascending: false });
-
-            if (convs) {
-                setConversations(convs.map(c => ({
-                    id: c.id, matchWpId: c.match_wp_id,
-                    matchName: c.match_name, matchImage: c.match_image,
-                    lastMessage: c.last_message, lastMessageAt: c.last_message_at,
-                    unreadCount: c.unread_count,
-                })));
-            }
-        } catch { }
+            setConversations(prev => prev.filter(c => c.id !== conversationId));
+        } catch (err) {
+            console.error('[AuthContext] Failed to delete conversation:', err);
+        }
     }, [user?.id]);
+
+     // ---- Chat ----
+     const sendChatMessage = useCallback(async (conversationId, text, senderId = null, createdAt = null) => {
+         if (!user?.id) return null;
+         try {
+             const insertData = {
+                 conversation_id: conversationId,
+                 sender_id: senderId === 'match' ? null : (senderId || user.id),
+                 sender_name: senderId === 'match' 
+                     ? (conversations?.find(c => c.id === conversationId)?.matchName || 'Match') 
+                     : (user.display_name || user.email?.split('@')[0]),
+                 content: text,
+             };
+             if (createdAt) {
+                 insertData.created_at = createdAt.toISOString();
+             }
+ 
+             const { data: msg, error } = await supabase
+                 .from('messages')
+                 .insert(insertData)
+                 .select()
+                 .single();
+ 
+             if (error) throw error;
+ 
+             // Update conversation last message if it's not a future message
+             if (!createdAt || createdAt <= new Date()) {
+                 await supabase
+                     .from('conversations')
+                     .update({
+                         last_message: text.substring(0, 100),
+                         last_message_at: createdAt ? createdAt.toISOString() : new Date().toISOString(),
+                     })
+                     .eq('id', conversationId);
+             }
+ 
+             // Refresh conversations
+             const { data: convs } = await supabase
+                 .from('conversations')
+                 .select('*')
+                 .eq('user_id', user.id)
+                 .order('last_message_at', { ascending: false });
+ 
+             if (convs) {
+                 const resolved = await resolveConversations(convs, user.id);
+                 setConversations(resolved);
+             }
+ 
+             return msg;
+         } catch (err) {
+             console.error('Failed to send message:', err);
+             return null;
+         }
+     }, [user?.id, user?.display_name, conversations]);
+ 
+     const getChatMessages = useCallback(async (conversationId) => {
+         try {
+             const { data: msgs } = await supabase
+                 .from('messages')
+                 .select('*')
+                 .eq('conversation_id', conversationId)
+                 .order('created_at', { ascending: true });
+ 
+             const now = new Date();
+             return (msgs || [])
+                 .filter(m => new Date(m.created_at) <= now)
+                 .map(m => ({
+                     id: m.id,
+                     senderId: m.sender_id,
+                     senderName: m.sender_name,
+                     content: m.content,
+                     text: m.content,
+                     isRead: m.is_read,
+                     createdAt: m.created_at,
+                     timestamp: m.created_at,
+                 }));
+         } catch {
+             return [];
+         }
+     }, []);
+ 
+     const markChatSeen = useCallback(async (conversationId) => {
+         if (!user?.id) return;
+         try {
+             await supabase
+                 .from('messages')
+                 .update({ is_read: true })
+                 .eq('conversation_id', conversationId)
+                 .neq('sender_id', user.id);
+ 
+             await supabase
+                 .from('conversations')
+                 .update({ unread_count: 0 })
+                 .eq('id', conversationId);
+ 
+             // Refresh
+             const { data: convs } = await supabase
+                 .from('conversations')
+                 .select('*')
+                 .eq('user_id', user.id)
+                 .order('last_message_at', { ascending: false });
+ 
+             if (convs) {
+                 const resolved = await resolveConversations(convs, user.id);
+                 setConversations(resolved);
+             }
+         } catch { }
+     }, [user?.id]);
 
     // ---- Request Connection (Telegram) ----
     const requestConnection = useCallback(async (profileName, profileId) => {
@@ -1583,8 +2157,9 @@ export function AuthProvider({ children }) {
         saveProfile: saveProfile_, unsaveProfile: unsaveProfile_, isProfileSaved,
         logActivity, logMessageSent, logProfileView, markActivityRead, markSingleActivityRead,
         requestConnection,
-        addMessage, markMessagesRead, markSingleMessageRead,
+        addMessage, markMessagesRead, markSingleMessageRead, deleteMessage,
         sendChatMessage, getChatMessages, markChatSeen,
+        getOrCreateConversation, deleteConversation,
         verifyProfile, clearVerification,
         reportUser, blockUser,
         updateSubscription,

@@ -75,7 +75,7 @@ export default function MembersPage() {
                     placeholder="Search by name or location..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full py-2.5 pl-9 pr-4 rounded-xl text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    className="w-full py-2.5 pl-9 pr-4 rounded-xl text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/30"
                     style={{ background: 'var(--color-surface)' }}
                 />
             </div>

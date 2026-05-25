@@ -6,7 +6,7 @@ import {
     User, Camera, Heart, Bookmark, Settings, ChevronRight, LogOut, Trash2, Pencil,
     Shield, HelpCircle, ChevronLeft, X, Mail, MapPin, Calendar, Star, Plus, Phone,
     MessageCircle, ShieldCheck, ShieldAlert, ImagePlus, Check, AlertCircle, Send,
-    MessageSquare, Bell, Crown, CreditCard, BarChart3, Eye, LifeBuoy
+    MessageSquare, Bell, Crown, CreditCard, BarChart3, Eye, LifeBuoy, Search
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import VerifiedBadge from '@/components/VerifiedBadge';
@@ -15,13 +15,23 @@ import TelegramIcon from '@/components/TelegramIcon';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-
+const KENYAN_CITIES = [
+    'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Ruiru', 'Kikuyu',
+    'Thika', 'Naivasha', 'Kakamega', 'Kisii', 'Kitale', 'Athi River', 'Mlolongo',
+    'Garissa', 'Malindi', 'Ngong', 'Rongai', 'Karen', 'Westlands', 'Kilimani',
+    'Langata', 'South B', 'South C', 'Roysambu', 'Kasarani', 'Embakasi',
+    'Juja', 'Kiambu', 'Nyeri', 'Machakos', 'Meru', 'Nanyuki', 'Diani',
+    'Kilifi', 'Voi', 'Kericho', 'Homabay', 'Migori', 'Bomet', 'Webuye',
+    'Wajir', 'Limuru', 'Lodwar', 'Mandera', 'Narok', 'Isiolo', 'Marsabit',
+    'Lamu', 'Watamu', 'Bamburi', 'Nyali',
+];
 
 const MENU_ITEMS = [
     { key: 'profile', icon: User, label: 'My Profile' },
     { key: 'photos', icon: Camera, label: 'My Photos' },
     { key: 'verification', icon: ShieldCheck, label: 'Verify Profile' },
     { key: 'messages', icon: MessageSquare, label: 'Messages' },
+    { key: 'notifications', icon: Bell, label: 'Notifications' },
     { key: 'saved', icon: Bookmark, label: 'Saved Profiles' },
     { key: 'subscribe', icon: Crown, label: 'Membership Plans', link: '/subscribe' },
     { key: 'support', icon: LifeBuoy, label: 'Support & Help Desk', link: '/settings/support' },
@@ -32,25 +42,54 @@ const MENU_ITEMS = [
 
 export default function ProfilePage() {
     const router = useRouter();
-    const { user, profile, likes, matches, updateProfile, addPhoto, removePhoto, saved, signOut, deleteAccount, settings, updateSettings, verificationStatus, verifyProfile, clearVerification, messages, markMessagesRead, markSingleMessageRead, subscription } = useAuth();
+    const { user, profile, likes, matches, updateProfile, addPhoto, removePhoto, saved, signOut, deleteAccount, settings, updateSettings, verificationStatus, verifyProfile, clearVerification, messages, markMessagesRead, markSingleMessageRead, deleteMessage, subscription, conversations, getOrCreateConversation, deleteConversation } = useAuth();
     const [activeSection, setActiveSection] = useState(null);
     const [editMode, setEditMode] = useState(false);
     const [editData, setEditData] = useState({});
     const [selfieData, setSelfieData] = useState(null);
     const [idDocData, setIdDocData] = useState(null);
     const [expandedMessages, setExpandedMessages] = useState({});
+    const [selectedMessage, setSelectedMessage] = useState(null);
     const fileInputRef = useRef(null);
     const selfieInputRef = useRef(null);
     const idDocInputRef = useRef(null);
 
     const handleMessageClick = async (msg) => {
-        setExpandedMessages(prev => ({
-            ...prev,
-            [msg.id]: !prev[msg.id]
-        }));
         if (!msg.read) {
             await markSingleMessageRead(msg.id);
         }
+        
+        // If it is a notification with a profileId (real member match/message)
+        if (msg.profileId) {
+            const conv = conversations?.find(c => String(c.matchWpId) === String(msg.profileId));
+            if (conv) {
+                router.push(`/chat/${encodeURIComponent(conv.id)}`);
+            } else {
+                router.push(`/discover/${msg.profileId}`);
+            }
+            return;
+        }
+
+        // Clickable actions based on notification types
+        if (msg.type === 'support') {
+            router.push('/settings/support');
+            return;
+        } else if (msg.type === 'verification') {
+            setActiveSection('verification');
+            return;
+        } else if (msg.type === 'upgrade' || msg.type === 'system') {
+            setActiveSection('profile');
+            return;
+        } else if (msg.type === 'welcome') {
+            router.push('/discover');
+            return;
+        } else if (msg.type === 'match' || msg.type === 'like') {
+            router.push('/matches');
+            return;
+        }
+
+        // Fallback: open the detail modal popup
+        setSelectedMessage(msg);
     };
 
 
@@ -96,8 +135,12 @@ export default function ProfilePage() {
             display_name: user.display_name || '',
             bio: user.bio || '',
             interests: (user.interests || []).join(', '),
+            hobbies: (user.hobbies || []).join(', '),
             age: user.age || '',
-            orientation: user.orientation || '',
+            location: user.location || '',
+            gender: user.gender || '',
+            lookingFor: user.lookingFor || '',
+            phone: user.phone || '',
         });
     };
 
@@ -105,14 +148,19 @@ export default function ProfilePage() {
         updateProfile({
             display_name: editData.display_name,
             bio: editData.bio,
-            interests: editData.interests.split(',').map(i => i.trim()).filter(Boolean),
-            age: editData.age,
-            orientation: editData.orientation,
+            interests: typeof editData.interests === 'string' ? editData.interests.split(',').map(i => i.trim()).filter(Boolean) : (editData.interests || []),
+            hobbies: typeof editData.hobbies === 'string' ? editData.hobbies.split(',').map(h => h.trim()).filter(Boolean) : (editData.hobbies || []),
+            age: parseInt(editData.age) || null,
+            location: editData.location,
+            gender: editData.gender,
+            lookingFor: editData.lookingFor,
+            phone: editData.phone,
         });
         setEditMode(false);
     };
 
-    const unreadMessages = (messages || []).filter(m => !m.read).length;
+    const unreadConversations = (conversations || []).reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+    const unreadNotifications = (messages || []).filter(m => !m.read).length;
 
     // ---- SECTION RENDERERS ----
     const renderSection = () => {
@@ -121,6 +169,7 @@ export default function ProfilePage() {
             case 'photos': return renderPhotos();
             case 'verification': return renderVerification();
             case 'messages': return renderMessages();
+            case 'notifications': return renderNotifications();
             case 'saved': return renderSaved();
             case 'settings': return renderSettings();
             case 'contact': return renderContact();
@@ -130,45 +179,122 @@ export default function ProfilePage() {
     };
 
     // ---- Profile Edit ----
-    const renderProfileEdit = () => (
-        <div className="space-y-4">
-            {editMode ? (
-                <div className="space-y-3">
-                    <InputField label="Display Name" value={editData.display_name} onChange={v => setEditData(p => ({ ...p, display_name: v }))} />
-                    <InputField label="Bio" value={editData.bio} onChange={v => setEditData(p => ({ ...p, bio: v }))} multiline />
-                    <InputField label="Interests" value={editData.interests} onChange={v => setEditData(p => ({ ...p, interests: v }))} placeholder="e.g. Travel, Dining, Music" />
-                    <InputField label="Age" value={editData.age} onChange={v => setEditData(p => ({ ...p, age: v }))} />
-                    <div className="flex gap-2">
-                        <button onClick={saveEdit} className="flex-1 py-3 rounded-2xl font-semibold text-white gradient-primary flex items-center justify-center gap-2">
-                            <Check size={18} /> Save
-                        </button>
-                        <button onClick={() => setEditMode(false)} className="flex-1 py-3 rounded-2xl font-semibold text-text-secondary" style={{ background: 'var(--color-surface)' }}>
-                            Cancel
+    const renderProfileEdit = () => {
+        const formatGender = (g) => {
+            if (g === 'male') return 'Male';
+            if (g === 'female') return 'Female';
+            if (g === 'other') return 'Other';
+            return 'Not set';
+        };
+
+        const formatLookingFor = (l) => {
+            if (l === 'sugar_mummy') return 'Sugar Mummy';
+            if (l === 'sugar_daddy') return 'Sugar Daddy';
+            return 'Not set';
+        };
+
+        return (
+            <div className="space-y-4">
+                {editMode ? (
+                    <div className="space-y-3">
+                        <InputField label="Display Name" value={editData.display_name} onChange={v => setEditData(p => ({ ...p, display_name: v }))} />
+                        <InputField label="Bio" value={editData.bio} onChange={v => setEditData(p => ({ ...p, bio: v }))} multiline />
+                        <InputField label="Interests" value={editData.interests} onChange={v => setEditData(p => ({ ...p, interests: v }))} placeholder="e.g. Travel, Dining, Music" />
+                        <InputField label="Hobbies" value={editData.hobbies} onChange={v => setEditData(p => ({ ...p, hobbies: v }))} placeholder="e.g. Hiking, Cooking, Swimming" />
+                        <InputField label="Age" value={editData.age} onChange={v => setEditData(p => ({ ...p, age: v }))} />
+                        
+                        {/* Location Select */}
+                        <div className="space-y-1">
+                            <label className="text-xs text-text-muted font-medium block">Location</label>
+                            <select
+                                value={editData.location}
+                                onChange={e => setEditData(p => ({ ...p, location: e.target.value }))}
+                                className="w-full rounded-xl p-3 bg-[var(--color-bg-input)] text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
+                            >
+                                <option value="">Select location...</option>
+                                {KENYAN_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+
+                        {/* Gender Select */}
+                        <div className="space-y-1">
+                            <label className="text-xs text-text-muted font-medium block">Gender</label>
+                            <select
+                                value={editData.gender}
+                                onChange={e => setEditData(p => ({ ...p, gender: e.target.value }))}
+                                className="w-full rounded-xl p-3 bg-[var(--color-bg-input)] text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
+                            >
+                                <option value="">Select gender...</option>
+                                <option value="male">Male</option>
+                                <option value="female">Female</option>
+                            </select>
+                        </div>
+
+                        {/* Looking For Select */}
+                        <div className="space-y-1">
+                            <label className="text-xs text-text-muted font-medium block">Looking For</label>
+                            <select
+                                value={editData.lookingFor}
+                                onChange={e => setEditData(p => ({ ...p, lookingFor: e.target.value }))}
+                                className="w-full rounded-xl p-3 bg-[var(--color-bg-input)] text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
+                            >
+                                <option value="">Select connection...</option>
+                                <option value="sugar_mummy">Sugar Mummy</option>
+                                <option value="sugar_daddy">Sugar Daddy</option>
+                            </select>
+                        </div>
+
+                        <InputField label="Phone Number" value={editData.phone} onChange={v => setEditData(p => ({ ...p, phone: v }))} placeholder="e.g. +254 712 345 678" />
+
+                        <div className="flex gap-2 pt-2">
+                            <button onClick={saveEdit} className="flex-1 py-3 rounded-2xl font-semibold text-white gradient-primary flex items-center justify-center gap-2">
+                                <Check size={18} /> Save
+                            </button>
+                            <button onClick={() => setEditMode(false)} className="flex-1 py-3 rounded-2xl font-semibold text-text-secondary" style={{ background: 'var(--color-surface)' }}>
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                            <InfoRow icon={User} label="Name" value={user.display_name || 'Not set'} />
+                            <InfoRow icon={Mail} label="Email" value={user.email || 'Not set'} />
+                            <InfoRow icon={Calendar} label="Age" value={user.age || 'Not set'} />
+                            <InfoRow icon={MapPin} label="Location" value={user.location || 'Not set'} />
+                            <InfoRow icon={Heart} label="Gender" value={formatGender(user.gender)} />
+                            <InfoRow icon={Search} label="Looking For" value={formatLookingFor(user.lookingFor)} />
+                            <InfoRow icon={Phone} label="Phone" value={user.phone || 'Not set'} />
+                            <InfoRow icon={Shield} label="Bio" value={user.bio || 'Not set'} />
+                            {user.interests?.length > 0 && (
+                                <div className="space-y-1 mt-2">
+                                    <span className="text-[10px] text-text-muted font-bold uppercase tracking-wider block">Interests</span>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {user.interests.map((i, idx) => (
+                                            <span key={idx} className="px-2.5 py-1 text-xs font-medium rounded-full bg-primary/10 text-primary">{i}</span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            {user.hobbies?.length > 0 && (
+                                <div className="space-y-1 mt-2">
+                                    <span className="text-[10px] text-text-muted font-bold uppercase tracking-wider block">Hobbies</span>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {user.hobbies.map((h, idx) => (
+                                            <span key={idx} className="px-2.5 py-1 text-xs font-medium rounded-full bg-gold/10 text-gold">{h}</span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <button onClick={startEdit} className="w-full py-3 rounded-2xl font-semibold text-white gradient-primary flex items-center justify-center gap-2">
+                            <Pencil size={16} /> Edit Profile
                         </button>
                     </div>
-                </div>
-            ) : (
-                <div className="space-y-4">
-                    <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                        <InfoRow icon={User} label="Name" value={user.display_name || 'Not set'} />
-                        <InfoRow icon={Mail} label="Email" value={user.email || 'Not set'} />
-                        <InfoRow icon={Calendar} label="Age" value={user.age || 'Not set'} />
-                        <InfoRow icon={MapPin} label="Bio" value={user.bio || 'Not set'} />
-                        {user.interests?.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5 mt-2">
-                                {user.interests.map((i, idx) => (
-                                    <span key={idx} className="px-2.5 py-1 text-xs font-medium rounded-full bg-primary/10 text-primary">{i}</span>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                    <button onClick={startEdit} className="w-full py-3 rounded-2xl font-semibold text-white gradient-primary flex items-center justify-center gap-2">
-                        <Pencil size={16} /> Edit Profile
-                    </button>
-                </div>
-            )}
-        </div>
-    );
+                )}
+            </div>
+        );
+    };
 
     // ---- Photos ----
     const renderPhotos = () => {
@@ -351,75 +477,140 @@ export default function ProfilePage() {
 
     // ---- Messages ----
     const renderMessages = () => {
-        const msgs = messages || [];
+        const convs = conversations || [];
         return (
             <div className="space-y-3">
-                {msgs.length > 0 && unreadMessages > 0 && (
+                {convs.length === 0 ? (
+                    <div className="text-center py-12 px-6 space-y-4 rounded-3xl border border-border" style={{ background: 'var(--color-bg-card)' }}>
+                        <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
+                            <MessageSquare size={24} className="text-primary" />
+                        </div>
+                        <div className="space-y-1">
+                            <p className="text-sm font-bold text-text-primary">No messages yet</p>
+                            <p className="text-xs text-text-secondary">Start a conversation from a member's profile or matches tab.</p>
+                        </div>
+                    </div>
+                ) : (
+                    convs.map(conv => (
+                        <div
+                            key={conv.id}
+                            onClick={() => router.push(`/chat/${encodeURIComponent(conv.id)}`)}
+                            className={`rounded-2xl p-4 transition-all cursor-pointer border ${
+                                conv.unreadCount > 0 
+                                    ? 'card-shadow border-primary/20 bg-primary/5 ring-1 ring-primary/5' 
+                                    : 'border-border bg-bg-card'
+                            }`}
+                            style={{ 
+                                background: 'var(--color-bg-card)',
+                                borderColor: conv.unreadCount > 0 ? 'var(--color-primary)' : 'var(--color-border)'
+                            }}
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="relative shrink-0">
+                                    <div className="w-11 h-11 rounded-2xl overflow-hidden bg-surface flex items-center justify-center border border-border">
+                                        {conv.matchImage ? (
+                                            <img src={conv.matchImage} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                        ) : (
+                                            <UserAvatar name={conv.matchName} size={44} />
+                                        )}
+                                    </div>
+                                    {conv.unreadCount > 0 && (
+                                        <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-primary border-2 border-bg" />
+                                    )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between mb-0.5">
+                                        <span className={`text-xs text-text-primary truncate ${conv.unreadCount > 0 ? 'font-black' : 'font-bold'}`}>
+                                            {conv.matchName || 'Unknown'}
+                                        </span>
+                                        <span className="text-[10px] text-text-muted">
+                                            {formatTime(conv.lastMessageAt)}
+                                        </span>
+                                    </div>
+                                    <p className={`text-xs truncate ${conv.unreadCount > 0 ? 'text-text-primary font-medium' : 'text-text-secondary'}`}>
+                                        {conv.lastMessage || 'Start a conversation…'}
+                                    </p>
+                                </div>
+                                <div className="shrink-0 pl-2" onClick={(e) => e.stopPropagation()}>
+                                    <button
+                                        onClick={async () => {
+                                            if (confirm('Delete this entire chat conversation? This action cannot be undone.')) {
+                                                await deleteConversation(conv.id);
+                                            }
+                                        }}
+                                        className="p-2 rounded-xl bg-danger/10 hover:bg-danger/25 text-danger transition-colors"
+                                        title="Delete conversation"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+        );
+    };
+
+    // ---- Notifications ----
+    const renderNotifications = () => {
+        const msgs = (messages || []).filter(m => !m.profileId);
+        return (
+            <div className="space-y-3">
+                {msgs.length > 0 && msgs.some(m => !m.read) && (
                     <button onClick={markMessagesRead} className="text-xs text-primary font-medium hover:underline">Mark all read</button>
                 )}
                 {msgs.length === 0 ? (
-                    <div className="text-center py-10 space-y-3">
-                        <div className="w-14 h-14 rounded-full bg-surface flex items-center justify-center mx-auto">
-                            <MessageSquare size={28} className="text-text-muted" />
+                    <div className="text-center py-12 px-6 space-y-4 rounded-3xl border border-border" style={{ background: 'var(--color-bg-card)' }}>
+                        <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
+                            <Bell size={24} className="text-primary" />
                         </div>
-                        <p className="text-sm text-text-muted">No messages yet</p>
+                        <div className="space-y-1">
+                            <p className="text-sm font-bold text-text-primary">No notifications yet</p>
+                            <p className="text-xs text-text-secondary">Updates on matches, verifications, and approvals will appear here.</p>
+                        </div>
                     </div>
                 ) : (
-                    msgs.map(msg => {
-                        const isExpanded = !!expandedMessages[msg.id];
-                        return (
-                            <div
-                                key={msg.id}
-                                onClick={() => handleMessageClick(msg)}
-                                className={`rounded-2xl p-4 transition-all cursor-pointer ${
-                                    msg.read 
-                                        ? 'bg-opacity-50 opacity-90' 
-                                        : 'card-shadow border-primary/20 bg-primary/5 ring-1 ring-primary/5'
-                                }`}
-                                style={{ 
-                                    background: 'var(--color-bg-card)', 
-                                    border: msg.read ? 'var(--card-border)' : '1px solid var(--color-primary)' 
-                                }}
-                            >
-                                <div className="flex items-start gap-3">
-                                    <div className="w-10 h-10 rounded-full overflow-hidden bg-surface shrink-0 flex items-center justify-center">
-                                        {msg.senderImage ? (
-                                            <img src={msg.senderImage} alt="" className="w-full h-full object-cover" />
-                                        ) : msg.type === 'gs_support' ? (
-                                            <ShieldCheck size={18} className="text-primary" />
-                                        ) : msg.type === 'verification' ? (
-                                            <ShieldCheck size={18} className="text-success" />
-                                        ) : (
-                                            <User size={18} className="text-text-muted" />
-                                        )}
+                    msgs.map(msg => (
+                        <div
+                            key={msg.id}
+                            onClick={() => handleMessageClick(msg)}
+                            className={`rounded-2xl p-4 transition-all cursor-pointer ${
+                                msg.read 
+                                    ? 'bg-opacity-50 opacity-90' 
+                                    : 'card-shadow border-primary/20 bg-primary/5 ring-1 ring-primary/5'
+                            }`}
+                            style={{ 
+                                background: 'var(--color-bg-card)', 
+                                border: msg.read ? 'var(--card-border)' : '1px solid var(--color-primary)' 
+                            }}
+                        >
+                            <div className="flex items-start gap-3">
+                                <div className="w-10 h-10 rounded-full overflow-hidden bg-surface shrink-0 flex items-center justify-center">
+                                    {msg.senderImage ? (
+                                        <img src={msg.senderImage} alt="" className="w-full h-full object-cover" />
+                                    ) : msg.type === 'gs_support' ? (
+                                        <ShieldCheck size={18} className="text-primary" />
+                                    ) : msg.type === 'verification' ? (
+                                        <ShieldCheck size={18} className="text-success" />
+                                    ) : (
+                                        <User size={18} className="text-text-muted" />
+                                    )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-0.5">
+                                        <span className="text-xs font-bold text-text-primary">{msg.sender}</span>
+                                        {!msg.read && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 animate-pulse" />}
+                                        <span className="text-[10px] text-text-muted ml-auto">{formatTime(msg.timestamp)}</span>
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-0.5">
-                                            <span className="text-xs font-bold text-text-primary">{msg.sender}</span>
-                                            {!msg.read && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 animate-pulse" />}
-                                            <span className="text-[10px] text-text-muted ml-auto">{formatTime(msg.timestamp)}</span>
-                                        </div>
-                                        <h4 className="text-sm font-semibold text-text-primary mb-0.5">{msg.title}</h4>
-                                        <p className={`text-xs text-text-secondary leading-relaxed transition-all ${isExpanded ? '' : 'line-clamp-2'}`}>
-                                            {msg.body}
-                                        </p>
-                                        {isExpanded && msg.profileId && (
-                                            <motion.div
-                                                initial={{ opacity: 0, y: -5 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                className="mt-2"
-                                                onClick={(e) => e.stopPropagation()}
-                                            >
-                                                <Link href={`/discover/${msg.profileId}`} className="inline-block text-[11px] text-primary font-semibold hover:underline">
-                                                    View Profile →
-                                                </Link>
-                                            </motion.div>
-                                        )}
-                                    </div>
+                                    <h4 className="text-sm font-semibold text-text-primary mb-0.5">{msg.title}</h4>
+                                    <p className="text-xs text-text-secondary leading-relaxed line-clamp-2">
+                                        {msg.body}
+                                    </p>
                                 </div>
                             </div>
-                        );
-                    })
+                        </div>
+                    ))
                 )}
             </div>
         );
@@ -555,7 +746,8 @@ export default function ProfilePage() {
                         <div className="rounded-2xl overflow-hidden mt-2" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                             {MENU_ITEMS.map((item, idx) => {
                                 const Icon = item.icon;
-                                const showBadge = item.key === 'messages' && unreadMessages > 0;
+                                const itemBadgeCount = item.key === 'messages' ? unreadConversations : item.key === 'notifications' ? unreadNotifications : 0;
+                                const showBadge = itemBadgeCount > 0;
                                 return (
                                     <button
                                         key={item.key}
@@ -569,7 +761,7 @@ export default function ProfilePage() {
                                         <span className="flex-1 text-sm font-medium text-text-primary">{item.label}</span>
                                         {showBadge && (
                                             <span className="text-[10px] font-bold text-white bg-primary rounded-full w-5 h-5 flex items-center justify-center">
-                                                {unreadMessages > 9 ? '9+' : unreadMessages}
+                                                {itemBadgeCount > 9 ? '9+' : itemBadgeCount}
                                             </span>
                                         )}
                                         <ChevronRight size={18} className="text-text-muted" />
@@ -582,6 +774,100 @@ export default function ProfilePage() {
                         <p className="text-center text-[10px] text-text-muted mt-6">
                             Genuine Sugarmummies App · v4.0.0
                         </p>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Message Detail Modal */}
+            <AnimatePresence>
+                {selectedMessage && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+                        onClick={() => setSelectedMessage(null)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            exit={{ scale: 0.95, y: 20 }}
+                            transition={{ type: 'spring', duration: 0.4 }}
+                            className="w-full max-w-sm rounded-3xl p-6 shadow-2xl border border-border bg-bg-card relative"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Close button */}
+                            <button
+                                onClick={() => setSelectedMessage(null)}
+                                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-surface transition-colors"
+                            >
+                                <X size={18} className="text-text-secondary" />
+                            </button>
+
+                            {/* Sender Info Header */}
+                            <div className="flex items-center gap-3 pb-4 mb-4 border-b border-border">
+                                <div className="w-12 h-12 rounded-full overflow-hidden bg-surface shrink-0 flex items-center justify-center border border-border">
+                                    {selectedMessage.senderImage ? (
+                                        <img src={selectedMessage.senderImage} alt="" className="w-full h-full object-cover" />
+                                    ) : ['GS Support', 'GS Verification', 'GS Admin', 'GS support', 'GS verification'].includes(selectedMessage.sender) ? (
+                                        <ShieldCheck size={24} className="text-primary" />
+                                    ) : (
+                                        <User size={24} className="text-text-muted" />
+                                    )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        <h3 className="text-sm font-bold text-text-primary truncate">{selectedMessage.sender}</h3>
+                                        {['GS Support', 'GS Verification', 'GS Admin', 'GS support', 'GS verification'].includes(selectedMessage.sender) && (
+                                            <VerifiedBadge size={14} verified={true} badgeText="Admin" />
+                                        )}
+                                    </div>
+                                    <p className="text-[10px] text-text-muted mt-0.5">{formatTime(selectedMessage.timestamp)}</p>
+                                </div>
+                            </div>
+
+                            {/* Message Content */}
+                            <div className="space-y-4">
+                                <div className="space-y-1">
+                                    <h4 className="text-base font-black text-text-primary">{selectedMessage.title}</h4>
+                                    <div className="rounded-2xl p-4 text-sm leading-relaxed text-text-primary bg-bg-secondary border border-border">
+                                        {selectedMessage.body}
+                                    </div>
+                                </div>
+
+                                {selectedMessage.profileId && (
+                                    <Link
+                                        href={`/discover/${selectedMessage.profileId}`}
+                                        onClick={() => setSelectedMessage(null)}
+                                        className="w-full py-2.5 rounded-xl font-semibold text-center text-xs text-white gradient-primary flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
+                                    >
+                                        <User size={14} /> View Member Profile
+                                    </Link>
+                                )}
+
+                                {/* Action Buttons */}
+                                <div className="flex gap-2.5 pt-2">
+                                    <button
+                                        onClick={async () => {
+                                            if (confirm('Delete this message? This action is permanent.')) {
+                                                await deleteMessage(selectedMessage.id);
+                                                setSelectedMessage(null);
+                                            }
+                                        }}
+                                        className="flex-1 py-3 rounded-2xl font-semibold text-danger flex items-center justify-center gap-1.5 text-xs border border-danger/10 hover:bg-danger/5 active:scale-95 transition-all"
+                                    >
+                                        <Trash2 size={15} /> Delete Message
+                                    </button>
+                                    <button
+                                        onClick={() => setSelectedMessage(null)}
+                                        className="flex-1 py-3 rounded-2xl font-semibold text-text-secondary flex items-center justify-center text-xs active:scale-95 transition-all"
+                                        style={{ background: 'var(--color-surface)' }}
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>

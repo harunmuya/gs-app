@@ -64,7 +64,8 @@ export default function SingleProfilePage({ params }) {
     const router = useRouter();
     const {
         user, addLike, addMatch, isProfileSwiped,
-        saveProfile, unsaveProfile, isProfileSaved, logProfileView, likes, campaigns, subscription
+        saveProfile, unsaveProfile, isProfileSaved, logProfileView, likes, campaigns, subscription,
+        getOrCreateConversation
     } = useAuth();
 
     const [profile, setProfile] = useState(null);
@@ -74,6 +75,7 @@ export default function SingleProfilePage({ params }) {
     const [comments, setComments] = useState([]);
     const [loadingComments, setLoadingComments] = useState(true);
     const [copied, setCopied] = useState(false);
+    const [chatting, setChatting] = useState(false);
     const [liveViews, setLiveViews] = useState(42);
     const compatibilityScore = profile ? shouldMatchProfile(profile).score : 85;
 
@@ -139,6 +141,25 @@ export default function SingleProfilePage({ params }) {
                 }
             }
         });
+    };
+
+    const handleChat = async () => {
+        if (!profile || chatting) return;
+        if (!user) {
+            router.push('/login');
+            return;
+        }
+        setChatting(true);
+        try {
+            const conversation = await getOrCreateConversation(profile.wpId, profile.name, profile.imageUrl);
+            if (conversation) {
+                router.push(`/chat/${conversation.id}`);
+            }
+        } catch (err) {
+            console.error('Error opening chat:', err);
+        } finally {
+            setChatting(false);
+        }
     };
 
     const handleSave = () => {
@@ -367,16 +388,22 @@ export default function SingleProfilePage({ params }) {
                 )}
 
                 {/* Quick Actions */}
-                <div className="flex items-center gap-3 -mt-5 relative z-10">
+                <div className="flex items-center gap-2 -mt-5 relative z-10">
                     <motion.button whileTap={{ scale: 0.9 }} onClick={handleLike} disabled={liked}
-                        className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-white shadow-lg transition-all ${liked ? 'bg-primary/30 cursor-default' : 'gradient-primary shadow-primary/30 hover:shadow-primary/50'}`}>
-                        <Heart size={20} fill={liked ? 'currentColor' : 'none'} />
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl font-bold text-white shadow-lg transition-all ${liked ? 'bg-primary/30 cursor-default' : 'gradient-primary shadow-primary/30 hover:shadow-primary/50'}`}>
+                        <Heart size={18} fill={liked ? 'currentColor' : 'none'} />
                         {liked ? 'Liked' : 'Like'}
                     </motion.button>
+                    <motion.button whileTap={{ scale: 0.9 }} onClick={handleChat} disabled={chatting}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl font-bold text-white shadow-lg transition-all disabled:opacity-50"
+                        style={{ background: 'linear-gradient(135deg, #10B981, #059669)', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)' }}>
+                        <MessageSquare size={18} />
+                        {chatting ? 'Chatting...' : 'Chat'}
+                    </motion.button>
                     <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowComment(true)}
-                        className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-text-primary shadow-lg transition-all"
+                        className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl font-bold text-text-primary shadow-lg transition-all"
                         style={{ background: 'var(--color-surface-light)', border: 'var(--card-border)' }}>
-                        <MessageCircle size={20} />
+                        <MessageCircle size={18} />
                         Comment
                     </motion.button>
                 </div>
@@ -480,7 +507,7 @@ export default function SingleProfilePage({ params }) {
 
                     <div className="flex items-center justify-between">
                         <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
-                            <Sparkles size={16} className="text-gold animate-bounce" />
+                            <Zap size={16} className="text-gold animate-bounce" />
                             GS MATCH SYSTEM ALGORITHM (beta)
                         </h3>
                         <span className="text-[9px] font-bold px-2 py-0.5 rounded-full gradient-primary text-white shadow-sm">
@@ -625,7 +652,7 @@ export default function SingleProfilePage({ params }) {
                         <div className="px-5 py-4 border-b border-border bg-surface/30">
                             <div className="flex items-center gap-1.5 mb-1">
                                 <Lock size={12} className="text-success" />
-                                <span className="text-xs font-black text-text-primary uppercase tracking-wider text-gradient"> Facilitated Connection</span>
+                                <span className="text-xs font-black text-primary uppercase tracking-wider"> Facilitated Connection</span>
                             </div>
                             <p className="text-xs text-text-secondary leading-relaxed">
                                 Connect safely with <span className="text-gradient font-bold">{profile.name || 'this member'}</span>. Choose a secure channel to contact our official administrator <span className="text-text-primary font-bold">Mary G</span>:
@@ -655,8 +682,8 @@ export default function SingleProfilePage({ params }) {
                                         <span className="text-[10px] opacity-85 leading-none">Direct matching agency</span>
                                     </div>
                                 </div>
-                                <span className="px-2.5 py-1 rounded-full text-[9px] font-bold bg-white/20 border border-white/30 text-white">
-                                    ⭐ Best Option
+                                <span className="px-2.5 py-1 rounded-full text-[9px] font-bold bg-white/20 border border-white/30 text-white flex items-center gap-1">
+                                    <Crown size={11} className="fill-white text-white shrink-0" /> Best Option
                                 </span>
                             </motion.a>
 
@@ -743,10 +770,10 @@ export default function SingleProfilePage({ params }) {
                             ))}
                         </div>
                     ) : comments.length === 0 ? (
-                        <div className="text-center py-6">
-                            <MessageCircle size={28} className="text-text-muted mx-auto mb-2" />
-                            <p className="text-sm text-text-muted">No comments yet</p>
-                            <p className="text-xs text-text-muted mt-1">Be the first to comment on this profile!</p>
+                        <div className="text-center py-8 px-4 rounded-2xl border border-border bg-surface/30">
+                            <MessageCircle size={32} className="text-text-muted mx-auto mb-2" />
+                            <p className="text-sm font-bold text-text-primary">No comments yet</p>
+                            <p className="text-xs text-text-secondary mt-1">Be the first to comment and start a connection!</p>
                         </div>
                     ) : (
                         <div className="space-y-3">

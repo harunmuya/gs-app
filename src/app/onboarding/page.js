@@ -4,13 +4,17 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Heart, MapPin, Target, Calendar, ArrowRight, Sparkles, CheckCircle } from 'lucide-react';
+import { User, Heart, MapPin, Target, Calendar, ArrowRight, CheckCircle, Crown, Flame } from 'lucide-react';
 
 const KENYAN_CITIES = [
-    'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Thika', 'Malindi',
-    'Kitale', 'Nyeri', 'Machakos', 'Meru', 'Kiambu', 'Ruiru', 'Juja', 'Ngong',
-    'Rongai', 'Karen', 'Westlands', 'Kilimani', 'Langata', 'Diani', 'Kilifi',
-    'Naivasha', 'Nanyuki',
+    'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Ruiru', 'Kikuyu',
+    'Thika', 'Naivasha', 'Kakamega', 'Kisii', 'Kitale', 'Athi River', 'Mlolongo',
+    'Garissa', 'Malindi', 'Ngong', 'Rongai', 'Karen', 'Westlands', 'Kilimani',
+    'Langata', 'South B', 'South C', 'Roysambu', 'Kasarani', 'Embakasi',
+    'Juja', 'Kiambu', 'Nyeri', 'Machakos', 'Meru', 'Nanyuki', 'Diani',
+    'Kilifi', 'Voi', 'Kericho', 'Homabay', 'Migori', 'Bomet', 'Webuye',
+    'Wajir', 'Limuru', 'Lodwar', 'Mandera', 'Narok', 'Isiolo', 'Marsabit',
+    'Lamu', 'Watamu', 'Bamburi', 'Nyali',
 ];
 
 function findNearestCity(lat, lng) {
@@ -32,11 +36,13 @@ export default function OnboardingPage() {
     const { user, loading, updateProfile, needsOnboarding } = useAuth();
     const router = useRouter();
 
-    const [step, setStep] = useState(1); // 1=gender, 2=role, 3=age+location
+    const [step, setStep] = useState(1); // 1=gender, 2=role, 3=age+location, 4=interests+hobbies
     const [gender, setGender] = useState('');
     const [lookingFor, setLookingFor] = useState('');
     const [age, setAge] = useState('');
     const [location, setLocation] = useState('');
+    const [interests, setInterests] = useState('');
+    const [hobbies, setHobbies] = useState('');
     const [isPublic, setIsPublic] = useState(true);
     const [detectingLocation, setDetectingLocation] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -81,14 +87,54 @@ export default function OnboardingPage() {
         setTimeout(() => { setStep(3); detectLocation(); }, 300);
     };
 
-    const handleComplete = async () => {
+    const handleCompleteStep3 = () => {
         const ageNum = parseInt(age);
         if (!ageNum || ageNum < 18 || ageNum > 80) { setError('Please enter a valid age (18–80)'); return; }
         if (!location.trim()) { setError('Please select your location'); return; }
+        setError('');
+        setStep(4);
+    };
+
+    const handleComplete = async () => {
         setSaving(true);
         setError('');
         try {
-            await updateProfile({ gender, lookingFor, age: ageNum, location, isPublic });
+            const ageNum = parseInt(age);
+            const parsedInterests = interests.split(',').map(i => i.trim()).filter(Boolean);
+            const parsedHobbies = hobbies.split(',').map(h => h.trim()).filter(Boolean);
+
+            await updateProfile({ 
+                gender, 
+                lookingFor, 
+                age: ageNum, 
+                location, 
+                interests: parsedInterests,
+                hobbies: parsedHobbies,
+                isPublic 
+            });
+
+            // Secure server-side validation & welcome sync
+            if (user?.id) {
+                await fetch('/api/welcome', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: user.id,
+                        email: user.email,
+                        displayName: user.display_name,
+                        extraData: {
+                            gender,
+                            lookingFor,
+                            age: ageNum,
+                            location,
+                            interests: parsedInterests,
+                            hobbies: parsedHobbies,
+                            isPublic
+                        }
+                    })
+                }).catch(err => console.warn('[Onboarding] Welcome API call failed:', err));
+            }
+
             router.replace('/discover');
         } catch (err) {
             setError('Failed to save profile. Please try again.');
@@ -124,14 +170,14 @@ export default function OnboardingPage() {
                     <img src="/genuine-logo-alt.png" alt="Genuine Sugarmummies" className="h-7 object-contain mb-2 hidden dark:block" />
 
                     <div className="flex items-center gap-1.5 mt-3">
-                        <Sparkles size={14} className="text-gold" />
+                        <Crown size={14} className="text-gold" />
                         <span className="text-sm font-semibold text-text-primary">Complete Your Profile</span>
                     </div>
                     <p className="text-xs text-text-secondary mt-1 text-center">Just a few quick steps to find your perfect match</p>
 
                     {/* Step indicators */}
                     <div className="flex items-center gap-2 mt-4">
-                        {[1, 2, 3].map(s => (
+                        {[1, 2, 3, 4].map(s => (
                             <div key={s} className={`rounded-full transition-all duration-300 ${s <= step ? 'w-8 h-2 gradient-primary' : 'w-5 h-2 bg-border'}`} />
                         ))}
                     </div>
@@ -178,7 +224,7 @@ export default function OnboardingPage() {
                                     className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 transition-all text-left ${lookingFor === opt.value ? 'border-primary bg-primary/5' : 'border-border bg-bg-card hover:border-primary/40'}`}
                                 >
                                     <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${opt.color} flex items-center justify-center text-white shadow-md shrink-0`}>
-                                        {opt.value === 'sugar_mummy' ? <Heart size={24} fill="currentColor" /> : <Sparkles size={24} />}
+                                        {opt.value === 'sugar_mummy' ? <Heart size={24} fill="currentColor" /> : <Crown size={24} />}
                                     </div>
                                     <div>
                                         <span className="font-bold text-text-primary block">{opt.label}</span>
@@ -199,7 +245,7 @@ export default function OnboardingPage() {
                                 <input
                                     type="number" min="18" max="80" placeholder="e.g. 25"
                                     value={age} onChange={e => setAge(e.target.value)}
-                                    className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
+                                    className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
                                 />
                             </div>
 
@@ -233,6 +279,43 @@ export default function OnboardingPage() {
                                 <button type="button" onClick={() => setIsPublic(!isPublic)} className={`w-12 h-7 rounded-full transition-all relative ${isPublic ? 'bg-primary' : 'bg-border'}`}>
                                     <div className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow-sm transition-all ${isPublic ? 'left-6' : 'left-1'}`} />
                                 </button>
+                            </div>
+
+                            {error && (
+                                <p className="text-xs text-center text-white bg-danger/90 rounded-xl py-2.5 px-4">{error}</p>
+                            )}
+
+                            <button
+                                onClick={handleCompleteStep3}
+                                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 transition-all active:scale-[0.98] text-sm"
+                            >
+                                <span>Next Details</span>
+                                <ArrowRight size={16} />
+                            </button>
+                        </motion.div>
+                    )}
+
+                    {/* Step 4: Interests + Hobbies */}
+                    {step === 4 && (
+                        <motion.div key="interests" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }} className="w-full max-w-sm space-y-4">
+                            <p className="text-center text-sm font-semibold text-text-primary mb-2">Tell us about your interests & hobbies!</p>
+
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-text-primary pl-1">Your Interests (comma-separated)</label>
+                                <input
+                                    type="text" placeholder="e.g. Travel, Movies, Dining Out"
+                                    value={interests} onChange={e => setInterests(e.target.value)}
+                                    className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-text-primary pl-1">Your Hobbies (comma-separated)</label>
+                                <input
+                                    type="text" placeholder="e.g. Reading, Hiking, Cooking"
+                                    value={hobbies} onChange={e => setHobbies(e.target.value)}
+                                    className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
+                                />
                             </div>
 
                             {error && (

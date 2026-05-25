@@ -23,7 +23,6 @@ export async function GET() {
         }
 
         // Fetch users, subscriptions, verification requests, transactions, and settings using service role
-        // Execute queries with separate catches to support resilient fallbacks if tables don't exist yet
         const usersRes = await supabaseAdmin.from('users').select('*').order('created_at', { ascending: false });
         
         let subsRes = { data: [] };
@@ -54,8 +53,8 @@ export async function GET() {
 
         const settingsData = settingsRes?.data || [];
 
-        // Extract fallback ledger (badges, user plans, manual transactions)
-        let ledger = { custom_badges: {}, user_plans: {}, transactions: [] };
+        // Extract fallback ledger (badges, user plans, manual transactions, support tickets)
+        let ledger = { custom_badges: {}, user_plans: {}, transactions: [], support_tickets: [], verifications: {} };
         const ledgerRec = settingsData.find(s => s.key === 'fallback_ledger');
         if (ledgerRec) {
             ledger = typeof ledgerRec.value === 'string' ? JSON.parse(ledgerRec.value) : ledgerRec.value;
@@ -121,7 +120,7 @@ export async function GET() {
             };
         });
 
-        // Create an email lookup map for display names (from detailedUsers which has displayName)
+        // Create an email lookup map for display names
         const userEmailMap = {};
         detailedUsers.forEach(u => {
             if (u.email) {
@@ -133,36 +132,35 @@ export async function GET() {
             if (!email) return 'Guest Payer';
             const norm = email.trim().toLowerCase();
             if (userEmailMap[norm]) return userEmailMap[norm];
-            // Otherwise, capitalize email prefix as a beautiful fallback
             const prefix = email.split('@')[0].replace(/[._-]/g, ' ');
             return prefix.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
         };
 
-        // Seed mock transactions with numeric amounts matching live data format
-        const mockTransactions = [
-            { id: 'TX-82937', userName: 'Harun Muya', user: 'harunmuya@gmail.com', plan: 'Gold', amount: 1000, method: 'M-Pesa Escrow', status: 'Completed', code: 'QET93821LK', ticketId: 'GS-PAY-P8B12K9', date: 'Today, 2:14 PM', created_at: new Date(Date.now() - 7200000).toISOString() },
-            { id: 'TX-82936', userName: 'Kevin Otieno', user: 'kevin.otieno@outlook.com', plan: 'Diamond', amount: 2500, method: 'M-Pesa Escrow', status: 'Completed', code: 'QES12495MZ', ticketId: 'GS-PAY-R9B38K1', date: 'Today, 11:05 AM', created_at: new Date(Date.now() - 18000000).toISOString() },
-            { id: 'TX-82935', userName: 'Mary Wambui', user: 'mary.wambui@yahoo.com', plan: 'Silver', amount: 500, method: 'M-Pesa Direct', status: 'Completed', code: 'QER91024JK', ticketId: 'GS-PAY-X2D18M4', date: 'Yesterday, 6:40 PM', created_at: new Date(Date.now() - 86400000).toISOString() },
-            { id: 'TX-82934', userName: 'Josphat Mutua', user: 'josphat.mutua@gmail.com', plan: 'Gold', amount: 1000, method: 'M-Pesa Escrow', status: 'Completed', code: 'QEP38421MN', ticketId: 'GS-PAY-Y7N24L3', date: 'May 22, 10:15 AM', created_at: new Date(Date.now() - 3 * 86400000).toISOString() }
-        ];
-
-        // Formatting transactions with robust fallbacks
-        let rawTransactions = txsRes?.data || [];
+        // ===== TRANSACTIONS: Merge DB + Fallback Ledger (deduplicated by code) =====
+        let rawDbTransactions = txsRes?.data || [];
+        let rawFallbackTransactions = ledger.transactions || [];
         
-        // Merge custom fallback transactions recorded in app_settings ledger
-        if (ledger.transactions && ledger.transactions.length > 0) {
-            const existingCodes = new Set(rawTransactions.map(tx => tx.code?.toUpperCase()));
-            const newFallbackTxs = ledger.transactions.filter(tx => !existingCodes.has(tx.code?.toUpperCase()));
-            rawTransactions = [...newFallbackTxs, ...rawTransactions];
-        }
+        // Build a set of all codes from DB transactions for dedup
+        const dbCodes = new Set(rawDbTransactions.map(tx => tx.code?.toUpperCase()).filter(Boolean));
+        
+        // Filter fallback transactions to only include those NOT already in the DB
+        const uniqueFallbackTxs = rawFallbackTransactions.filter(tx => {
+            if (!tx.code) return true; // Keep transactions without codes
+            return !dbCodes.has(tx.code.toUpperCase());
+        });
 
-        const formattedLiveTxs = rawTransactions.map(tx => ({
+        // Combine: fallback first (most recent), then DB transactions
+        const allTransactions = [...uniqueFallbackTxs, ...rawDbTransactions];
+
+        // Format all transactions uniformly for the admin dashboard
+        const formattedTransactions = allTransactions.map(tx => ({
             id: tx.id || ('TX-' + Math.random().toString().substr(2, 5)),
             userName: getUserName(tx.email),
             user: tx.email,
             plan: tx.plan ? tx.plan.charAt(0).toUpperCase() + tx.plan.slice(1) : 'Free',
             amount: parseFloat(tx.amount) || 0,
             payment_proof_url: tx.payment_proof_url || null,
+            payment_proof_base64: tx.payment_proof_base64 || null,
             method: tx.method || 'M-Pesa Escrow',
             status: tx.status || 'Pending',
             code: tx.code || 'UNKNOWN',
@@ -172,9 +170,6 @@ export async function GET() {
                 ? new Date(tx.created_at).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
                 : 'N/A'
         }));
-
-        // Prepend live/pending user-submitted transactions on top of mock transactions
-        const transactions = [...formattedLiveTxs, ...mockTransactions];
 
         // Get app campaigns configuration
         let campaigns = {
@@ -190,9 +185,12 @@ export async function GET() {
 
         return NextResponse.json({ 
             users: detailedUsers, 
-            transactions,
+            transactions: formattedTransactions,
             campaigns,
-            ledgerStatus: txsRes?.data?.length > 0 ? 'connected' : 'fallback'
+            ledgerStatus: rawDbTransactions.length > 0 ? 'connected' : 'fallback',
+            transactionCount: formattedTransactions.length,
+            fallbackCount: uniqueFallbackTxs.length,
+            dbCount: rawDbTransactions.length
         });
     } catch (err) {
         console.error('[Admin Users API] Error:', err);

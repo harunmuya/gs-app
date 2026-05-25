@@ -440,10 +440,12 @@ export async function POST(request) {
                 return NextResponse.json({ error: 'Title and body are required' }, { status: 400 });
             }
 
-            // Get target users based on tier
+            // Get target users based on tier/userId
             let query = supabaseAdmin.from('users').select('id');
             
-            if (targetTier && targetTier !== 'all') {
+            if (userId && userId !== 'broadcast') {
+                query = query.eq('id', userId);
+            } else if (targetTier && targetTier !== 'all') {
                 // Get user IDs matching the target subscription tier
                 const { data: subUsers } = await supabaseAdmin
                     .from('subscriptions')
@@ -458,21 +460,19 @@ export async function POST(request) {
             }
 
             const { data: targetUsers } = await query;
-            const notifications = (targetUsers || []).map(u => ({
-                user_id: u.id,
-                type: 'broadcast',
-                sender: 'GS Admin',
-                sender_image: '/gs-logo.png',
-                title: title,
-                body: bodyText,
-                is_read: false,
-            }));
+            const usersList = targetUsers || [];
+            
+            const content = `${title}\n\n${bodyText}`;
 
-            if (notifications.length > 0) {
-                await supabaseAdmin.from('notifications').insert(notifications);
+            let sentCount = 0;
+            for (const u of usersList) {
+                const res = await sendAdminChatMessage(supabaseAdmin, u.id, content, 'Admin Mary G', '/gs-logo.png');
+                if (res.success) {
+                    sentCount++;
+                }
             }
 
-            return NextResponse.json({ success: true, sent: notifications.length });
+            return NextResponse.json({ success: true, sent: sentCount });
         }
 
         if (action === 'approve_payment' || action === 'decline_payment') {
@@ -746,5 +746,67 @@ export async function POST(request) {
         }
         
         return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 });
+    }
+}
+
+async function sendAdminChatMessage(supabase, userId, content, senderName = 'Admin Mary G', senderImage = '/gs-logo.png') {
+    try {
+        let { data: conv } = await supabase
+            .from('conversations')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('match_wp_id', 0)
+            .maybeSingle();
+
+        if (!conv) {
+            const { data: newConv, error: createErr } = await supabase
+                .from('conversations')
+                .insert({
+                    user_id: userId,
+                    match_wp_id: 0,
+                    match_name: senderName,
+                    match_image: senderImage,
+                    unread_count: 0
+                })
+                .select()
+                .single();
+            if (createErr) throw createErr;
+            conv = newConv;
+        } else {
+            if (conv.match_name !== senderName || conv.match_image !== senderImage) {
+                await supabase
+                    .from('conversations')
+                    .update({ match_name: senderName, match_image: senderImage })
+                    .eq('id', conv.id);
+            }
+        }
+
+        const { data: msg, error: msgErr } = await supabase
+            .from('messages')
+            .insert({
+                conversation_id: conv.id,
+                sender_id: null,
+                sender_name: senderName,
+                content: content,
+                is_read: false
+            })
+            .select()
+            .single();
+
+        if (msgErr) throw msgErr;
+
+        await supabase
+            .from('conversations')
+            .update({
+                last_message: content,
+                last_message_at: new Date().toISOString(),
+                unread_count: (conv.unread_count || 0) + 1
+            })
+            .eq('id', conv.id);
+
+        return { success: true, conversationId: conv.id };
+    } catch (err) {
+        console.error('Failed to send admin chat message:', err);
+        return { success: false, error: err.message };
     }
 }

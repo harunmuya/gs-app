@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, X, Star, MapPin, MessageCircle, RefreshCw, Sparkles, Navigation, Database, SlidersHorizontal, ChevronDown } from 'lucide-react';
+import { Heart, X, Star, MapPin, MessageCircle, RefreshCw, Sparkles, Navigation, Database, SlidersHorizontal, ChevronDown, Flame, Zap, Award, Crown } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import VerifiedBadge from '@/components/VerifiedBadge';
@@ -76,7 +76,16 @@ async function fetchWithTimeout(url, ms = 8000) {
 }
 
 // Kenyan locations for filter
-const KENYAN_LOCATIONS = ['All', 'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Thika', 'Kiambu', 'Westlands', 'Kilimani', 'Karen', 'Langata', 'Ruiru', 'Malindi', 'Nyeri', 'Machakos', 'Meru'];
+const KENYAN_LOCATIONS = [
+    'All', 'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Ruiru', 'Kikuyu',
+    'Thika', 'Naivasha', 'Kakamega', 'Kisii', 'Kitale', 'Athi River', 'Mlolongo',
+    'Garissa', 'Malindi', 'Ngong', 'Rongai', 'Karen', 'Westlands', 'Kilimani',
+    'Langata', 'South B', 'South C', 'Roysambu', 'Kasarani', 'Embakasi',
+    'Juja', 'Kiambu', 'Nyeri', 'Machakos', 'Meru', 'Nanyuki', 'Diani',
+    'Kilifi', 'Voi', 'Kericho', 'Homabay', 'Migori', 'Bomet', 'Webuye',
+    'Wajir', 'Limuru', 'Lodwar', 'Mandera', 'Narok', 'Isiolo', 'Marsabit',
+    'Lamu', 'Watamu', 'Bamburi', 'Nyali'
+];
 
 export default function DiscoverPage() {
     const { user, addLike, addMatch, addPass, isProfileSwiped, addSuperLike, clearSwipeHistory, blockedUsers } = useAuth();
@@ -191,9 +200,12 @@ export default function DiscoverPage() {
             filtered = filtered.filter(p => !blockedUsers.includes(p.wpId));
         }
 
-        // Gender-based filter: show only matching profileType
+        // Exclude testimonial/review posts
+        filtered = filtered.filter(p => !p.isTestimonial);
+
+        // Strict Gender-based filter: show ONLY matching profileType (e.g. males looking for sugar mummies only see sugar mummies)
         if (user?.lookingFor) {
-            filtered = filtered.filter(p => p.profileType === user.lookingFor || !p.profileType);
+            filtered = filtered.filter(p => p.profileType === user.lookingFor);
         }
 
         // Location filter
@@ -212,7 +224,7 @@ export default function DiscoverPage() {
             return [...filtered].sort((a, b) => matchScore(b, userLocation) - matchScore(a, userLocation));
         }
         return filtered;
-    }, [allProfiles, userLocation, isProfileSwiped, blockedUsers, filterLocation, filterAgeMin, filterAgeMax]);
+    }, [allProfiles, userLocation, isProfileSwiped, blockedUsers, filterLocation, filterAgeMin, filterAgeMax, user?.lookingFor]);
 
     // Preload next 3 images
     useEffect(() => {
@@ -365,7 +377,7 @@ export default function DiscoverPage() {
             {/* Header */}
             <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                    <Sparkles size={20} className="text-primary" />
+                    <Flame size={20} className="text-primary" />
                     <h1 className="text-lg font-bold text-text-primary">Discover</h1>
                     <span className="text-[10px] text-text-muted font-medium px-1.5 py-0.5 rounded-full" style={{ background: 'var(--color-surface)' }}>
                         {displayProfiles.length} left
@@ -503,12 +515,12 @@ export default function DiscoverPage() {
                                     )}
                                     {currentProfile.daysSincePost < 3 && (
                                         <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-success/90 text-white text-[10px] font-bold">
-                                            <Sparkles size={9} /> New
+                                            <Flame size={9} /> New
                                         </span>
                                     )}
                                     {currentProfile.daysSincePost >= 3 && currentProfile.daysSincePost < 14 && (
                                         <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-gold/90 text-white text-[10px] font-bold">
-                                            <Star size={9} /> Featured
+                                            <Award size={9} /> Featured
                                         </span>
                                     )}
                                 </div>
@@ -585,7 +597,7 @@ export default function DiscoverPage() {
                 <motion.button whileTap={{ scale: 0.85 }}
                     onClick={() => handleSwipe('up', currentProfile)}
                     className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg bg-gold text-white">
-                    <Star size={24} fill="white" />
+                    <Zap size={24} fill="white" />
                 </motion.button>
 
                 <motion.button whileTap={{ scale: 0.85 }}

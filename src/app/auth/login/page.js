@@ -3,38 +3,66 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Sparkles, ArrowRight, ArrowLeft, User, Mail, Heart, Lock, Eye, EyeOff,
+    Crown, ArrowRight, ArrowLeft, User, Mail, Heart, Lock, Eye, EyeOff,
     UserPlus, LogIn, MapPin, Target, Search, Shield, Users, CheckCircle, Calendar, Send
 } from 'lucide-react';
 
-// Kenyan locations for reverse geocode fallback
 const KENYAN_CITIES = [
     { name: 'Nairobi', lat: -1.2921, lng: 36.8219 },
     { name: 'Mombasa', lat: -4.0435, lng: 39.6682 },
     { name: 'Kisumu', lat: -0.1022, lng: 34.7617 },
     { name: 'Nakuru', lat: -0.3031, lng: 36.0800 },
     { name: 'Eldoret', lat: 0.5143, lng: 35.2698 },
-    { name: 'Thika', lat: -1.0396, lng: 37.0900 },
-    { name: 'Malindi', lat: -3.2138, lng: 40.1169 },
-    { name: 'Kitale', lat: 1.0187, lng: 35.0020 },
-    { name: 'Nyeri', lat: -0.4197, lng: 36.9511 },
-    { name: 'Machakos', lat: -1.5177, lng: 37.2634 },
-    { name: 'Meru', lat: 0.0480, lng: 37.6559 },
-    { name: 'Kiambu', lat: -1.1714, lng: 36.8356 },
     { name: 'Ruiru', lat: -1.1489, lng: 36.9606 },
-    { name: 'Juja', lat: -1.1004, lng: 37.0131 },
+    { name: 'Kikuyu', lat: -1.2543, lng: 36.6817 },
+    { name: 'Thika', lat: -1.0396, lng: 37.0900 },
+    { name: 'Naivasha', lat: -0.7172, lng: 36.4310 },
+    { name: 'Kakamega', lat: 0.2827, lng: 34.7519 },
+    { name: 'Kisii', lat: -0.6817, lng: 34.7667 },
+    { name: 'Kitale', lat: 1.0187, lng: 35.0020 },
+    { name: 'Athi River', lat: -1.4500, lng: 36.9833 },
+    { name: 'Mlolongo', lat: -1.3912, lng: 36.9389 },
+    { name: 'Garissa', lat: -0.4532, lng: 39.6461 },
+    { name: 'Malindi', lat: -3.2138, lng: 40.1169 },
     { name: 'Ngong', lat: -1.3607, lng: 36.6583 },
     { name: 'Rongai', lat: -1.3964, lng: 36.7586 },
     { name: 'Karen', lat: -1.3197, lng: 36.7116 },
     { name: 'Westlands', lat: -1.2636, lng: 36.8036 },
     { name: 'Kilimani', lat: -1.2903, lng: 36.7847 },
     { name: 'Langata', lat: -1.3557, lng: 36.7462 },
+    { name: 'South B', lat: -1.3122, lng: 36.8433 },
+    { name: 'South C', lat: -1.3200, lng: 36.8300 },
+    { name: 'Roysambu', lat: -1.2189, lng: 36.8894 },
+    { name: 'Kasarani', lat: -1.2200, lng: 36.9000 },
+    { name: 'Embakasi', lat: -1.3200, lng: 36.9000 },
+    { name: 'Juja', lat: -1.1004, lng: 37.0131 },
+    { name: 'Kiambu', lat: -1.1714, lng: 36.8356 },
+    { name: 'Nyeri', lat: -0.4197, lng: 36.9511 },
+    { name: 'Machakos', lat: -1.5177, lng: 37.2634 },
+    { name: 'Meru', lat: 0.0480, lng: 37.6559 },
+    { name: 'Nanyuki', lat: 0.0067, lng: 37.0722 },
     { name: 'Diani', lat: -4.3164, lng: 39.5764 },
     { name: 'Kilifi', lat: -3.6305, lng: 39.8499 },
-    { name: 'Naivasha', lat: -0.7172, lng: 36.4310 },
-    { name: 'Nanyuki', lat: 0.0067, lng: 37.0722 },
+    { name: 'Voi', lat: -3.3945, lng: 38.5630 },
+    { name: 'Kericho', lat: -0.3677, lng: 35.2827 },
+    { name: 'Homabay', lat: -0.5273, lng: 34.4571 },
+    { name: 'Migori', lat: -1.0634, lng: 34.4731 },
+    { name: 'Bomet', lat: -0.7813, lng: 35.3416 },
+    { name: 'Webuye', lat: 0.6078, lng: 34.7697 },
+    { name: 'Wajir', lat: 1.7471, lng: 40.0659 },
+    { name: 'Limuru', lat: -1.1083, lng: 36.6417 },
+    { name: 'Lodwar', lat: 3.1191, lng: 35.5968 },
+    { name: 'Mandera', lat: 3.9366, lng: 41.8569 },
+    { name: 'Narok', lat: -1.0784, lng: 35.8601 },
+    { name: 'Isiolo', lat: 0.3544, lng: 37.5822 },
+    { name: 'Marsabit', lat: 2.3284, lng: 37.9902 },
+    { name: 'Lamu', lat: -2.2686, lng: 40.9020 },
+    { name: 'Watamu', lat: -3.3523, lng: 40.0169 },
+    { name: 'Bamburi', lat: -4.0102, lng: 39.7188 },
+    { name: 'Nyali', lat: -4.0298, lng: 39.7111 },
 ];
 
 function findNearestCity(lat, lng) {
@@ -69,6 +97,8 @@ function LoginPageInner() {
     const [lookingFor, setLookingFor] = useState('');
     const [age, setAge] = useState('');
     const [location, setLocation] = useState('');
+    const [interests, setInterests] = useState('');
+    const [hobbies, setHobbies] = useState('');
     const [detectingLocation, setDetectingLocation] = useState(false);
     const [isPublic, setIsPublic] = useState(true);
 
@@ -141,6 +171,10 @@ function LoginPageInner() {
                         setGoogleLoading(false);
                     }
                 }, 1000);
+            } else {
+                // For secure system browser sync overlay or native flow, we stop the button loading state
+                // as the custom sync overlay / native selector takes over the UI
+                setGoogleLoading(false);
             }
         } catch (err) {
             setError(err.message || 'Google sign-in failed. Please try again.');
@@ -241,10 +275,19 @@ function LoginPageInner() {
                 lookingFor,
                 age: ageNum,
                 location,
+                interests: interests.split(',').map(i => i.trim()).filter(Boolean),
+                hobbies: hobbies.split(',').map(h => h.trim()).filter(Boolean),
                 isPublic,
             });
-            // Show email verification notice
-            setMode('email_sent');
+
+            // Check if user session was immediately established (email confirmation disabled)
+            const { data: sessionData } = await supabase.auth.getSession();
+            if (sessionData?.session) {
+                router.replace('/discover');
+            } else {
+                // Show email verification notice
+                setMode('email_sent');
+            }
         } catch (err) {
             const msg = err.message || '';
             if (msg.includes('User already registered') || msg.includes('already registered')) {
@@ -366,7 +409,7 @@ function LoginPageInner() {
 
                         {mode === 'login' && (
                             <p className="text-xs flex items-center gap-1.5 text-center mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-                                <Sparkles size={12} style={{ color: 'var(--color-gold)' }} className="shrink-0" />
+                                <Crown size={12} style={{ color: 'var(--color-gold)' }} className="shrink-0" />
                                 Kenya&apos;s #1 dating app for real connections
                             </p>
                         )}
@@ -384,7 +427,7 @@ function LoginPageInner() {
                                 <div className="relative">
                                     <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
                                     <input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required
-                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
+                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
                                 </div>
                                 <button type="submit" disabled={loading}
                                     className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 transition-all active:scale-[0.98] disabled:opacity-60 text-sm">
@@ -446,7 +489,7 @@ function LoginPageInner() {
                                         <motion.div key="name" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="relative overflow-hidden">
                                             <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted z-10" />
                                             <input type="text" placeholder="Your full name" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
-                                                className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
+                                                className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
                                         </motion.div>
                                     )}
                                 </AnimatePresence>
@@ -455,14 +498,14 @@ function LoginPageInner() {
                                 <div className="relative">
                                     <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
                                     <input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required
-                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
+                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
                                 </div>
 
                                 {/* Password */}
                                 <div className="relative">
                                     <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
                                     <input type={showPassword ? 'text' : 'password'} placeholder="Password (min 6 characters)" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6}
-                                        className="w-full py-3.5 pl-12 pr-12 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
+                                        className="w-full py-3.5 pl-12 pr-12 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
                                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted">
                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                     </button>
@@ -488,7 +531,7 @@ function LoginPageInner() {
                                         <motion.div key="confirm" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="relative overflow-hidden">
                                             <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted z-10" />
                                             <input type={showPassword ? 'text' : 'password'} placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-                                                className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
+                                                className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
                                         </motion.div>
                                     )}
                                 </AnimatePresence>
@@ -603,7 +646,7 @@ function LoginPageInner() {
                                 <input
                                     type="number" min="18" max="80" placeholder="e.g. 25"
                                     value={age} onChange={(e) => setAge(e.target.value)}
-                                    className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
+                                    className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
                                 />
                             </div>
 
@@ -627,6 +670,26 @@ function LoginPageInner() {
                                     <Target size={14} className={detectingLocation ? 'animate-spin' : ''} />
                                     {detectingLocation ? 'Detecting location...' : 'Auto-detect my location'}
                                 </button>
+                            </div>
+
+                            {/* Interests */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-text-primary pl-1">Your Interests (comma-separated)</label>
+                                <input
+                                    type="text" placeholder="e.g. Travel, Movies, Music"
+                                    value={interests} onChange={(e) => setInterests(e.target.value)}
+                                    className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
+                                />
+                            </div>
+
+                            {/* Hobbies */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-text-primary pl-1">Your Hobbies (comma-separated)</label>
+                                <input
+                                    type="text" placeholder="e.g. Hiking, Cooking, Swimming"
+                                    value={hobbies} onChange={(e) => setHobbies(e.target.value)}
+                                    className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
+                                />
                             </div>
 
                             {/* Public profile toggle */}

@@ -67,7 +67,7 @@ export default function ChatPage() {
                         placeholder="Search conversations..."
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
-                        className="w-full py-2.5 pl-10 pr-4 rounded-xl text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 border border-border"
+                        className="w-full py-2.5 pl-10 pr-4 rounded-xl text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/30 border border-border"
                         style={{ background: 'var(--color-bg-input)' }}
                     />
                 </div>

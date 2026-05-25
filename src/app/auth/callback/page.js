@@ -32,6 +32,9 @@ function CallbackHandler({ setStatus, setErrMsg }) {
             window.opener.postMessage({ type: 'auth-error', error: errorDescription || error }, window.location.origin);
             window.close();
           } else {
+            try {
+              window.location.href = 'gonative://browser/close';
+            } catch (e) {}
             router.replace(`/auth/login?error=${encodeURIComponent(errorDescription || error)}`);
           }
         }
@@ -65,6 +68,59 @@ function CallbackHandler({ setStatus, setErrMsg }) {
         }
 
         if (active) {
+          const syncCode = searchParams.get('sync_code');
+          if (syncCode) {
+            try {
+              await supabase.from('app_settings')
+                .update({
+                  value: {
+                    status: 'completed',
+                    session: {
+                      access_token: session.access_token,
+                      refresh_token: session.refresh_token,
+                    },
+                    createdAt: Date.now()
+                  }
+                })
+                .eq('key', `auth_sync_${syncCode}`);
+              setStatus('synced');
+              // Automatically close the popup window after a brief delay so the user is returned to the app
+              setTimeout(() => {
+                if (active) {
+                  // 1. Try GoNative/Median JS Bridge commands if present
+                  try {
+                    if (window.gonative && window.gonative.browser && typeof window.gonative.browser.close === 'function') {
+                      window.gonative.browser.close();
+                    } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.gonative) {
+                      window.webkit.messageHandlers.gonative.postMessage({ browser: { close: true } });
+                    }
+                  } catch (e) {
+                    console.warn('[GoNative Bridge Close Error]', e);
+                  }
+
+                  // 2. Try closing via custom URL schemes (intercepted by WebView client)
+                  try {
+                    const iframe = document.createElement('iframe');
+                    iframe.style.display = 'none';
+                    iframe.src = 'gonative://browser/close';
+                    document.body.appendChild(iframe);
+                    setTimeout(() => iframe.remove(), 500);
+                  } catch (e) {
+                    window.location.href = 'gonative://browser/close';
+                  }
+
+                  // 3. Standard window.close fallback
+                  window.close();
+                }
+              }, 1500);
+            } catch (syncErr) {
+              console.error('[Auth Callback] Failed to write sync session:', syncErr);
+              setStatus('error');
+              setErrMsg('Failed to link session back to the app.');
+            }
+            return;
+          }
+
           setStatus('success');
 
           // Check if user needs onboarding (Google OAuth users without profile data)
@@ -119,6 +175,9 @@ function CallbackHandler({ setStatus, setErrMsg }) {
                 window.opener.postMessage({ type: 'auth-error', error: err.message || 'Authentication failed' }, window.location.origin);
                 window.close();
               } else {
+                try {
+                  window.location.href = 'gonative://browser/close';
+                } catch (e) {}
                 router.replace(`/auth/login?error=${encodeURIComponent(err.message || 'Authentication failed')}`);
               }
             }
@@ -196,6 +255,31 @@ export default function AuthCallbackPage() {
             <p style={{ color: 'var(--color-text-muted, #868E96)', fontSize: '13px', margin: 0 }}>
               Taking you to the app…
             </p>
+          </div>
+        )}
+
+        {status === 'synced' && (
+          <div className="cb-fadeup" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', textAlign: 'center' }}>
+            <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
+              <circle cx="26" cy="26" r="26" fill="#37B24D" fillOpacity="0.12" />
+              <circle cx="26" cy="26" r="20" fill="#37B24D" />
+              <path d="M17 26L23 32L35 20" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <p style={{ color: 'var(--color-text-primary, #1A1919)', fontSize: '18px', fontWeight: '700', margin: 0 }}>
+              Device Synced Successfully!
+            </p>
+            <p style={{ color: 'var(--color-text-secondary, #495057)', fontSize: '14px', margin: '4px 0 0 0', lineHeight: '1.5', maxWidth: '280px' }}>
+              You are now logged in inside the GS mobile application.
+            </p>
+            <p style={{ color: '#FF5A5F', fontSize: '13px', fontWeight: '800', margin: '12px 0 0 0', animation: 'pulse 1.5s infinite' }}>
+              Please return to the app to continue.
+            </p>
+            <style>{`
+              @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.5; }
+              }
+            `}</style>
           </div>
         )}
 

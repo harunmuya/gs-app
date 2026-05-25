@@ -35,25 +35,21 @@ function normalizeImageUrl(url) {
 
 // Kenyan cities/towns for location extraction
 const KENYAN_LOCATIONS = [
-    'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Thika',
-    'Malindi', 'Kitale', 'Garissa', 'Kakamega', 'Nyeri', 'Machakos',
-    'Meru', 'Lamu', 'Nanyuki', 'Naivasha', 'Kiambu', 'Ruiru',
-    'Kangundo', 'Athi River', 'Syokimau', 'Juja', 'Limuru', 'Ngong',
-    'Rongai', 'Karen', 'Lavington', 'Westlands', 'Kilimani', 'Langata',
-    'Embakasi', 'Kasarani', 'Roysambu', 'South B', 'South C',
-    'Eastleigh', 'Parklands', 'Muthaiga', 'Runda', 'Gigiri',
-    'Bamburi', 'Nyali', 'Diani', 'Watamu', 'Kilifi', 'Voi',
-    'Migori', 'Homabay', 'Bungoma', 'Kericho', 'Nandi', 'Bomet',
-    'Embu', 'Isiolo', 'Marsabit', 'Mandera', 'Wajir', 'Samburu',
-    'Trans Nzoia', 'Uasin Gishu', 'Kitui', 'Makueni', 'Tharaka',
-    'Murang\'a', 'Kirinyaga', 'Laikipia', 'Kajiado', 'Narok',
-    'Baringo', 'Turkana', 'West Pokot', 'Elgeyo Marakwet',
-    'Thika Road', 'Mombasa Road', 'Ngong Road', 'Waiyaki Way',
-    'CBD', 'Industrial Area', 'Upper Hill', 'Hurlingham',
-    'Kileleshwa', 'Riverside', 'Spring Valley', 'Loresho',
-    'Mountain View', 'Zimmerman', 'Kahawa', 'Utawala', 'Donholm',
-    'Buruburu', 'Umoja', 'Pipeline', 'Fedha', 'Tassia',
-    'Ngoingwa', 'Section 9', 'Section 8', 'Kenol', 'Makongeni'
+    'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Ruiru', 'Kikuyu',
+    'Thika', 'Naivasha', 'Kakamega', 'Kisii', 'Kitale', 'Athi River', 'Mlolongo',
+    'Garissa', 'Malindi', 'Ngong', 'Rongai', 'Karen', 'Westlands', 'Kilimani',
+    'Langata', 'South B', 'South C', 'Roysambu', 'Kasarani', 'Embakasi',
+    'Juja', 'Kiambu', 'Nyeri', 'Machakos', 'Meru', 'Nanyuki', 'Diani',
+    'Kilifi', 'Voi', 'Kericho', 'Homabay', 'Migori', 'Bomet', 'Webuye',
+    'Wajir', 'Limuru', 'Lodwar', 'Mandera', 'Narok', 'Isiolo', 'Marsabit',
+    'Lamu', 'Watamu', 'Bamburi', 'Nyali',
+    'Lavington', 'Eastleigh', 'Parklands', 'Muthaiga', 'Runda', 'Gigiri',
+    'Syokimau', 'Kangundo', 'Ngoingwa', 'Section 9', 'Section 8', 'Kenol',
+    'Makongeni', 'Thika Road', 'Mombasa Road', 'Ngong Road', 'Waiyaki Way',
+    'CBD', 'Industrial Area', 'Upper Hill', 'Hurlingham', 'Kileleshwa',
+    'Riverside', 'Spring Valley', 'Loresho', 'Mountain View', 'Zimmerman',
+    'Kahawa', 'Utawala', 'Donholm', 'Buruburu', 'Umoja', 'Pipeline',
+    'Fedha', 'Tassia'
 ];
 
 // Known Kenyan city coordinates for scoring
@@ -87,7 +83,7 @@ const LOCATION_COORDS = {
     'CBD': { latitude: -1.2864, longitude: 36.8172 },
 };
 
-const STOP_WORDS = new Set(['Sugar', 'Mummy', 'From', 'The', 'For', 'And', 'With', 'Wants', 'Needs', 'Looking', 'Is', 'In', 'A', 'An', 'Her', 'His', 'She', 'He', 'Who', 'That', 'This', 'Rich', 'Hot', 'Meet', 'Available', 'Seeking', 'Mature', 'Beautiful', 'Wealthy', 'Single', 'Lonely']);
+const STOP_WORDS = new Set(['Sugar', 'Mummy', 'From', 'The', 'For', 'And', 'With', 'Wants', 'Needs', 'Looking', 'Is', 'In', 'A', 'An', 'Her', 'His', 'She', 'He', 'Who', 'That', 'This', 'Rich', 'Hot', 'Meet', 'Available', 'Seeking', 'Mature', 'Beautiful', 'Wealthy', 'Single', 'Lonely', 'Real', 'Story', 'Success', 'Appreciation', 'Thanks', 'Compliment', 'Compliments', 'Couple', 'Couples', 'Review', 'Reviews', 'Testimonial', 'Testimonials', 'Feedback', 'Experience', 'Confession']);
 
 export function extractName(title) {
     if (!title) return 'Unknown';
@@ -216,10 +212,20 @@ function isNameFemale(name) {
     return FEMALE_NAMES.has(first);
 }
 
-// Detect if post is a testimonial/review
-export function isTestimonialPost(title, content) {
-    const text = `${title || ''} ${content || ''}`.toLowerCase();
-    return /\b(testimoni|review|feedback|experience|story|confession|success\s*story)\b/i.test(text);
+// Detect if post is a testimonial/review or couple/combination
+export function isTestimonialPost(title, content, name = '') {
+    const text = `${title || ''} ${content || ''} ${name || ''}`.toLowerCase();
+    // Testimonial/Success story/Appreciation/Couple keywords
+    const testimonialKeywords = [
+        'testimoni', 'review', 'feedback', 'experience', 'confession',
+        'success story', 'real story', 'appreciation', 'thanks', 'thanking',
+        'compliment', 'couple', 'sugarboy and', 'sugarboy &', 'sugar boy',
+        'sugar boy and', 'sugarboy and sugarmum', 'sugar boy and sugarmummy',
+        'appreciation from', 'thanks to', 'thank you', 'appreciation message',
+        'success match', 'we met', 'our story'
+    ];
+    return testimonialKeywords.some(keyword => text.includes(keyword)) ||
+        /\b(real\s+story|success\s+story|appreciation|thanks|compliment|couple|sugarboy|sugar\s+boy)\b/i.test(name.toLowerCase());
 }
 
 // Detect profile type from title + content + name
@@ -293,7 +299,7 @@ export function parsePluginProfile(data) {
         commentCount: data.commentCount || 0,
         daysSincePost,
         profileType: detectProfileType(title, contentRaw, name),
-        isTestimonial: isTestimonialPost(title, contentRaw),
+        isTestimonial: isTestimonialPost(title, contentRaw, name),
         // If single profile, may include inline comments
         comments: data.comments || undefined,
     };
@@ -345,7 +351,7 @@ export function parseProfile(post) {
         commentCount: realCommentCount,
         daysSincePost,
         profileType: detectProfileType(title, content, name),
-        isTestimonial: isTestimonialPost(title, content),
+        isTestimonial: isTestimonialPost(title, content, name),
     };
 }
 

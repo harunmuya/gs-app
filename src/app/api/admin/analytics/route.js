@@ -94,6 +94,7 @@ export async function GET(request) {
         }));
 
         let pendingPayments = get(pendingPaymentsRes).count || 0;
+        let allMergedTransactions = [...(get(transactionsRes).data || [])]; // for recentTransactions
 
         if (ledger.transactions && ledger.transactions.length > 0) {
             const existingCodes = new Set(completedTransactions.map(t => t.code?.toUpperCase()));
@@ -101,6 +102,9 @@ export async function GET(request) {
             ledger.transactions.forEach(t => {
                 const isDup = t.code && existingCodes.has(t.code.toUpperCase());
                 if (!isDup) {
+                    // Add to allMergedTransactions for recent display
+                    allMergedTransactions.push(t);
+
                     if (t.status === 'Completed') {
                         completedTransactions.push({
                             amount: parseFloat(t.amount) || 0,
@@ -115,6 +119,9 @@ export async function GET(request) {
                 }
             });
         }
+
+        // Sort merged transactions by date descending
+        allMergedTransactions.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 
         const totalRevenue = completedTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
         const todayRevenue = completedTransactions
@@ -140,7 +147,8 @@ export async function GET(request) {
             });
         }
 
-        const recentTransactions = get(recentTransactionsRes).data || [];
+        // Use merged transactions (DB + fallback) instead of only DB
+        const recentTransactions = allMergedTransactions;
 
         // Build daily signups chart data (last 14 days)
         const signupsData = get(dailySignupsRes).data || [];
@@ -171,7 +179,7 @@ export async function GET(request) {
             payments: { pending: pendingPayments, completed: completedTransactions.length },
             verifications: { pending: pendingVerifications, total: verifiedUsers },
             subscriptions: planBreakdown,
-            recentTransactions: recentTransactions.slice(0, 30),
+            recentTransactions: recentTransactions.slice(0, 50),
             charts: { dailySignups: dailySignupsChart },
         });
     } catch (err) {

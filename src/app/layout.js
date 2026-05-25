@@ -122,7 +122,6 @@ export default function RootLayout({ children }) {
                         }),
                     }}
                 />
-                {/* Dark Mode Initialization — runs before paint to prevent flash */}
                 <script
                     dangerouslySetInnerHTML={{
                         __html: `
@@ -132,7 +131,15 @@ export default function RootLayout({ children }) {
                                     if (d === 'true') {
                                         document.documentElement.classList.add('dark');
                                     }
-                                    // Never auto-enable dark from system preference — default is always white/light
+                                    
+                                    // Detect GoNative/Median app wrapper and persist
+                                    if (window.gonative || 
+                                        (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.gonative) || 
+                                        navigator.userAgent.indexOf('GoNative') > -1 || 
+                                        navigator.userAgent.indexOf('Median') > -1 || 
+                                        window.location.search.indexOf('gonative=true') > -1) {
+                                        localStorage.setItem('is_gonative', 'true');
+                                    }
                                 } catch(e){}
                             })();
                         `,

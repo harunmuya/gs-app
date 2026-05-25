@@ -134,7 +134,7 @@ export default function CommentForm({ profile, onClose }) {
                                             value={guestName}
                                             onChange={(e) => setGuestName(e.target.value)}
                                             placeholder="Your Name *"
-                                            className="w-full rounded-xl py-3 pl-10 pr-4 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-sm"
+                                            className="w-full rounded-xl py-3 pl-10 pr-4 text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-sm"
                                             style={{ background: 'var(--color-bg-input)', border: 'var(--card-border)' }}
                                         />
                                     </div>
@@ -145,7 +145,7 @@ export default function CommentForm({ profile, onClose }) {
                                             value={guestEmail}
                                             onChange={(e) => setGuestEmail(e.target.value)}
                                             placeholder="Your Email *"
-                                            className="w-full rounded-xl py-3 pl-10 pr-4 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-sm"
+                                            className="w-full rounded-xl py-3 pl-10 pr-4 text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-sm"
                                             style={{ background: 'var(--color-bg-input)', border: 'var(--card-border)' }}
                                         />
                                     </div>
@@ -164,7 +164,7 @@ export default function CommentForm({ profile, onClose }) {
                                 placeholder="Write your comment... This will be posted on the website after admin approval."
                                 maxLength={1000}
                                 rows={4}
-                                className="w-full rounded-2xl p-4 text-text-primary placeholder:text-text-muted resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                                className="w-full rounded-2xl p-4 text-text-primary placeholder:text-text-secondary resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
                                 style={{ background: 'var(--color-bg-input)', border: 'var(--card-border)' }}
                             />
                             <div className="flex items-center justify-between">

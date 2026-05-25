@@ -31,7 +31,7 @@ export default function ChatConversationPage({ params }) {
     const [sending, setSending] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
     const [chatLocked, setChatLocked] = useState(false);
-    const [onlineStatus, setOnlineStatus] = useState({ status: 'online', text: 'Online now' });
+    const [onlineStatus, setOnlineStatus] = useState(() => getOnlineStatus());
     const [showWarning, setShowWarning] = useState(null);
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
@@ -50,12 +50,13 @@ export default function ChatConversationPage({ params }) {
 
                 // Count user sent messages to enforce free plan limits
                 const userSentMsgs = (msgs || []).filter(m => m.senderId === user?.id || m.senderId === user?.email).length;
-                const isFreeLimit = campaigns?.lockMessageLimit && (!subscription || subscription.plan === 'free') && userSentMsgs >= 3;
+                const isAdminConv = conversation?.matchWpId === 0 || conversation?.match_wp_id === 0;
+                const isFreeLimit = !isAdminConv && campaigns?.lockMessageLimit && (!subscription || subscription.plan === 'free') && userSentMsgs >= 3;
 
                 // Count existing AI replies
                 const aiReplies = (msgs || []).filter(m => m.senderId !== user?.email).length;
                 replyCountRef.current = aiReplies;
-                if (aiReplies >= MAX_FREE_REPLIES || isFreeLimit) setChatLocked(true);
+                if (!isAdminConv && (aiReplies >= MAX_FREE_REPLIES || isFreeLimit)) setChatLocked(true);
             } catch (err) {
                 console.error('Failed to load messages:', err);
             } finally {
@@ -87,54 +88,24 @@ export default function ChatConversationPage({ params }) {
 
     // ---- AI Reply Logic (human-like) ----
     const triggerAIReply = useCallback(async (userMessageText) => {
-        if (replyCountRef.current >= MAX_FREE_REPLIES) return;
+        const isAdminConv = conversation?.matchWpId === 0 || conversation?.match_wp_id === 0;
+        if (isAdminConv || replyCountRef.current >= MAX_FREE_REPLIES) return;
 
         const response = generateResponse(userMessageText, replyCountRef.current);
 
-        // Step 1: Mark as delivered (1-2s)
-        await new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
-        setMessages(prev => prev.map(m =>
-            m.senderId === user?.email && m.status === 'sent'
-                ? { ...m, status: 'delivered' } : m
-        ));
+        // Schedule reply from 10 hours to 36 hours to look extremely real
+        const delayHours = 10 + Math.random() * 26; // 10 to 36 hours
+        const delayMs = delayHours * 60 * 60 * 1000;
+        const futureDate = new Date(Date.now() + delayMs);
 
-        // Step 2: Mark as seen (8-33s)
-        await new Promise(r => setTimeout(r, calculateSeenDelay()));
-        setMessages(prev => prev.map(m =>
-            m.senderId === user?.email && m.status === 'delivered'
-                ? { ...m, status: 'seen' } : m
-        ));
-
-        // Step 3: Pre-typing delay — simulate reading (5-25s)
-        await new Promise(r => setTimeout(r, calculatePreTypingDelay()));
-
-        // Go online before typing
-        setOnlineStatus({ status: 'online', text: 'Online now' });
-
-        // Send each message bubble with typing indicator
+        // Schedule all response messages
         for (let i = 0; i < response.messages.length; i++) {
             const msgText = response.messages[i];
-
-            // Show typing indicator
-            setIsTyping(true);
-
-            // Typing duration based on message length
-            await new Promise(r => setTimeout(r, calculateTypingDelay(msgText, i === 0 && replyCountRef.current === 0)));
-
-            // Send the message
-            setIsTyping(false);
-            const replyMsg = await sendChatMessage(conversationId, msgText);
-            if (replyMsg) {
-                replyMsg.senderId = 'match';
-                replyMsg.senderName = conversation?.matchName || 'Match';
-                replyMsg.status = 'seen';
-                setMessages(prev => [...prev, replyMsg]);
-            }
-
-            // Delay between split messages
-            if (i < response.messages.length - 1) {
-                await new Promise(r => setTimeout(r, calculateSplitDelay()));
-            }
+            
+            // Offset subsequent bubbles by split delay
+            const bubbleDate = new Date(futureDate.getTime() + i * (3000 + Math.random() * 4000));
+            
+            await sendChatMessage(conversationId, msgText, 'match', bubbleDate);
         }
 
         // Increment count
@@ -150,9 +121,11 @@ export default function ChatConversationPage({ params }) {
     const handleSend = async () => {
         if (!inputText.trim() || sending || chatLocked) return;
 
+        const isAdminConv = conversation?.matchWpId === 0 || conversation?.match_wp_id === 0;
+
         // Double check limits before sending
-        const userSentMsgs = messages.filter(m => m.senderId === user?.id || m.senderId === user?.email).length;
-        if (campaigns?.lockMessageLimit && (!subscription || subscription.plan === 'free') && userSentMsgs >= 3) {
+        const userSentMsgs = messages.filter(m => m.senderId === user?.id || m.sender_id === user?.id).length;
+        if (!isAdminConv && campaigns?.lockMessageLimit && (!subscription || subscription.plan === 'free') && userSentMsgs >= 3) {
             setChatLocked(true);
             return;
         }
@@ -164,21 +137,46 @@ export default function ChatConversationPage({ params }) {
         // Content filter
         const { text: filteredText, blocked } = filterContent(rawText);
 
-        if (blocked) {
+        if (blocked && !isAdminConv) {
             setShowWarning('Sharing personal contact info is not allowed for safety reasons.');
             setTimeout(() => setShowWarning(null), 6000);
 
-            const msg = await sendChatMessage(conversationId, filteredText);
-            if (msg) setMessages(prev => [...prev, msg]);
-            setSending(false);
-            inputRef.current?.focus();
-            triggerAIReply(rawText);
+            try {
+                const rawMsg = await sendChatMessage(conversationId, filteredText);
+                if (rawMsg) {
+                    const msg = {
+                        id: rawMsg.id,
+                        senderId: rawMsg.sender_id,
+                        senderName: rawMsg.sender_name,
+                        text: rawMsg.content,
+                        content: rawMsg.content,
+                        timestamp: rawMsg.created_at,
+                        status: 'sent',
+                    };
+                    setMessages(prev => [...prev, msg]);
+                }
+                triggerAIReply(rawText);
+            } catch { } finally {
+                setSending(false);
+                inputRef.current?.focus();
+            }
             return;
         }
 
         try {
-            const msg = await sendChatMessage(conversationId, rawText);
-            if (msg) setMessages(prev => [...prev, msg]);
+            const rawMsg = await sendChatMessage(conversationId, rawText);
+            if (rawMsg) {
+                const msg = {
+                    id: rawMsg.id,
+                    senderId: rawMsg.sender_id,
+                    senderName: rawMsg.sender_name,
+                    text: rawMsg.content,
+                    content: rawMsg.content,
+                    timestamp: rawMsg.created_at,
+                    status: 'sent',
+                };
+                setMessages(prev => [...prev, msg]);
+            }
             triggerAIReply(rawText);
         } catch { } finally {
             setSending(false);
@@ -222,9 +220,12 @@ export default function ChatConversationPage({ params }) {
                     ) : (
                         <UserAvatar name={conversation.matchName} size={40} />
                     )}
-                    {/* Online dot */}
-                    {onlineStatus.status === 'online' && (
-                        <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-success border-2 border-[#18181b]" />
+                    {/* Online status dot */}
+                    {onlineStatus.status && (
+                        <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#18181b] ${
+                            onlineStatus.status === 'online' ? 'bg-success' :
+                            onlineStatus.status === 'away' ? 'bg-away bg-amber-500' : 'bg-text-muted bg-gray-500'
+                        }`} />
                     )}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -235,7 +236,7 @@ export default function ChatConversationPage({ params }) {
                             <VerifiedBadge size={14} badgeText={conversation.matchCustomBadge} />
                         )}
                     </div>
-                    <p className={`text-[10px] font-medium ${isTyping ? 'text-primary' : onlineStatus.status === 'online' ? 'text-success' : 'text-text-muted'}`}>
+                    <p className={`text-[10px] font-medium ${isTyping ? 'text-primary' : onlineStatus.status === 'online' ? 'text-success' : onlineStatus.status === 'away' ? 'text-amber-500' : 'text-text-muted'}`}>
                         {isTyping ? 'Typing…' : onlineStatus.text}
                     </p>
                 </div>
@@ -280,17 +281,19 @@ export default function ChatConversationPage({ params }) {
                         />
                     </div>
                 ) : messages.length === 0 ? (
-                    <div className="text-center py-10 space-y-3">
-                        <div className="w-16 h-16 rounded-full bg-bg-secondary flex items-center justify-center mx-auto border border-border">
-                            <MessageCircle size={24} className="text-primary" />
+                    <div className="text-center py-12 px-6 space-y-4 rounded-3xl my-8 border border-border" style={{ background: 'var(--color-bg-card)' }}>
+                        <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center mx-auto shadow-lg shadow-primary/20">
+                            <MessageCircle size={28} className="text-white" />
                         </div>
-                        <p className="text-sm text-text-secondary">Say hi to {conversation.matchName}!</p>
-                        <p className="text-xs text-text-muted">Start the conversation with a friendly message.</p>
+                        <div className="space-y-1">
+                            <p className="text-base font-black text-text-primary">Say hi to {conversation.matchName}!</p>
+                            <p className="text-xs text-text-secondary">Start the conversation with a friendly message and make a connection.</p>
+                        </div>
                     </div>
                 ) : (
                     messages.map((msg, idx) => {
-                        const isMe = msg.senderId === user?.email;
-                        const showAvatar = !isMe && (idx === 0 || messages[idx - 1]?.senderId === user?.email);
+                        const isMe = msg.senderId === user?.id || msg.sender_id === user?.id;
+                        const showAvatar = !isMe && (idx === 0 || messages[idx - 1]?.senderId === user?.id || messages[idx - 1]?.sender_id === user?.id);
                         return (
                             <motion.div
                                 key={msg.id}
@@ -316,11 +319,11 @@ export default function ChatConversationPage({ params }) {
                                             : 'rounded-2xl rounded-bl-md text-text-primary bg-bg-secondary border border-border'
                                             }`}
                                     >
-                                        {msg.text}
+                                        {msg.content || msg.text}
                                     </div>
                                     <div className={`flex items-center gap-1 mt-0.5 ${isMe ? 'justify-end' : ''}`}>
                                         <span className="text-[9px] text-text-muted">
-                                            {formatMsgTime(msg.timestamp)}
+                                            {formatMsgTime(msg.timestamp || msg.createdAt)}
                                         </span>
                                         {isMe && (
                                             <span className="text-[9px]">
@@ -463,7 +466,7 @@ export default function ChatConversationPage({ params }) {
                             onKeyDown={handleKeyDown}
                             placeholder="Type a message..."
                             rows={1}
-                            className="w-full py-2.5 px-4 rounded-2xl text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none max-h-24 bg-bg-secondary border border-border"
+                            className="w-full py-2.5 px-4 rounded-2xl text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none max-h-24 bg-bg-secondary border border-border"
                         />
                     </div>
                     <button

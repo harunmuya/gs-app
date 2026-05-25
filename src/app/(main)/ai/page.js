@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Sparkles, RefreshCw, ExternalLink, Maximize2, Minimize2 } from 'lucide-react';
+import { Zap, RefreshCw, ExternalLink, Maximize2, Minimize2, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function AiPage() {
@@ -25,7 +25,7 @@ export default function AiPage() {
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-2.5 border-b" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-card)' }}>
                 <div className="flex items-center gap-2">
-                    <Sparkles size={16} style={{ color: 'var(--color-primary)' }} />
+                    <Zap size={16} style={{ color: 'var(--color-primary)' }} />
                     <h1 className="text-sm font-bold" style={{ color: 'var(--color-text-primary)' }}>GS AI Assistant</h1>
                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(255,90,95,0.1)', color: 'var(--color-primary)' }}>
                         Live
@@ -63,7 +63,7 @@ export default function AiPage() {
 
             {/* Warning Banner for Google OAuth limitations */}
             <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-start gap-2">
-                <span className="text-xs shrink-0 mt-0.5">⚠️</span>
+                <AlertTriangle size={14} className="text-amber-500 shrink-0 mt-0.5" />
                 <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-snug">
                     <strong>Note:</strong> Google sign-in is blocked in embedded windows. If you need to Login or Register on GS AI, tap the <strong>Open in new tab (↗)</strong> button to log in, then refresh this page.
                 </p>

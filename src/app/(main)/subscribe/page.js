@@ -135,6 +135,14 @@ export default function SubscribePage() {
         }
     };
 
+    // Helper: convert File to base64 string
+    const fileToBase64 = (file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+
     const handleSubmitPayment = async () => {
         if (!transactionId.trim()) {
             setPaymentError('Please enter a valid Transaction ID.');
@@ -145,36 +153,64 @@ export default function SubscribePage() {
 
         try {
             let uploadedUrl = '';
+            let base64ProofData = null;
+
             if (proofFile) {
                 setProofUploading(true);
                 try {
+                    // Strategy 1: Try signed URL upload
                     const filename = encodeURIComponent(proofFile.name);
                     const signedUrlRes = await fetch(`/api/admin/setup?userId=${user?.id || 'guest'}&filename=${filename}`);
-                    if (!signedUrlRes.ok) {
-                        throw new Error('Failed to generate secure upload link');
-                    }
-                    const { signedUrl, path } = await signedUrlRes.json();
-                    
-                    const uploadRes = await fetch(signedUrl, {
-                        method: 'PUT',
-                        body: proofFile,
-                        headers: {
-                            'Content-Type': proofFile.type
+                    const signedData = signedUrlRes.ok ? await signedUrlRes.json() : { fallbackMode: true };
+
+                    if (signedData.signedUrl && !signedData.fallbackMode) {
+                        // Signed URL available — upload directly
+                        const uploadRes = await fetch(signedData.signedUrl, {
+                            method: 'PUT',
+                            body: proofFile,
+                            headers: { 'Content-Type': proofFile.type }
+                        });
+                        if (uploadRes.ok) {
+                            uploadedUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/payment-proofs/${signedData.path}`;
+                            setPaymentProofUrl(uploadedUrl);
+                        } else {
+                            // Signed URL upload failed — fall through to base64
+                            console.warn('[Payment] Signed URL upload failed, using base64 fallback');
                         }
-                    });
-                    
-                    if (!uploadRes.ok) {
-                        throw new Error('Failed to upload screenshot to secure storage');
                     }
-                    
-                    uploadedUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/payment-proofs/${path}`;
-                    setPaymentProofUrl(uploadedUrl);
+
+                    // Strategy 2: If signed URL didn't work, try base64 PUT upload
+                    if (!uploadedUrl) {
+                        const base64 = await fileToBase64(proofFile);
+                        try {
+                            const b64Res = await fetch('/api/admin/setup', {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    userId: user?.id || 'guest',
+                                    filename: proofFile.name,
+                                    base64Data: base64,
+                                    mimeType: proofFile.type
+                                })
+                            });
+                            const b64Data = await b64Res.json();
+                            if (b64Data.url) {
+                                uploadedUrl = b64Data.url;
+                                setPaymentProofUrl(uploadedUrl);
+                            } else {
+                                // Strategy 3: Store base64 inline with the transaction
+                                console.warn('[Payment] Base64 upload to storage also failed, embedding inline');
+                                base64ProofData = base64;
+                            }
+                        } catch {
+                            // Final fallback: embed base64 inline
+                            console.warn('[Payment] All upload strategies failed, embedding base64 inline');
+                            base64ProofData = base64;
+                        }
+                    }
                 } catch (uploadErr) {
-                    console.error('[Payment System] Upload error:', uploadErr);
-                    setPaymentError(`Screenshot upload failed: ${uploadErr.message}. Please try again or remove the screenshot to proceed.`);
-                    setSubmitting(false);
-                    setProofUploading(false);
-                    return;
+                    console.warn('[Payment] Screenshot processing error (non-blocking):', uploadErr.message);
+                    // Do NOT block payment — proceed without screenshot
                 } finally {
                     setProofUploading(false);
                 }
@@ -195,7 +231,8 @@ export default function SubscribePage() {
                     method: PAYMENT_NETWORKS.find(n => n.id === selectedNetwork)?.name || 'M-Pesa Escrow',
                     code: transactionId.trim(),
                     ticketId: ticketId,
-                    paymentProofUrl: uploadedUrl || null
+                    paymentProofUrl: uploadedUrl || null,
+                    paymentProofBase64: base64ProofData || null
                 })
             });
 
@@ -520,7 +557,7 @@ export default function SubscribePage() {
                                             onChange={(e) => { setTransactionId(e.target.value); setPaymentError(''); }}
                                             placeholder="e.g. QET93821LK, Ref Code, or MTN ID"
                                             disabled={submitting}
-                                            className="w-full py-3 px-4 rounded-xl text-sm text-text-primary bg-bg-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary/30 uppercase placeholder-text-muted/60"
+                                            className="w-full py-3 px-4 rounded-xl text-sm text-text-primary bg-bg-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary/30 uppercase placeholder:text-text-secondary/60"
                                         />
                                     </div>
 

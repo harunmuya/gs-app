@@ -124,11 +124,11 @@ export default function SupportPage() {
                                     </div>
                                     <div className="space-y-1.5">
                                         <label className="text-xs font-bold text-text-primary pl-1">Subject</label>
-                                        <input type="text" placeholder="Brief description of your issue" value={subject} onChange={e => setSubject(e.target.value)} maxLength={120} className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted border border-border focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm" />
+                                        <input type="text" placeholder="Brief description of your issue" value={subject} onChange={e => setSubject(e.target.value)} maxLength={120} className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm" />
                                     </div>
                                     <div className="space-y-1.5">
                                         <label className="text-xs font-bold text-text-primary pl-1">Describe Your Issue</label>
-                                        <textarea placeholder="Please provide as much detail as possible..." value={message} onChange={e => setMessage(e.target.value)} rows={5} maxLength={1000} className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary placeholder-text-muted border border-border focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm resize-none" />
+                                        <textarea placeholder="Please provide as much detail as possible..." value={message} onChange={e => setMessage(e.target.value)} rows={5} maxLength={1000} className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm resize-none" />
                                         <p className="text-[10px] text-text-muted text-right">{message.length}/1000</p>
                                     </div>
                                     {error && <p className="text-xs text-center text-white bg-danger/90 rounded-xl py-2.5 px-4">{error}</p>}

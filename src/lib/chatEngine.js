@@ -415,12 +415,14 @@ export function filterContent(text) {
 // ============================================================
 export function getOnlineStatus() {
     const rand = Math.random();
-    if (rand < 0.6) return { status: 'online', text: 'Online' };
-    if (rand < 0.85) {
-        const mins = Math.floor(Math.random() * 30) + 1;
-        return { status: 'away', text: `Last seen ${mins}m ago` };
+    if (rand < 0.35) {
+        return { status: 'away', text: 'Recently active' };
+    } else if (rand < 0.60) {
+        return { status: 'offline', text: 'Offline' };
+    } else {
+        const hours = Math.floor(Math.random() * 24) + 1;
+        return { status: 'offline', text: `Last seen ${hours}h ago` };
     }
-    return { status: 'away', text: 'Last seen recently' };
 }
 
 // ============================================================

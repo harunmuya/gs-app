@@ -17,10 +17,69 @@ const WELCOME_TITLE = 'Welcome to Genuine Sugarmummies!';
 
 export async function POST(req) {
     try {
-        const { userId, displayName } = await req.json();
+        const { userId, email, displayName, extraData = {} } = await req.json();
 
         if (!userId) {
             return NextResponse.json({ error: 'userId is required' }, { status: 400 });
+        }
+
+        // --- Server-side profile upsert using service_role to bypass client-side RLS limits ---
+        const profilePayload = {
+            id: userId,
+            email: email || null,
+            display_name: displayName || email?.split('@')[0] || 'User',
+            gender: extraData.gender || null,
+            looking_for: extraData.lookingFor || null,
+            age: extraData.age || null,
+            location: extraData.location || '',
+            interests: extraData.interests || [],
+            hobbies: extraData.hobbies || [],
+            is_public: extraData.isPublic !== false,
+            updated_at: new Date().toISOString(),
+        };
+
+        // Fetch existing user to merge fields if exists
+        try {
+            const { data: existingProfile } = await supabaseAdmin
+                .from('users')
+                .select('*')
+                .eq('id', userId)
+                .maybeSingle();
+
+            if (existingProfile) {
+                if (!profilePayload.email && existingProfile.email) profilePayload.email = existingProfile.email;
+                if (!profilePayload.display_name && existingProfile.display_name) profilePayload.display_name = existingProfile.display_name;
+                if (!profilePayload.gender && existingProfile.gender) profilePayload.gender = existingProfile.gender;
+                if (!profilePayload.looking_for && existingProfile.looking_for) profilePayload.looking_for = existingProfile.looking_for;
+                if (!profilePayload.age && existingProfile.age) profilePayload.age = existingProfile.age;
+                if (!profilePayload.location && existingProfile.location) profilePayload.location = existingProfile.location;
+                if ((!profilePayload.interests || profilePayload.interests.length === 0) && existingProfile.interests) profilePayload.interests = existingProfile.interests;
+                if ((!profilePayload.hobbies || profilePayload.hobbies.length === 0) && existingProfile.hobbies) profilePayload.hobbies = existingProfile.hobbies;
+            }
+        } catch (mergeErr) {
+            console.warn('[Welcome API] Profile merge failed, continuing with upsert:', mergeErr.message);
+        }
+
+        let { error: profileError } = await supabaseAdmin
+            .from('users')
+            .upsert(profilePayload);
+
+        if (profileError && (
+            profileError.message?.includes('hobbies') || 
+            profileError.code === 'PGRST100' || 
+            profileError.code === '42703'
+        )) {
+            console.warn('[Welcome API] hobbies column missing on upsert, retrying without it...');
+            const fallbackPayload = { ...profilePayload };
+            delete fallbackPayload.hobbies;
+            const retry = await supabaseAdmin
+                .from('users')
+                .upsert(fallbackPayload);
+            profileError = retry.error;
+        }
+
+        if (profileError) {
+            console.error('[Welcome API] Server-side profile upsert error:', profileError.message);
         }
 
         // --- Safety check: Don't send welcome twice ---
@@ -43,21 +102,24 @@ export async function POST(req) {
         const name = displayName || 'there';
         const welcomeBody = `Hi ${name}! 👋 Welcome to Genuine Sugar Mummies — Kenya's most trusted connection platform!\n\nHere's how to get started:\n• Complete your profile for better matches\n• Browse and like profiles on the Discover page\n• Upgrade to a premium plan to unlock unlimited messages and matches\n\nNeed help? Reach our official admin team at admin@genuinesugarmummies.co.ke or connect with Mary G directly on Telegram @GSADMINMARYGAGENCY.\n\nEnjoy connecting! 💛`;
 
-        // 1. Send in-app notification alert
+        // 1. Send in-app activity notification (will show under Notifications, clickable)
         const { data, error } = await supabaseAdmin
             .from('notifications')
             .insert({
                 user_id: userId,
-                type: 'gs_support',
+                type: 'welcome',
                 sender: 'GS Admin',
                 sender_image: '/gs-logo.png',
                 title: WELCOME_TITLE,
-                body: welcomeBody,
+                body: "Welcome to Genuine Sugar Mummies! Tap here to explore matches and browse profiles on our Discover page.",
                 is_read: false,
                 created_at: new Date().toISOString(),
             })
             .select()
             .single();
+
+        // 1b. Send actual welcome message to user's chat (opens like SMS!)
+        await sendAdminChatMessage(supabaseAdmin, userId, welcomeBody, 'Admin Mary G', '/gs-logo.png').catch(() => {});
 
         // 2. Send physical welcome email via Resend if API Key is configured
         if (process.env.RESEND_API_KEY) {
@@ -160,5 +222,67 @@ export async function POST(req) {
     } catch (err) {
         console.error('[Welcome API] Unexpected error:', err);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
+}
+
+async function sendAdminChatMessage(supabase, userId, content, senderName = 'Admin Mary G', senderImage = '/gs-logo.png') {
+    try {
+        let { data: conv } = await supabase
+            .from('conversations')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('match_wp_id', 0)
+            .maybeSingle();
+
+        if (!conv) {
+            const { data: newConv, error: createErr } = await supabase
+                .from('conversations')
+                .insert({
+                    user_id: userId,
+                    match_wp_id: 0,
+                    match_name: senderName,
+                    match_image: senderImage,
+                    unread_count: 0
+                })
+                .select()
+                .single();
+            if (createErr) throw createErr;
+            conv = newConv;
+        } else {
+            if (conv.match_name !== senderName || conv.match_image !== senderImage) {
+                await supabase
+                    .from('conversations')
+                    .update({ match_name: senderName, match_image: senderImage })
+                    .eq('id', conv.id);
+            }
+        }
+
+        const { data: msg, error: msgErr } = await supabase
+            .from('messages')
+            .insert({
+                conversation_id: conv.id,
+                sender_id: null,
+                sender_name: senderName,
+                content: content,
+                is_read: false
+            })
+            .select()
+            .single();
+
+        if (msgErr) throw msgErr;
+
+        await supabase
+            .from('conversations')
+            .update({
+                last_message: content,
+                last_message_at: new Date().toISOString(),
+                unread_count: (conv.unread_count || 0) + 1
+            })
+            .eq('id', conv.id);
+
+        return { success: true, conversationId: conv.id };
+    } catch (err) {
+        console.error('Failed to send admin chat message:', err);
+        return { success: false, error: err.message };
     }
 }

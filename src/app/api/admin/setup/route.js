@@ -104,7 +104,7 @@ export async function POST(request) {
     }
 }
 
-// Upload signed URL for payment proofs
+// Upload signed URL for payment proofs — auto-creates bucket if missing
 export async function GET(request) {
     try {
         const { searchParams } = new URL(request.url);
@@ -116,16 +116,94 @@ export async function GET(request) {
             return NextResponse.json({ error: 'userId and filename required' }, { status: 400 });
         }
 
+        // Ensure the bucket exists and is public before trying to generate a signed URL
+        await ensureBucketExists(bucket);
+
         const path = `${userId}/${Date.now()}_${filename}`;
         const { data, error } = await supabaseAdmin.storage
             .from(bucket)
             .createSignedUploadUrl(path);
 
-        if (error) throw error;
+        if (error) {
+            console.error('[Storage Upload URL] Signed URL error:', error.message);
+            // If signed URL fails, return fallback mode
+            return NextResponse.json({ 
+                fallbackMode: true, 
+                path,
+                message: 'Use base64 upload instead' 
+            });
+        }
 
         return NextResponse.json({ signedUrl: data.signedUrl, path, token: data.token });
     } catch (err) {
         console.error('[Storage Upload URL]', err);
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return NextResponse.json({ 
+            fallbackMode: true, 
+            path: `${Date.now()}_fallback`,
+            message: err.message 
+        });
+    }
+}
+
+// Helper to auto-create bucket if it does not exist
+async function ensureBucketExists(bucketName) {
+    try {
+        const { data, error } = await supabaseAdmin.storage.getBucket(bucketName);
+        if (error && (error.message?.includes('not found') || error.statusCode === 404 || error.message?.includes('does not exist'))) {
+            console.log(`[Storage] Creating missing bucket: ${bucketName}`);
+            await supabaseAdmin.storage.createBucket(bucketName, {
+                public: true, // Make public so direct rendering works without signing
+                allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+                fileSizeLimit: 10 * 1024 * 1024, // 10MB
+            });
+        }
+    } catch (e) {
+        console.warn('[Storage] ensureBucketExists failed:', e.message);
+    }
+}
+
+// POST endpoint for base64 payment proof/verifications upload (fallback when signed URL fails)
+export async function PUT(request) {
+    try {
+        const body = await request.json();
+        const { userId, filename, base64Data, mimeType, bucket = 'payment-proofs' } = body;
+
+        if (!userId || !base64Data) {
+            return NextResponse.json({ error: 'userId and base64Data required' }, { status: 400 });
+        }
+
+        await ensureBucketExists(bucket);
+
+        // Decode base64 to buffer
+        const base64Clean = base64Data.replace(/^data:[^;]+;base64,/, '');
+        const buffer = Buffer.from(base64Clean, 'base64');
+        const path = `${userId}/${Date.now()}_${filename || 'upload.jpg'}`;
+
+        const { data, error } = await supabaseAdmin.storage
+            .from(bucket)
+            .upload(path, buffer, {
+                contentType: mimeType || 'image/jpeg',
+                upsert: false,
+            });
+
+        if (error) {
+            console.error('[Storage Base64 Upload] Error:', error.message);
+            return NextResponse.json({ 
+                fallbackMode: true,
+                base64Stored: true,
+                path,
+                message: 'Upload failed, falling back to database save'
+            });
+        }
+
+        const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
+        return NextResponse.json({ success: true, url: publicUrl, path });
+    } catch (err) {
+        console.error('[Storage Base64 Upload]', err);
+        return NextResponse.json({ 
+            fallbackMode: true,
+            base64Stored: true,
+            message: err.message 
+        });
     }
 }
