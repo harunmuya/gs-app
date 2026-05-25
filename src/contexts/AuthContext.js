@@ -953,6 +953,10 @@ export function AuthProvider({ children }) {
 
     async function signInWithGoogle() {
         try {
+            const isLocal = typeof window !== 'undefined' && 
+                (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+            const redirectOrigin = isLocal ? window.location.origin : 'https://genuine-sugarmummies-app.vercel.app';
+
             // Check if device is mobile (to bypass popup block issues entirely)
             const isMobileDevice = typeof window !== 'undefined' && 
                 (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
@@ -1028,7 +1032,7 @@ export function AuthProvider({ children }) {
                 const { data, error } = await supabase.auth.signInWithOAuth({
                     provider: 'google',
                     options: {
-                        redirectTo: `${window.location.origin}/auth/callback?sync_code=${syncCode}`,
+                        redirectTo: `${redirectOrigin}/auth/callback?sync_code=${syncCode}`,
                         queryParams: {
                             access_type: 'offline',
                             prompt: 'consent',
@@ -1233,7 +1237,7 @@ export function AuthProvider({ children }) {
                 const { error } = await supabase.auth.signInWithOAuth({
                     provider: 'google',
                     options: {
-                        redirectTo: `${window.location.origin}/auth/callback`,
+                        redirectTo: `${redirectOrigin}/auth/callback`,
                         queryParams: {
                             access_type: 'offline',
                             prompt: 'consent',
@@ -1249,7 +1253,7 @@ export function AuthProvider({ children }) {
             const { data, error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
-                    redirectTo: `${window.location.origin}/auth/callback`,
+                    redirectTo: `${redirectOrigin}/auth/callback`,
                     queryParams: {
                         access_type: 'offline',
                         prompt: 'consent',
@@ -1280,7 +1284,7 @@ export function AuthProvider({ children }) {
             const { error: redirectError } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
-                    redirectTo: `${window.location.origin}/auth/callback`,
+                    redirectTo: `${redirectOrigin}/auth/callback`,
                     queryParams: {
                         access_type: 'offline',
                         prompt: 'consent',
@@ -1297,8 +1301,12 @@ export function AuthProvider({ children }) {
 
     async function resetPassword(email) {
         try {
+            const isLocal = typeof window !== 'undefined' && 
+                (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+            const redirectOrigin = isLocal ? window.location.origin : 'https://genuine-sugarmummies-app.vercel.app';
+
             const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                redirectTo: `${window.location.origin}/auth/login`,
+                redirectTo: `${redirectOrigin}/auth/login`,
             });
             if (error) throw new Error(error.message);
             return true;
