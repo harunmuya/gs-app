@@ -445,7 +445,7 @@ export default function ChatConversationPage({ params }) {
                         );
                     })()}
                     <p className="text-[10px] text-text-muted text-center">
-                        🌟 Premium members get <strong>unlimited chat</strong>, voice notes, priority matches & more
+                        Premium members get <strong>unlimited chat</strong>, voice notes, priority matches & more
                     </p>
                 </motion.div>
             )}

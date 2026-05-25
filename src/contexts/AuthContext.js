@@ -1095,8 +1095,20 @@ export function AuthProvider({ children }) {
                     }
                 };
 
-                // Automatically trigger external browser opening on start
-                openExternalBrowser(data.url);
+                // Automatically trigger in-app secure tab opening on start (forces Chrome Custom Tabs / Safari View Controller in GoNative)
+                let autoOpened = false;
+                try {
+                    if (typeof window !== 'undefined') {
+                        const pop = window.open(data.url, '_blank');
+                        if (pop) autoOpened = true;
+                    }
+                } catch (e) {
+                    console.error('[Auto window.open error]', e);
+                }
+
+                if (!autoOpened) {
+                    openExternalBrowser(data.url);
+                }
 
                 // Show a beautiful full-screen loading overlay inside the app WebView
                 let overlay = null;
@@ -1187,7 +1199,19 @@ export function AuthProvider({ children }) {
                 const manualOpenBtn = document.getElementById('gs-manual-open-btn');
                 if (manualOpenBtn) {
                     manualOpenBtn.onclick = () => {
-                        openExternalBrowser(data.url);
+                        let manualOpened = false;
+                        try {
+                            if (typeof window !== 'undefined') {
+                                const pop = window.open(data.url, '_blank');
+                                if (pop) manualOpened = true;
+                            }
+                        } catch (e) {
+                            console.error('[Manual window.open error]', e);
+                        }
+
+                        if (!manualOpened) {
+                            openExternalBrowser(data.url);
+                        }
                     };
                 }
 
