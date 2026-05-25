@@ -6,7 +6,7 @@ import {
     User, Camera, Heart, Bookmark, Settings, ChevronRight, LogOut, Trash2, Pencil,
     Shield, HelpCircle, ChevronLeft, X, Mail, MapPin, Calendar, Star, Plus, Phone,
     MessageCircle, ShieldCheck, ShieldAlert, ImagePlus, Check, AlertCircle, Send,
-    MessageSquare, Bell, Crown, CreditCard, BarChart3, Eye
+    MessageSquare, Bell, Crown, CreditCard, BarChart3, Eye, LifeBuoy
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import VerifiedBadge from '@/components/VerifiedBadge';
@@ -24,14 +24,15 @@ const MENU_ITEMS = [
     { key: 'messages', icon: MessageSquare, label: 'Messages' },
     { key: 'saved', icon: Bookmark, label: 'Saved Profiles' },
     { key: 'subscribe', icon: Crown, label: 'Membership Plans', link: '/subscribe' },
+    { key: 'support', icon: LifeBuoy, label: 'Support & Help Desk', link: '/settings/support' },
     { key: 'settings', icon: Settings, label: 'Settings' },
     { key: 'contact', icon: Phone, label: 'Contact Us' },
-    { key: 'help', icon: HelpCircle, label: 'Help & FAQ' },
+    { key: 'help', icon: HelpCircle, label: 'FAQ' },
 ];
 
 export default function ProfilePage() {
     const router = useRouter();
-    const { user, guest, profile, likes, matches, updateProfile, addPhoto, removePhoto, saved, signOut, deleteAccount, settings, updateSettings, verificationStatus, verifyProfile, clearVerification, messages, markMessagesRead, markSingleMessageRead, subscription } = useAuth();
+    const { user, profile, likes, matches, updateProfile, addPhoto, removePhoto, saved, signOut, deleteAccount, settings, updateSettings, verificationStatus, verifyProfile, clearVerification, messages, markMessagesRead, markSingleMessageRead, subscription } = useAuth();
     const [activeSection, setActiveSection] = useState(null);
     const [editMode, setEditMode] = useState(false);
     const [editData, setEditData] = useState({});
@@ -52,20 +53,6 @@ export default function ProfilePage() {
         }
     };
 
-    if (guest && !user) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center space-y-6">
-                <div className="w-24 h-24 rounded-full bg-surface flex items-center justify-center">
-                    <User size={40} className="text-primary" />
-                </div>
-                <h2 className="text-2xl font-bold text-text-primary">Account</h2>
-                <p className="text-text-secondary">Sign in to manage your profile.</p>
-                <Link href="/auth/login" className="w-full max-w-xs py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 block text-center">
-                    Sign In
-                </Link>
-            </div>
-        );
-    }
 
     if (!user) return null;
 

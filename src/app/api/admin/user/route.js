@@ -615,6 +615,62 @@ export async function POST(request) {
             }
         }
 
+        if (action === 'delete_user') {
+            const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
+            if (error) throw error;
+
+            await supabaseAdmin.from('users').delete().eq('id', userId);
+            return NextResponse.json({ success: true });
+        }
+
+        if (action === 'refund_payment') {
+            const { transactionId } = body;
+            if (!transactionId) {
+                return NextResponse.json({ error: 'Transaction ID required' }, { status: 400 });
+            }
+
+            let fromFallback = false;
+            try {
+                const { error } = await supabaseAdmin.from('transactions').update({ status: 'Refunded' }).eq('id', transactionId);
+                if (error) throw error;
+            } catch (txErr) {
+                console.warn('[Admin API] Database transaction refund failed, checking fallback ledger:', txErr.message);
+                fromFallback = true;
+            }
+
+            if (fromFallback) {
+                const ledgerRes = await supabaseAdmin.from('app_settings').select('*').eq('key', 'fallback_ledger').single();
+                if (ledgerRes.data) {
+                    const ledgerId = ledgerRes.data.id;
+                    const ledger = typeof ledgerRes.data.value === 'string' ? JSON.parse(ledgerRes.data.value) : ledgerRes.data.value;
+                    if (ledger.transactions) {
+                        ledger.transactions = ledger.transactions.map(t => 
+                            t.id === transactionId ? { ...t, status: 'Refunded' } : t
+                        );
+                        await supabaseAdmin.from('app_settings').update({ value: ledger, updated_at: new Date().toISOString() }).eq('id', ledgerId);
+                    }
+                }
+            }
+
+            if (userId && userId !== 'mock') {
+                try {
+                    await supabaseAdmin.from('subscriptions').upsert(
+                        {
+                            user_id: userId,
+                            plan: 'free',
+                            started_at: new Date().toISOString(),
+                            expires_at: null,
+                        },
+                        { onConflict: 'user_id' }
+                    );
+                } catch (subErr) {
+                    console.warn('[Admin Refund] Subscriptions reset failed:', subErr.message);
+                }
+            }
+
+            return NextResponse.json({ success: true });
+        }
+
         return NextResponse.json({ error: 'Invalid action specified' }, { status: 400 });
     } catch (err) {
         console.error('[Admin Action API] Error:', err);

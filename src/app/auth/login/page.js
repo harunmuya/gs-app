@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Sparkles, ArrowRight, ArrowLeft, User, Mail, Heart, Lock, Eye, EyeOff,
-    UserPlus, LogIn, MapPin, Target, Search, Shield, Users, CheckCircle, Calendar
+    UserPlus, LogIn, MapPin, Target, Search, Shield, Users, CheckCircle, Calendar, Send
 } from 'lucide-react';
 
 // Kenyan locations for reverse geocode fallback
@@ -48,11 +48,11 @@ function findNearestCity(lat, lng) {
 }
 
 function LoginPageInner() {
-    const { signIn, signUp, signInWithGoogle, resetPassword, skipLogin } = useAuth();
+    const { signIn, signUp, signInWithGoogle, resetPassword } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
 
-    // Mode: login | register | forgot
+    // Mode: login | register | forgot | email_sent
     const [mode, setMode] = useState('login');
     // Registration step: 1=credentials, 2=gender, 3=role, 4=age+location
     const [regStep, setRegStep] = useState(1);
@@ -89,10 +89,7 @@ function LoginPageInner() {
 
     // Auto-detect location
     const detectLocation = () => {
-        if (!navigator.geolocation) {
-            setError('Location not supported on this device.');
-            return;
-        }
+        if (!navigator.geolocation) { return; }
         setDetectingLocation(true);
         setError('');
         navigator.geolocation.getCurrentPosition(
@@ -121,6 +118,7 @@ function LoginPageInner() {
         setError('');
         try {
             await signInWithGoogle();
+            // Google redirects externally — loading state stays until page unloads
         } catch (err) {
             setError(err.message || 'Google sign-in failed. Please try again.');
             setGoogleLoading(false);
@@ -151,7 +149,14 @@ function LoginPageInner() {
             await signIn(email, password);
             router.push('/discover');
         } catch (err) {
-            setError(err.message || 'Invalid credentials. Please try again.');
+            const msg = err.message || '';
+            if (msg.includes('Email not confirmed') || msg.includes('email_not_confirmed')) {
+                setError('Please verify your email first. Check your inbox for a confirmation link.');
+            } else if (msg.includes('Invalid login credentials') || msg.includes('invalid_credentials')) {
+                setError('Incorrect email or password. Please try again.');
+            } else {
+                setError(msg || 'Sign in failed. Please try again.');
+            }
             setLoading(false);
         }
     };
@@ -215,16 +220,17 @@ function LoginPageInner() {
                 location,
                 isPublic,
             });
-            router.push('/discover');
+            // Show email verification notice
+            setMode('email_sent');
         } catch (err) {
-            setError(err.message || 'Registration failed. Try again.');
+            const msg = err.message || '';
+            if (msg.includes('User already registered') || msg.includes('already registered')) {
+                setError('An account with this email already exists. Try signing in instead.');
+            } else {
+                setError(msg || 'Registration failed. Please try again.');
+            }
             setLoading(false);
         }
-    };
-
-    const handleSkip = () => {
-        skipLogin();
-        router.push('/discover');
     };
 
     const goBack = () => {
@@ -234,6 +240,9 @@ function LoginPageInner() {
             setMode('login');
         } else if (isRegister && regStep > 1) {
             setRegStep(regStep - 1);
+        } else if (mode === 'register') {
+            setMode('login');
+            setRegStep(1);
         } else {
             setMode('login');
             setRegStep(1);
@@ -258,7 +267,7 @@ function LoginPageInner() {
 
     return (
         <div className="min-h-dvh flex flex-col bg-bg overflow-hidden relative">
-            {/* Background — uses CSS variables for dark mode compat */}
+            {/* Background */}
             <div className="fixed inset-0 pointer-events-none">
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full blur-[120px] opacity-25" style={{ background: 'var(--color-primary)' }} />
                 <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full blur-[100px] opacity-15" style={{ background: 'var(--color-gold)' }} />
@@ -267,57 +276,79 @@ function LoginPageInner() {
 
             <div className="relative flex-1 flex flex-col items-center justify-center px-6 py-8">
                 {/* Back button */}
-                {(mode === 'forgot' || (isRegister && regStep > 1)) && (
+                {(mode === 'forgot' || mode === 'register' || (isRegister && regStep > 1)) && mode !== 'email_sent' && (
                     <button onClick={goBack} className="absolute top-6 left-6 p-2 rounded-full bg-bg-card/80 backdrop-blur-sm shadow-sm z-10 border border-border">
                         <ArrowLeft size={20} className="text-text-primary" />
                     </button>
                 )}
 
-                {/* Logo */}
-                <motion.div
-                    initial={{ y: -30, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ duration: 0.6 }}
-                    className="flex flex-col items-center mb-6"
-                >
-                    {/* GS Icon */}
-                    <div className="mb-3">
-                        <img
-                            src="/gs.png"
-                            alt="GS"
-                            className="w-14 h-14 object-contain"
-                        />
-                    </div>
-
-                    {/* Brand Logo Image */}
-                    <img
-                        src="/genuine-logo.png"
-                        alt="Genuine Sugarmummies"
-                        className="h-8 object-contain mb-2"
-                    />
-
-                    <h1 className="text-lg font-extrabold text-gradient mb-0.5 text-center">
-                        {mode === 'forgot' ? 'Reset Password' :
-                         isRegister ? (regStep === 1 ? 'Create Account' : regStep === 2 ? 'About You' : regStep === 3 ? 'What Are You Looking For?' : 'Almost Done!') :
-                         'Welcome Back'}
-                    </h1>
-
-                    {/* Step indicator for registration */}
-                    {isRegister && regStep > 1 && (
-                        <div className="flex items-center gap-1.5 mt-2">
-                            {[1, 2, 3, 4].map(s => (
-                                <div key={s} className={`h-1.5 rounded-full transition-all ${s <= regStep ? 'w-6 gradient-primary' : 'w-4 bg-border'}`} />
-                            ))}
+                {/* ========== EMAIL SENT SUCCESS ========== */}
+                {mode === 'email_sent' && (
+                    <motion.div
+                        initial={{ scale: 0.9, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="w-full max-w-sm text-center space-y-5"
+                    >
+                        <div className="w-20 h-20 rounded-full bg-success/15 border border-success/30 flex items-center justify-center mx-auto">
+                            <Send size={32} className="text-success" />
                         </div>
-                    )}
+                        <div>
+                            <h2 className="text-xl font-black text-text-primary mb-2">Check Your Email!</h2>
+                            <p className="text-sm text-text-secondary leading-relaxed">
+                                We sent a verification link to <strong className="text-text-primary">{email}</strong>.
+                                Click the link in your email to activate your account, then sign in below.
+                            </p>
+                        </div>
+                        <div className="p-4 rounded-2xl bg-surface border border-border text-xs text-text-secondary space-y-1">
+                            <p>✓ Check your inbox and spam/junk folder</p>
+                            <p>✓ The link expires in 24 hours</p>
+                            <p>✓ After clicking, sign in with your email and password</p>
+                        </div>
+                        <button
+                            onClick={() => { setMode('login'); setRegStep(1); setError(''); setSuccess(''); }}
+                            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 transition-all active:scale-[0.98] text-sm"
+                        >
+                            <LogIn size={18} /> Go to Sign In
+                        </button>
+                    </motion.div>
+                )}
 
-                    {mode === 'login' && (
-                        <p className="text-xs flex items-center gap-1.5 text-center mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-                            <Sparkles size={12} style={{ color: 'var(--color-gold)' }} className="shrink-0" />
-                            Kenya&apos;s #1 dating app for real connections
-                        </p>
-                    )}
-                </motion.div>
+                {/* Logo — shown on all non-email-sent modes */}
+                {mode !== 'email_sent' && (
+                    <motion.div
+                        initial={{ y: -30, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        transition={{ duration: 0.6 }}
+                        className="flex flex-col items-center mb-6"
+                    >
+                        <div className="mb-3">
+                            <img src="/gs.png" alt="GS" className="w-14 h-14 object-contain" />
+                        </div>
+                        <img src="/genuine-logo.png" alt="Genuine Sugarmummies" className="h-8 object-contain mb-2 dark:hidden" />
+                        <img src="/genuine-logo-alt.png" alt="Genuine Sugarmummies" className="h-8 object-contain mb-2 hidden dark:block" />
+
+                        <h1 className="text-lg font-extrabold text-gradient mb-0.5 text-center">
+                            {mode === 'forgot' ? 'Reset Password' :
+                             isRegister ? (regStep === 1 ? 'Create Account' : regStep === 2 ? 'About You' : regStep === 3 ? 'What Are You Looking For?' : 'Almost Done!') :
+                             'Welcome Back'}
+                        </h1>
+
+                        {isRegister && regStep > 1 && (
+                            <div className="flex items-center gap-1.5 mt-2">
+                                {[1, 2, 3, 4].map(s => (
+                                    <div key={s} className={`h-1.5 rounded-full transition-all ${s <= regStep ? 'w-6 gradient-primary' : 'w-4 bg-border'}`} />
+                                ))}
+                            </div>
+                        )}
+
+                        {mode === 'login' && (
+                            <p className="text-xs flex items-center gap-1.5 text-center mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                                <Sparkles size={12} style={{ color: 'var(--color-gold)' }} className="shrink-0" />
+                                Kenya&apos;s #1 dating app for real connections
+                            </p>
+                        )}
+                    </motion.div>
+                )}
 
                 <AnimatePresence mode="wait">
                     {/* ========== FORGOT PASSWORD ========== */}
@@ -345,7 +376,7 @@ function LoginPageInner() {
                     {(mode === 'login' || (isRegister && regStep === 1)) && (
                         <motion.div key="step1" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }} transition={{ duration: 0.3 }} className="w-full max-w-sm">
 
-                            {/* Google Sign-In — prominent CTA */}
+                            {/* Google Sign-In */}
                             <button
                                 type="button"
                                 onClick={handleGoogleSignIn}
@@ -353,7 +384,7 @@ function LoginPageInner() {
                                 className="w-full flex items-center justify-center gap-3 py-3.5 rounded-2xl font-semibold text-text-primary bg-bg-card border border-border hover:shadow-md transition-all active:scale-[0.98] disabled:opacity-60 text-sm mb-4"
                             >
                                 {googleLoading ? (
-                                    <img src="/gs.png" alt="" className="w-5 h-5 object-contain animate-pulse-zoom" />
+                                    <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                                 ) : (
                                     <svg width="20" height="20" viewBox="0 0 24 24">
                                         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
@@ -454,17 +485,6 @@ function LoginPageInner() {
                                         </button>
                                     </p>
                                 )}
-
-                                <div className="flex items-center gap-3 px-2 pt-1">
-                                    <div className="flex-1 h-px bg-border" />
-                                    <span className="text-xs text-text-muted uppercase tracking-wider font-medium">or</span>
-                                    <div className="flex-1 h-px bg-border" />
-                                </div>
-
-                                <button type="button" onClick={handleSkip} disabled={loading}
-                                    className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-text-primary bg-surface hover:bg-bg-input transition-all active:scale-[0.98] border border-border text-sm">
-                                    <User size={18} /> Browse as Guest <ArrowRight size={16} />
-                                </button>
 
                                 {/* Trust signals */}
                                 <div className="flex items-center justify-center gap-4 pt-2">
@@ -633,7 +653,7 @@ function LoginPageInner() {
                                 className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 transition-all active:scale-[0.98] disabled:opacity-60 text-sm"
                             >
                                 <Heart size={18} fill="currentColor" />
-                                {loading ? 'Creating Account...' : 'Start Finding Matches'}
+                                {loading ? 'Creating Account...' : 'Create My Account'}
                                 <ArrowRight size={16} />
                             </button>
                         </motion.div>

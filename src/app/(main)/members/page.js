@@ -8,7 +8,7 @@ import UserAvatar from '@/components/UserAvatar';
 import Link from 'next/link';
 
 export default function MembersPage() {
-    const { user, guest, realProfilePool } = useAuth();
+    const { user, realProfilePool } = useAuth();
     const [searchQuery, setSearchQuery] = useState('');
     const [viewMode, setViewMode] = useState('grid');
     const [profiles, setProfiles] = useState([]);
@@ -38,20 +38,7 @@ export default function MembersPage() {
         );
     }, [profiles, searchQuery]);
 
-    if (guest && !user) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center space-y-6">
-                <div className="w-24 h-24 rounded-full bg-surface flex items-center justify-center">
-                    <Users size={40} className="text-primary" />
-                </div>
-                <h2 className="text-2xl font-bold text-text-primary">Members</h2>
-                <p className="text-text-secondary">Sign in to see member profiles.</p>
-                <Link href="/auth/login" className="w-full max-w-xs py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 block text-center">
-                    Sign In
-                </Link>
-            </div>
-        );
-    }
+
 
     return (
         <div className="px-4 pt-4 pb-24">

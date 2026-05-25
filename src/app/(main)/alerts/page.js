@@ -315,28 +315,10 @@ function ActivityItem({ item, index, router, requestConnection, markSingleActivi
 }
 
 export default function AlertsPage() {
-    const { user, guest, activity, markActivityRead, markSingleActivityRead, requestConnection } = useAuth();
+    const { user, activity, markActivityRead, markSingleActivityRead, requestConnection } = useAuth();
     const router = useRouter();
 
     const unreadCount = useMemo(() => activity.filter(a => !a.read).length, [activity]);
-
-    if (guest && !user) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center space-y-6">
-                <div
-                    className="w-24 h-24 rounded-full flex items-center justify-center mb-2"
-                    style={{ background: 'var(--color-surface)' }}
-                >
-                    <Bell size={40} className="text-primary" />
-                </div>
-                <h2 className="text-2xl font-bold text-text-primary">Activity</h2>
-                <p className="text-text-secondary">Sign in to track your activity.</p>
-                <button onClick={() => router.push('/auth/login')} className="w-full max-w-xs py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 block text-center">
-                    Sign In
-                </button>
-            </div>
-        );
-    }
 
     return (
         <div className="px-4 pt-4 pb-24">

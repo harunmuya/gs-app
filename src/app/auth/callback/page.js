@@ -4,7 +4,6 @@ import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 
-// Animated spinner SVG — no external deps
 function Spinner() {
   return (
     <svg width="44" height="44" viewBox="0 0 44 44" fill="none" style={{ animation: 'spin 0.9s linear infinite' }}>
@@ -39,41 +38,54 @@ function CallbackHandler({ setStatus, setErrMsg }) {
 
     const runAuthFlow = async () => {
       try {
-        // Pre-check: session may already exist (e.g. page reload) with 6s timeout
+        // Check for existing session first
         const sessionResult = await Promise.race([
           supabase.auth.getSession(),
           timeout(6000)
         ]);
 
-        if (sessionResult?.data?.session) {
-          if (active) {
-            setStatus('success');
-            setTimeout(() => {
-              if (active) router.replace('/discover');
-            }, 600);
-          }
-          return;
-        }
+        let session = sessionResult?.data?.session;
 
-        if (code) {
-          // Exchange code with 12s timeout
+        if (!session && code) {
+          // Exchange code for session
           const exchangeResult = await Promise.race([
             supabase.auth.exchangeCodeForSession(code),
             timeout(12000)
           ]);
 
-          if (exchangeResult?.error) {
-            throw exchangeResult.error;
-          }
+          if (exchangeResult?.error) throw exchangeResult.error;
+          session = exchangeResult?.data?.session;
+        }
 
-          if (active) {
-            setStatus('success');
+        if (active) {
+          setStatus('success');
+
+          // Check if user needs onboarding (Google OAuth users without profile data)
+          const needsOnboarding = session?.user && (
+            !session.user.user_metadata?.gender &&
+            !session.user.user_metadata?.looking_for
+          );
+
+          // Also check the users table
+          if (session?.user?.id) {
+            const { data: profile } = await supabase
+              .from('users')
+              .select('gender, looking_for, age')
+              .eq('id', session.user.id)
+              .single();
+
+            const profileIncomplete = !profile?.gender || !profile?.looking_for || !profile?.age;
+
+            setTimeout(() => {
+              if (active) {
+                router.replace(profileIncomplete ? '/onboarding' : '/discover');
+              }
+            }, 600);
+          } else {
             setTimeout(() => {
               if (active) router.replace('/discover');
             }, 600);
           }
-        } else {
-          if (active) router.replace('/discover');
         }
       } catch (err) {
         console.error('[Auth Callback] Auth flow error:', err);
@@ -89,16 +101,14 @@ function CallbackHandler({ setStatus, setErrMsg }) {
 
     runAuthFlow();
 
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [searchParams, router, setStatus, setErrMsg]);
 
   return null;
 }
 
 export default function AuthCallbackPage() {
-  const [status, setStatus] = useState('loading'); // 'loading' | 'success' | 'error'
+  const [status, setStatus] = useState('loading');
   const [errMsg, setErrMsg] = useState('');
 
   return (
@@ -115,43 +125,47 @@ export default function AuthCallbackPage() {
         minHeight: '100vh',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#FFFFFF',
+        background: 'var(--color-bg, #FFFFFF)',
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
         padding: '24px',
-        gap: '0',
       }}>
         {/* Logo */}
         <img
           src="/genuine-logo.png"
           alt="Genuine Sugarmummies"
-          style={{ height: '40px', objectFit: 'contain', marginBottom: '36px' }}
-          className="cb-fadeup"
+          style={{ height: '36px', objectFit: 'contain', marginBottom: '32px' }}
+          className="cb-fadeup dark:hidden"
+        />
+        <img
+          src="/genuine-logo-alt.png"
+          alt="Genuine Sugarmummies"
+          style={{ height: '36px', objectFit: 'contain', marginBottom: '32px' }}
+          className="cb-fadeup hidden dark:block"
         />
 
         {status === 'loading' && (
           <div className="cb-fadeup" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
             <Spinner />
-            <p style={{ color: '#495057', fontSize: '15px', fontWeight: '500', margin: 0 }}>
+            <p style={{ color: 'var(--color-text-secondary, #495057)', fontSize: '15px', fontWeight: '500', margin: 0 }}>
               Completing sign-in…
             </p>
-            <p style={{ color: '#868E96', fontSize: '13px', margin: 0, textAlign: 'center' }}>
-              Please wait, verifying your account
+            <p style={{ color: 'var(--color-text-muted, #868E96)', fontSize: '13px', margin: 0, textAlign: 'center' }}>
+              Please wait while we verify your account
             </p>
           </div>
         )}
 
         {status === 'success' && (
           <div className="cb-fadeup" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-            {/* Green check circle */}
             <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
               <circle cx="26" cy="26" r="26" fill="#37B24D" fillOpacity="0.12" />
               <circle cx="26" cy="26" r="20" fill="#37B24D" />
               <path d="M17 26L23 32L35 20" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <p style={{ color: '#1A1919', fontSize: '16px', fontWeight: '600', margin: 0 }}>
+            <p style={{ color: 'var(--color-text-primary, #1A1919)', fontSize: '16px', fontWeight: '600', margin: 0 }}>
               Signed in successfully!
             </p>
-            <p style={{ color: '#868E96', fontSize: '13px', margin: 0 }}>
+            <p style={{ color: 'var(--color-text-muted, #868E96)', fontSize: '13px', margin: 0 }}>
               Taking you to the app…
             </p>
           </div>
@@ -159,21 +173,17 @@ export default function AuthCallbackPage() {
 
         {status === 'error' && (
           <div className="cb-fadeup" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', maxWidth: '300px' }}>
-            {/* Red warning circle */}
             <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
               <circle cx="26" cy="26" r="26" fill="#FA5252" fillOpacity="0.12" />
               <circle cx="26" cy="26" r="20" fill="#FA5252" />
               <path d="M26 17V27" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
               <circle cx="26" cy="33" r="1.5" fill="white" />
             </svg>
-            <p style={{ color: '#1A1919', fontSize: '16px', fontWeight: '600', margin: 0, textAlign: 'center' }}>
+            <p style={{ color: 'var(--color-text-primary, #1A1919)', fontSize: '16px', fontWeight: '600', margin: 0, textAlign: 'center' }}>
               Sign-in failed
             </p>
-            <p style={{ color: '#868E96', fontSize: '13px', margin: 0, textAlign: 'center', lineHeight: '1.5' }}>
+            <p style={{ color: 'var(--color-text-muted, #868E96)', fontSize: '13px', margin: 0, textAlign: 'center', lineHeight: '1.5' }}>
               {errMsg || 'Something went wrong. Redirecting to login…'}
-            </p>
-            <p style={{ color: '#ADB5BD', fontSize: '12px', margin: 0 }}>
-              Redirecting you back…
             </p>
           </div>
         )}

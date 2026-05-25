@@ -63,7 +63,7 @@ export default function SingleProfilePage({ params }) {
     const profileId = resolvedParams.id;
     const router = useRouter();
     const {
-        user, guest, addLike, addMatch, isProfileSwiped,
+        user, addLike, addMatch, isProfileSwiped,
         saveProfile, unsaveProfile, isProfileSaved, logProfileView, likes, campaigns, subscription
     } = useAuth();
 

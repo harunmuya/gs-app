@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Crown, Check, Star, Shield, Zap, MessageCircle, Heart, Eye, Send, ArrowLeft, Phone, Copy, Smartphone, Globe } from 'lucide-react';
+import { Crown, Check, Star, Shield, Zap, MessageCircle, Heart, Eye, Send, ArrowLeft, Phone, Copy, Smartphone, Globe, Camera } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
@@ -105,6 +105,11 @@ export default function SubscribePage() {
     const [copiedNum, setCopiedNum] = useState(false);
     const [copiedTicket, setCopiedTicket] = useState(false);
 
+    // Screenshot Proof States
+    const [proofFile, setProofFile] = useState(null);
+    const [proofUploading, setProofUploading] = useState(false);
+    const [paymentProofUrl, setPaymentProofUrl] = useState('');
+
     const handleSelectPlan = (plan) => {
         if (plan.id === currentPlan || plan.id === 'free') return;
         setSelectedPlan(plan);
@@ -114,6 +119,8 @@ export default function SubscribePage() {
         setSubmittedCode('');
         setPaymentSuccess(false);
         setSelectedNetwork('mpesa_kenya');
+        setProofFile(null);
+        setPaymentProofUrl('');
         setShowPayment(true);
     };
 
@@ -137,6 +144,42 @@ export default function SubscribePage() {
         setPaymentError('');
 
         try {
+            let uploadedUrl = '';
+            if (proofFile) {
+                setProofUploading(true);
+                try {
+                    const filename = encodeURIComponent(proofFile.name);
+                    const signedUrlRes = await fetch(`/api/admin/setup?userId=${user?.id || 'guest'}&filename=${filename}`);
+                    if (!signedUrlRes.ok) {
+                        throw new Error('Failed to generate secure upload link');
+                    }
+                    const { signedUrl, path } = await signedUrlRes.json();
+                    
+                    const uploadRes = await fetch(signedUrl, {
+                        method: 'PUT',
+                        body: proofFile,
+                        headers: {
+                            'Content-Type': proofFile.type
+                        }
+                    });
+                    
+                    if (!uploadRes.ok) {
+                        throw new Error('Failed to upload screenshot to secure storage');
+                    }
+                    
+                    uploadedUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/payment-proofs/${path}`;
+                    setPaymentProofUrl(uploadedUrl);
+                } catch (uploadErr) {
+                    console.error('[Payment System] Upload error:', uploadErr);
+                    setPaymentError(`Screenshot upload failed: ${uploadErr.message}. Please try again or remove the screenshot to proceed.`);
+                    setSubmitting(false);
+                    setProofUploading(false);
+                    return;
+                } finally {
+                    setProofUploading(false);
+                }
+            }
+
             const ticketId = 'GS-PAY-' + Math.random().toString(36).substr(2, 7).toUpperCase();
             const rawAmount = parseFloat(selectedPlan.price.replace(/[^\d]/g, ''));
 
@@ -151,7 +194,8 @@ export default function SubscribePage() {
                     amount: rawAmount,
                     method: PAYMENT_NETWORKS.find(n => n.id === selectedNetwork)?.name || 'M-Pesa Escrow',
                     code: transactionId.trim(),
-                    ticketId: ticketId
+                    ticketId: ticketId,
+                    paymentProofUrl: uploadedUrl || null
                 })
             });
 
@@ -480,6 +524,31 @@ export default function SubscribePage() {
                                         />
                                     </div>
 
+                                    {/* Optional Screenshot Upload */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-text-primary uppercase tracking-wider block">
+                                            Payment Screenshot <span className="text-text-muted font-normal">(Optional but speeds up approval)</span>
+                                        </label>
+                                        {proofFile ? (
+                                            <div className="flex items-center gap-3 p-3 rounded-xl bg-success/10 border border-success/30">
+                                                <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-surface">
+                                                    <img src={URL.createObjectURL(proofFile)} alt="proof" className="w-full h-full object-cover" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-bold text-success">Screenshot added</p>
+                                                    <p className="text-[10px] text-text-muted truncate">{proofFile.name}</p>
+                                                </div>
+                                                <button onClick={() => setProofFile(null)} className="text-[10px] text-danger font-bold text-right shrink-0">Remove</button>
+                                            </div>
+                                        ) : (
+                                            <label className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-dashed border-border cursor-pointer hover:border-primary/40 transition-colors bg-bg-secondary">
+                                                <Camera size={20} className="text-text-muted" />
+                                                <span className="text-xs text-text-muted text-center">Tap to attach M-Pesa/Airtel screenshot<br/><span className="text-[10px]">JPG, PNG up to 5MB</span></span>
+                                                <input type="file" accept="image/*" className="sr-only" onChange={e => { const f = e.target.files?.[0]; if (f && f.size < 5 * 1024 * 1024) setProofFile(f); }} />
+                                            </label>
+                                        )}
+                                    </div>
+
                                     {paymentError && (
                                         <div className="p-3 rounded-xl bg-danger/10 text-danger text-xs font-medium border border-danger/20">
                                             {paymentError}
@@ -489,13 +558,13 @@ export default function SubscribePage() {
                                     {/* Submit Action */}
                                     <button
                                         onClick={handleSubmitPayment}
-                                        disabled={submitting || !transactionId.trim()}
+                                        disabled={submitting || !transactionId.trim() || proofUploading}
                                         className="w-full py-3.5 rounded-2xl font-extrabold text-white gradient-primary text-sm flex items-center justify-center gap-2 active:scale-95 disabled:opacity-40 disabled:scale-100 transition-all cursor-pointer shadow-md shadow-primary/20"
                                     >
                                         {submitting ? (
                                             <>
                                                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                                Verifying Submission...
+                                                {proofUploading ? 'Uploading Screenshot...' : 'Verifying Submission...'}
                                             </>
                                         ) : (
                                             <>

@@ -1,86 +1,46 @@
--- ================================================
--- SQL Update Migration Script
--- Run this in your Supabase Dashboard SQL Editor
--- ================================================
+-- ============================================================
+-- GenuineSugarmummies App — Safe Schema Update
+-- Run in Supabase Dashboard > SQL Editor
+-- All statements use IF NOT EXISTS / ADD COLUMN IF NOT EXISTS
+-- ============================================================
 
--- 1. Add admin, ban, and custom_badge columns to public.users table
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT false;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS custom_badge TEXT DEFAULT '';
-
--- 2. Adjust RLS policies on public.users to allow admins full read/write access
-DROP POLICY IF EXISTS "Admins can view all profiles" ON public.users;
-CREATE POLICY "Admins can view all profiles" ON public.users FOR SELECT USING (
-    (SELECT COALESCE(is_admin, false) FROM public.users WHERE id = auth.uid()) = true
+-- Support Tickets table
+CREATE TABLE IF NOT EXISTS support_tickets (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id uuid REFERENCES users(id) ON DELETE CASCADE,
+    category text NOT NULL DEFAULT 'other',
+    subject text NOT NULL,
+    message text NOT NULL,
+    status text NOT NULL DEFAULT 'open',
+    admin_reply text,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now()
 );
 
-DROP POLICY IF EXISTS "Admins can update all profiles" ON public.users;
-CREATE POLICY "Admins can update all profiles" ON public.users FOR UPDATE USING (
-    (SELECT COALESCE(is_admin, false) FROM public.users WHERE id = auth.uid()) = true
-);
+-- Add new columns to transactions (safe, idempotent)
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS payment_proof_url text;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS admin_notes text;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS reviewed_at timestamptz;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS reviewed_by text;
 
--- 3. Adjust RLS policies on public.subscriptions to allow admins full management
-DROP POLICY IF EXISTS "Admins can manage all subscriptions" ON public.subscriptions;
-CREATE POLICY "Admins can manage all subscriptions" ON public.subscriptions FOR ALL USING (
-    (SELECT COALESCE(is_admin, false) FROM public.users WHERE id = auth.uid()) = true
-);
+-- Add last_seen to users
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen timestamptz DEFAULT now();
 
--- 4. Adjust RLS policies on public.verification_requests to allow admins full management
-DROP POLICY IF EXISTS "Admins can manage all verifications" ON public.verification_requests;
-CREATE POLICY "Admins can manage all verifications" ON public.verification_requests FOR ALL USING (
-    (SELECT COALESCE(is_admin, false) FROM public.users WHERE id = auth.uid()) = true
-);
+-- RLS for support_tickets
+ALTER TABLE support_tickets ENABLE ROW LEVEL SECURITY;
 
--- 5. Mark initial admin (Optional - replace with your actual user email/ID)
--- UPDATE public.users SET is_admin = true WHERE email = 'admin@genuinesugarmummies.co.ke';
+DROP POLICY IF EXISTS "Users view own tickets" ON support_tickets;
+DROP POLICY IF EXISTS "Users insert own tickets" ON support_tickets;
+DROP POLICY IF EXISTS "Service role full access" ON support_tickets;
 
--- ================================================
--- 6. Create transactions table for financial tracking
--- ================================================
-CREATE TABLE IF NOT EXISTS public.transactions (
-    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
-    email TEXT NOT NULL,
-    plan TEXT CHECK (plan IN ('free', 'silver', 'gold', 'diamond')),
-    amount NUMERIC DEFAULT 0,
-    method TEXT DEFAULT 'M-Pesa Escrow',
-    status TEXT DEFAULT 'Completed' CHECK (status IN ('Completed', 'Pending', 'Failed')),
-    code TEXT UNIQUE,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
+CREATE POLICY "Users view own tickets" ON support_tickets
+    FOR SELECT USING (auth.uid() = user_id);
 
-ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users insert own tickets" ON support_tickets
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Admins can manage all transactions" ON public.transactions;
-CREATE POLICY "Admins can manage all transactions" ON public.transactions FOR ALL USING (
-    (SELECT COALESCE(is_admin, false) FROM public.users WHERE id = auth.uid()) = true
-);
-
-DROP POLICY IF EXISTS "Users can view own transactions" ON public.transactions;
-CREATE POLICY "Users can view own transactions" ON public.transactions FOR SELECT USING (
-    auth.uid() = user_id
-);
-
--- ================================================
--- 7. Create app settings table for admin configs
--- ================================================
-CREATE TABLE IF NOT EXISTS public.app_settings (
-    key TEXT PRIMARY KEY,
-    value JSONB,
-    updated_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Seed default settings
-INSERT INTO public.app_settings (key, value) VALUES
-('campaigns', '{"bannerAds": true, "intercomPromo": false, "lockMessageLimit": true, "dailySwipeLimit": true}'::jsonb)
-ON CONFLICT (key) DO NOTHING;
-
-ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Allow public read of app settings" ON public.app_settings;
-CREATE POLICY "Allow public read of app settings" ON public.app_settings FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "Admins can manage app settings" ON public.app_settings;
-CREATE POLICY "Admins can manage app settings" ON public.app_settings FOR ALL USING (
-    (SELECT COALESCE(is_admin, false) FROM public.users WHERE id = auth.uid()) = true
-);
+-- Index for fast ticket lookup
+CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_id);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);
+CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status);
+CREATE INDEX IF NOT EXISTS idx_users_last_seen ON users(last_seen);

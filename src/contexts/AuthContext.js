@@ -52,7 +52,6 @@ async function setCached(key, value) {
 
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
-    const [guest, setGuest] = useState(false);
     const [loading, setLoading] = useState(true);
     const [likes, setLikes] = useState([]);
     const [matches, setMatches] = useState([]);
@@ -106,12 +105,10 @@ export function AuthProvider({ children }) {
 
         // Fast loading: check localStorage and cookies synchronously to resolve loading instantly if no session
         let tokenExists = false;
-        let isGuestMode = false;
         let hasAuthCookie = false;
         let isAuthCallback = false;
         try {
             tokenExists = Object.keys(localStorage).some(key => key.startsWith('sb-') && key.endsWith('-auth-token'));
-            isGuestMode = localStorage.getItem('guest_mode') === 'true';
             if (typeof document !== 'undefined') {
                 hasAuthCookie = document.cookie.split(';').some(c => c.trim().startsWith('sb-'));
             }
@@ -123,11 +120,10 @@ export function AuthProvider({ children }) {
             }
         } catch (_) {}
 
-        // Failsafe: if token, cookie, or callback exists, wait up to 4s. Otherwise, resolve in 2500ms to avoid login race conditions
+        // Failsafe: if token, cookie, or callback exists, wait up to 4s. Otherwise, resolve in 2500ms
         const timeoutMs = (tokenExists || hasAuthCookie || isAuthCallback) ? 4000 : 2500;
         const failsafe = setTimeout(() => {
             if (mounted) {
-                if (isGuestMode) setGuest(true);
                 setLoading(false);
             }
         }, timeoutMs);
@@ -150,9 +146,7 @@ export function AuthProvider({ children }) {
                         loadUserData(session.user.id);
                     }
                 } else if (mounted) {
-                    // Check guest mode
-                    const guestMode = typeof window !== 'undefined' ? localStorage.getItem('guest_mode') : null;
-                    if (guestMode === 'true') setGuest(true);
+                    // No session — user will be redirected to login by AuthGuard
                 }
             } catch (err) {
                 console.error('[Auth] Init error:', err);
@@ -178,14 +172,11 @@ export function AuthProvider({ children }) {
                             const userData = await fetchUserProfile(session.user.id, session.user);
                             if (mounted) {
                                 setUser(userData);
-                                setGuest(false);
-                                localStorage.removeItem('guest_mode');
                                 await loadUserData(session.user.id);
                             }
                         } else if (event === 'SIGNED_OUT') {
                             if (mounted) {
                                 setUser(null);
-                                setGuest(false);
                                 resetState();
                             }
                         }
@@ -767,8 +758,6 @@ export function AuthProvider({ children }) {
 
             const userData = await fetchUserProfile(data.user.id, data.user);
             setUser(userData);
-            setGuest(false);
-            localStorage.removeItem('guest_mode');
 
             // Send welcome message server-side — safe, idempotent, bypasses RLS
             fetch('/api/welcome', {
@@ -798,8 +787,6 @@ export function AuthProvider({ children }) {
 
             const userData = await fetchUserProfile(data.user.id, data.user);
             setUser(userData);
-            setGuest(false);
-            localStorage.removeItem('guest_mode');
 
             // Log login activity
             await logActivity('login', {
@@ -845,13 +832,6 @@ export function AuthProvider({ children }) {
         }
     }
 
-    function skipLogin() {
-        setGuest(true);
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('guest_mode', 'true');
-        }
-    }
-
     async function signOut() {
         // Set offline before signing out
         if (user?.id) {
@@ -872,7 +852,6 @@ export function AuthProvider({ children }) {
 
     function resetState() {
         setUser(null);
-        setGuest(false);
         setLikes([]);
         setMatches([]);
         setSaved([]);
@@ -884,6 +863,9 @@ export function AuthProvider({ children }) {
         setSubscription(null);
         setBlockedUsers([]);
     }
+
+    // Check if user needs to complete onboarding (Google OAuth users)
+    const needsOnboarding = user && (!user.gender || !user.lookingFor || !user.age);
 
     // ---- Profile Management ----
     async function updateProfile(updates) {
@@ -1510,11 +1492,12 @@ export function AuthProvider({ children }) {
     }
 
     const value = {
-        user, guest, loading, profile: user,
+        user, loading, profile: user,
+        needsOnboarding,
         likes, matches, saved, activity, settings,
         messages, conversations, verificationStatus, realProfilePool,
         subscription, blockedUsers, campaigns,
-        signUp, signIn, signInWithGoogle, signOut, skipLogin, resetPassword,
+        signUp, signIn, signInWithGoogle, signOut, resetPassword,
         updateProfile, addPhoto, removePhoto,
         updateSettings: updateSettingsHandler,
         addLike, addMatch, addPass,

@@ -79,7 +79,7 @@ async function fetchWithTimeout(url, ms = 8000) {
 const KENYAN_LOCATIONS = ['All', 'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Thika', 'Kiambu', 'Westlands', 'Kilimani', 'Karen', 'Langata', 'Ruiru', 'Malindi', 'Nyeri', 'Machakos', 'Meru'];
 
 export default function DiscoverPage() {
-    const { user, guest, addLike, addMatch, addPass, isProfileSwiped, addSuperLike, clearSwipeHistory, blockedUsers } = useAuth();
+    const { user, addLike, addMatch, addPass, isProfileSwiped, addSuperLike, clearSwipeHistory, blockedUsers } = useAuth();
     const { location: userLocation, requestLocation } = useGeolocation();
     const router = useRouter();
 
@@ -90,7 +90,6 @@ export default function DiscoverPage() {
     const [viewedAll, setViewedAll] = useState(false);
     const [dbTotal, setDbTotal] = useState(0);
     const [showFilters, setShowFilters] = useState(false);
-    const [showGuestModal, setShowGuestModal] = useState(false);
     const fetchingRef = useRef(false);
 
     // Filters
@@ -234,11 +233,6 @@ export default function DiscoverPage() {
     // Swipe handler
     const handleSwipe = useCallback((dir, profile) => {
         if (!profile) return;
-        // Guest restriction: require sign-in to interact
-        if (guest && !user) {
-            setShowGuestModal(true);
-            return;
-        }
         setSwipeDir(dir);
         if (dir === 'right') {
             addLike(profile).then(res => {
@@ -261,7 +255,7 @@ export default function DiscoverPage() {
             addPass(profile.wpId);
         }
         setTimeout(() => setSwipeDir(null), 300);
-    }, [addLike, addMatch, addPass, addSuperLike, userLocation, guest, user, router]);
+    }, [addLike, addMatch, addPass, addSuperLike, userLocation, user, router]);
 
     // Touch gesture handlers
     const handleTouchStart = (e) => {
@@ -606,44 +600,7 @@ export default function DiscoverPage() {
                 {displayProfiles.length} of {allProfiles.length} profiles remaining
             </p>
 
-            {/* Guest Sign-Up Modal */}
-            <AnimatePresence>
-                {showGuestModal && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-6"
-                        onClick={() => setShowGuestModal(false)}
-                    >
-                        <motion.div
-                            initial={{ scale: 0.9, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.9, opacity: 0 }}
-                            className="bg-bg-card rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <div className="w-16 h-16 rounded-full gradient-primary flex items-center justify-center mx-auto mb-4">
-                                <Heart size={28} className="text-white" fill="white" />
-                            </div>
-                            <h3 className="text-lg font-bold text-text-primary mb-2">Create a Free Account</h3>
-                            <p className="text-sm text-text-secondary mb-5">Sign up to like, match, and connect with profiles. It only takes 30 seconds!</p>
-                            <button
-                                onClick={() => router.push('/auth/login')}
-                                className="w-full py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 transition-all active:scale-[0.98] text-sm mb-3"
-                            >
-                                Create Free Account
-                            </button>
-                            <button
-                                onClick={() => setShowGuestModal(false)}
-                                className="text-xs text-text-muted hover:text-text-primary"
-                            >
-                                Continue Browsing
-                            </button>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+
         </div>
     );
 }

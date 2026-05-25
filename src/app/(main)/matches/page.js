@@ -11,7 +11,7 @@ import Link from 'next/link';
 
 
 export default function MatchesPage() {
-    const { user, guest, matches, activity, requestConnection } = useAuth();
+    const { user, matches, activity, requestConnection } = useAuth();
 
     const recentActivity = useMemo(() =>
         (activity || [])
@@ -20,20 +20,7 @@ export default function MatchesPage() {
         [activity]
     );
 
-    if (guest && !user) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center space-y-6">
-                <div className="w-24 h-24 rounded-full bg-surface flex items-center justify-center">
-                    <Heart size={40} className="text-primary" />
-                </div>
-                <h2 className="text-2xl font-bold text-text-primary">Matches</h2>
-                <p className="text-text-secondary">Sign in to see your matches.</p>
-                <Link href="/auth/login" className="w-full max-w-xs py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 block text-center">
-                    Sign In
-                </Link>
-            </div>
-        );
-    }
+
 
     return (
         <div className="px-4 pt-4 pb-24">

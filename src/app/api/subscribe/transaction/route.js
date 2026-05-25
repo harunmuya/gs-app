@@ -14,7 +14,7 @@ const supabaseAdmin = createClient(
 
 export async function POST(req) {
     try {
-        const { userId, email, plan, amount, method, code, ticketId } = await req.json();
+        const { userId, email, plan, amount, method, code, ticketId, paymentProofUrl } = await req.json();
 
         if (!email || !plan || !code) {
             return NextResponse.json({ error: 'Missing required transaction fields' }, { status: 400 });
@@ -31,7 +31,8 @@ export async function POST(req) {
                 method: method || 'M-Pesa Escrow',
                 status: 'Pending',
                 code: code.trim(),
-                ticket_id: ticketId || null
+                ticket_id: ticketId || null,
+                payment_proof_url: paymentProofUrl || null
             })
             .select()
             .single();
@@ -55,6 +56,7 @@ export async function POST(req) {
                     status: 'Pending',
                     code: code.trim(),
                     ticket_id: ticketId || ('GS-PAY-' + Math.random().toString(36).substr(2, 7).toUpperCase()),
+                    payment_proof_url: paymentProofUrl || null,
                     created_at: new Date().toISOString()
                 };
 

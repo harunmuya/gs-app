@@ -5,32 +5,24 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function Home() {
-    const { user, guest, loading } = useAuth();
+    const { user, loading } = useAuth();
     const router = useRouter();
     const [minTimeElapsed, setMinTimeElapsed] = useState(false);
 
     useEffect(() => {
-        // Enforce minimum splash display duration of 1.2s
-        const timer = setTimeout(() => {
-            setMinTimeElapsed(true);
-        }, 1200);
-
+        const timer = setTimeout(() => setMinTimeElapsed(true), 1200);
         return () => clearTimeout(timer);
     }, []);
 
     useEffect(() => {
         if (!loading && minTimeElapsed) {
-            navigate();
+            if (user) {
+                router.replace('/discover');
+            } else {
+                router.replace('/auth/login');
+            }
         }
-    }, [loading, minTimeElapsed, user, guest]);
-
-    function navigate() {
-        if (user || guest) {
-            router.replace('/discover');
-        } else {
-            router.replace('/auth/login');
-        }
-    }
+    }, [loading, minTimeElapsed, user]);
 
     return (
         <div style={{
@@ -59,7 +51,7 @@ export default function Home() {
                 pointerEvents: 'none',
             }} />
 
-            {/* GS Icon — zoom pulse loader */}
+            {/* GS Icon */}
             <img
                 src="/gs.png"
                 alt="GS"
@@ -72,9 +64,9 @@ export default function Home() {
                 }}
             />
 
-            {/* Brand Logo Image — not text */}
+            {/* Brand Logo */}
             <img
-                src="/genuine-logo.png"
+                src="/genuine-logo-alt.png"
                 alt="Genuine Sugarmummies"
                 style={{
                     height: 32,
@@ -84,25 +76,14 @@ export default function Home() {
                 }}
             />
 
-            <p style={{
-                fontSize: 12,
-                opacity: 0.5,
-                letterSpacing: '0.5px',
-                fontWeight: 500,
-            }}>
+            <p style={{ fontSize: 12, opacity: 0.5, letterSpacing: '0.5px', fontWeight: 500 }}>
                 Kenya&apos;s #1 Dating Platform
             </p>
 
             <style>{`
                 @keyframes splashZoom {
-                    0%, 100% {
-                        transform: scale(0.85);
-                        opacity: 0.6;
-                    }
-                    50% {
-                        transform: scale(1.1);
-                        opacity: 1;
-                    }
+                    0%, 100% { transform: scale(0.85); opacity: 0.6; }
+                    50% { transform: scale(1.1); opacity: 1; }
                 }
             `}</style>
         </div>
