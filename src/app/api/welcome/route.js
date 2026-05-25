@@ -133,7 +133,7 @@ export async function POST(req) {
                     const htmlBody = `
                       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 580px; margin: 0 auto; padding: 30px; border: 1px solid #f1f3f5; border-radius: 16px; background-color: #ffffff; color: #212529;">
                         <div style="text-align: center; margin-bottom: 25px;">
-                          <img src="https://genuine-sugarmummies-app.vercel.app/genuine-logo.png" alt="Genuine Sugar Mummies" style="height: 38px; object-fit: contain;" />
+                          <img src="https://genuine-sugarmummies-app.vercel.app/genuine-logo.png?v=5" alt="Genuine Sugar Mummies" style="height: 38px; object-fit: contain;" />
                         </div>
                         <h2 style="color: #E03131; font-size: 22px; font-weight: 700; margin-top: 0; margin-bottom: 16px; text-align: center;">Welcome, ${name}!</h2>
                         <p style="font-size: 15px; line-height: 1.6; color: #495057; margin-bottom: 20px;">

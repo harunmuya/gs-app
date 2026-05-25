@@ -66,7 +66,7 @@ export default function Home() {
 
             {/* Brand Logo */}
             <img
-                src="/genuine-logo-alt.png"
+                src="/genuine-logo-alt.png?v=5"
                 alt="Genuine Sugarmummies"
                 style={{
                     height: 32,

@@ -427,8 +427,8 @@ function LoginPageInner() {
                         <div className="mb-3">
                             <img src="/gs.png" alt="GS" className="w-14 h-14 object-contain" />
                         </div>
-                        <img src="/genuine-logo.png" alt="Genuine Sugarmummies" className="h-8 object-contain mb-2 dark:hidden" />
-                        <img src="/genuine-logo-alt.png" alt="Genuine Sugarmummies" className="h-8 object-contain mb-2 hidden dark:block" />
+                        <img src="/genuine-logo.png?v=5" alt="Genuine Sugarmummies" className="h-8 object-contain mb-2 dark:hidden" />
+                        <img src="/genuine-logo-alt.png?v=5" alt="Genuine Sugarmummies" className="h-8 object-contain mb-2 hidden dark:block" />
 
                         <h1 className="text-lg font-extrabold text-gradient mb-0.5 text-center">
                             {mode === 'forgot' ? 'Reset Password' :

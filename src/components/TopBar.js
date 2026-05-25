@@ -60,14 +60,14 @@ export default function TopBar() {
         >
           {/* Light mode logo (dark text) */}
           <img
-            src="/genuine-logo.png"
+            src="/genuine-logo.png?v=5"
             alt="Genuine Sugarmummies"
             className="h-7 w-auto max-w-[150px] object-contain dark:hidden"
             style={{ maxHeight: '28px' }}
           />
           {/* Dark mode logo (white text) */}
           <img
-            src="/genuine-logo-alt.png"
+            src="/genuine-logo-alt.png?v=5"
             alt="Genuine Sugarmummies"
             className="h-7 w-auto max-w-[150px] object-contain hidden dark:block"
             style={{ maxHeight: '28px' }}

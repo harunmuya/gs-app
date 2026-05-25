@@ -166,8 +166,8 @@ export default function OnboardingPage() {
                     className="flex flex-col items-center mb-8"
                 >
                     <img src="/gs.png" alt="GS" className="w-12 h-12 object-contain mb-3" />
-                    <img src="/genuine-logo.png" alt="Genuine Sugarmummies" className="h-7 object-contain mb-2 dark:hidden" />
-                    <img src="/genuine-logo-alt.png" alt="Genuine Sugarmummies" className="h-7 object-contain mb-2 hidden dark:block" />
+                    <img src="/genuine-logo.png?v=5" alt="Genuine Sugarmummies" className="h-7 object-contain mb-2 dark:hidden" />
+                    <img src="/genuine-logo-alt.png?v=5" alt="Genuine Sugarmummies" className="h-7 object-contain mb-2 hidden dark:block" />
 
                     <div className="flex items-center gap-1.5 mt-3">
                         <Crown size={14} className="text-gold" />

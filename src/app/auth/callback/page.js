@@ -218,13 +218,13 @@ export default function AuthCallbackPage() {
       }}>
         {/* Logo */}
         <img
-          src="/genuine-logo.png"
+          src="/genuine-logo.png?v=5"
           alt="Genuine Sugarmummies"
           style={{ height: '36px', objectFit: 'contain', marginBottom: '32px' }}
           className="cb-fadeup dark:hidden"
         />
         <img
-          src="/genuine-logo-alt.png"
+          src="/genuine-logo-alt.png?v=5"
           alt="Genuine Sugarmummies"
           style={{ height: '36px', objectFit: 'contain', marginBottom: '32px' }}
           className="cb-fadeup hidden dark:block"
