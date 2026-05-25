@@ -158,6 +158,43 @@ function LoginPageInner() {
         return () => window.removeEventListener('message', handleAuthMessage);
     }, [router]);
 
+    // Auto-trigger Google Sign-In if launched from inside a mobile app WebView with a sync_code
+    useEffect(() => {
+        const syncCode = searchParams?.get('sync_code');
+        const triggerGoogle = searchParams?.get('trigger_google');
+        if (syncCode && triggerGoogle === 'true') {
+            setGoogleLoading(true);
+            setError('');
+            
+            const runAutoGoogle = async () => {
+                try {
+                    const isLocal = typeof window !== 'undefined' && 
+                        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+                    const redirectOrigin = isLocal ? window.location.origin : 'https://genuine-sugarmummies-app.vercel.app';
+                    
+                    const { error } = await supabase.auth.signInWithOAuth({
+                        provider: 'google',
+                        options: {
+                            redirectTo: `${redirectOrigin}/auth/callback?sync_code=${syncCode}`,
+                            queryParams: {
+                                access_type: 'offline',
+                                prompt: 'consent',
+                            },
+                        },
+                    });
+                    if (error) throw error;
+                } catch (err) {
+                    setError(err.message || 'Auto Google sign-in failed. Please try again.');
+                    setGoogleLoading(false);
+                }
+            };
+            
+            // Short delay to allow hydration and UI to settle
+            const timer = setTimeout(runAutoGoogle, 800);
+            return () => clearTimeout(timer);
+        }
+    }, [searchParams]);
+
     // Handle Google Sign-In
     const handleGoogleSignIn = async () => {
         setGoogleLoading(true);

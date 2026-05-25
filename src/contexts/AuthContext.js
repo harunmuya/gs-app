@@ -1028,21 +1028,10 @@ export function AuthProvider({ children }) {
                     value: { status: 'pending', createdAt: Date.now() }
                 }, { onConflict: 'key' });
 
-                // Generate Google sign-in URL with the sync_code query parameter
-                const { data, error } = await supabase.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: {
-                        redirectTo: `${redirectOrigin}/auth/callback?sync_code=${syncCode}`,
-                        queryParams: {
-                            access_type: 'offline',
-                            prompt: 'consent',
-                        },
-                        skipBrowserRedirect: true,
-                    },
-                });
-
-                if (error) throw new Error(error.message);
-                if (!data?.url) throw new Error('Failed to generate Google Sign-In URL');
+                // Construct target URL that triggers Google sign-in directly in the external browser.
+                // This ensures the external browser initiates the OAuth flow, writing the PKCE
+                // code_verifier into its own storage, enabling a successful exchange on /auth/callback.
+                const targetUrl = `${redirectOrigin}/auth/login?sync_code=${syncCode}&trigger_google=true`;
 
                 // Define a failproof function to trigger opening in native/external browser
                 const openExternalBrowser = (url) => {
@@ -1103,7 +1092,7 @@ export function AuthProvider({ children }) {
                 let autoOpened = false;
                 try {
                     if (typeof window !== 'undefined') {
-                        const pop = window.open(data.url, '_blank');
+                        const pop = window.open(targetUrl, '_blank');
                         if (pop) autoOpened = true;
                     }
                 } catch (e) {
@@ -1111,7 +1100,7 @@ export function AuthProvider({ children }) {
                 }
 
                 if (!autoOpened) {
-                    openExternalBrowser(data.url);
+                    openExternalBrowser(targetUrl);
                 }
 
                 // Show a beautiful full-screen loading overlay inside the app WebView
@@ -1206,7 +1195,7 @@ export function AuthProvider({ children }) {
                         let manualOpened = false;
                         try {
                             if (typeof window !== 'undefined') {
-                                const pop = window.open(data.url, '_blank');
+                                const pop = window.open(targetUrl, '_blank');
                                 if (pop) manualOpened = true;
                             }
                         } catch (e) {
@@ -1214,7 +1203,7 @@ export function AuthProvider({ children }) {
                         }
 
                         if (!manualOpened) {
-                            openExternalBrowser(data.url);
+                            openExternalBrowser(targetUrl);
                         }
                     };
                 }
