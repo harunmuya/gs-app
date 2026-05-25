@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Heart, Bookmark, MapPin, MessageCircle, MessageSquare, Share2, Star, Clock, TrendingUp, Award, Activity, Globe, User, Copy, CheckCircle, Eye, Calendar, BarChart3, Zap, Lock, Shield, CheckCheck, Sparkles, Crown } from 'lucide-react';
+import { ArrowLeft, Heart, Bookmark, MapPin, MessageCircle, MessageSquare, Share2, Star, Clock, TrendingUp, Award, Activity, Globe, User, Copy, CheckCircle, Eye, Calendar, BarChart3, Zap, Lock, Shield, CheckCheck, Sparkles, Crown, Check } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import CommentForm from '@/components/CommentForm';
@@ -60,6 +60,13 @@ function StarRating({ rating, max = 5 }) {
 
 function cleanSentence(s) {
     let clean = s.trim();
+    // Strip emojis
+    try {
+        clean = clean.replace(/\p{Extended_Pictographic}/gu, '');
+    } catch (e) {
+        clean = clean.replace(/[\u{1F300}-\u{1F9FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '');
+    }
+    clean = clean.trim();
     clean = clean.charAt(0).toUpperCase() + clean.slice(1);
     if (!/[.!?]$/.test(clean)) clean += '.';
     clean = clean.replace(/\+?\d{9,13}/g, '[Verified Contact]');
@@ -161,7 +168,14 @@ function parseBioText(contentHtml, excerptText, profileName, profileType) {
         }
     }
 
-    const introduction = introSentences.join(' ');
+    let introduction = introSentences.join(' ');
+    // Strip emojis from introduction
+    try {
+        introduction = introduction.replace(/\p{Extended_Pictographic}/gu, '');
+    } catch (e) {
+        introduction = introduction.replace(/[\u{1F300}-\u{1F9FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '');
+    }
+    introduction = introduction.trim();
 
     return {
         introduction,
@@ -710,7 +724,7 @@ export default function SingleProfilePage({ params }) {
                             <ul className="space-y-2">
                                 {parsedBio.offerings.map((item, index) => (
                                     <li key={index} className="text-[11px] text-text-secondary leading-relaxed flex items-start gap-2">
-                                        <span className="text-success font-black select-none">•</span>
+                                        <Check size={12} className="text-success shrink-0 mt-0.5" />
                                         <span>{item}</span>
                                     </li>
                                 ))}
@@ -725,7 +739,7 @@ export default function SingleProfilePage({ params }) {
                             <ul className="space-y-2">
                                 {parsedBio.requirements.map((item, index) => (
                                     <li key={index} className="text-[11px] text-text-secondary leading-relaxed flex items-start gap-2">
-                                        <span className="text-primary font-black select-none">•</span>
+                                        <Sparkles size={11} className="text-primary shrink-0 mt-0.5" />
                                         <span>{item}</span>
                                     </li>
                                 ))}
