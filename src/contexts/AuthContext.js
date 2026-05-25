@@ -985,16 +985,57 @@ export function AuthProvider({ children }) {
         setVerificationStatus('processing');
 
         try {
-            // Save verification request to Supabase
-            await supabase
-                .from('verification_requests')
-                .upsert({
+            // 1. Try standard table insert
+            let dbError = null;
+            try {
+                const { error } = await supabase
+                    .from('verification_requests')
+                    .upsert({
+                        user_id: user.id,
+                        selfie_url: selfieDataUrl,
+                        id_doc_url: idDocumentDataUrl,
+                        status: 'pending_review',
+                        submitted_at: new Date().toISOString(),
+                    });
+                if (error) dbError = error;
+            } catch (err) {
+                dbError = err;
+            }
+
+            // 2. Sync / Fallback to fallback_ledger inside app_settings
+            try {
+                const { data: ledgerRes } = await supabase
+                    .from('app_settings')
+                    .select('*')
+                    .eq('key', 'fallback_ledger')
+                    .single();
+
+                let ledger = { custom_badges: {}, user_plans: {}, transactions: [], verifications: {} };
+                let ledgerId = null;
+
+                if (ledgerRes) {
+                    ledgerId = ledgerRes.id;
+                    ledger = typeof ledgerRes.value === 'string' ? JSON.parse(ledgerRes.value) : ledgerRes.value;
+                }
+
+                if (!ledger.verifications) ledger.verifications = {};
+                ledger.verifications[user.id] = {
                     user_id: user.id,
+                    status: 'pending_review',
                     selfie_url: selfieDataUrl,
                     id_doc_url: idDocumentDataUrl,
-                    status: 'pending_review',
-                    submitted_at: new Date().toISOString(),
-                });
+                    submitted_at: new Date().toISOString()
+                };
+
+                if (ledgerId) {
+                    await supabase.from('app_settings').update({ value: ledger, updated_at: new Date().toISOString() }).eq('id', ledgerId);
+                } else {
+                    await supabase.from('app_settings').insert({ key: 'fallback_ledger', value: ledger });
+                }
+            } catch (fallbackErr) {
+                console.warn('[Verification Fallback] Failed to sync to fallback ledger:', fallbackErr.message);
+                if (dbError) throw dbError;
+            }
 
             setVerificationStatus('pending_review');
 

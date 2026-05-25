@@ -187,23 +187,86 @@ export async function POST(request) {
                 return NextResponse.json({ error: 'Invalid verification status' }, { status: 400 });
             }
 
-            const { data, error } = await supabaseAdmin
-                .from('verification_requests')
-                .upsert(
-                    {
+            let verifData = null;
+            let verifError = null;
+
+            try {
+                const { data, error } = await supabaseAdmin
+                    .from('verification_requests')
+                    .upsert(
+                        {
+                            user_id: userId,
+                            status: status,
+                            reason: reason || '',
+                            reviewed_at: new Date().toISOString(),
+                        },
+                        { onConflict: 'user_id' }
+                    )
+                    .select()
+                    .single();
+
+                verifData = data;
+                verifError = error;
+            } catch (dbErr) {
+                verifError = dbErr;
+            }
+
+            // Fallback to ledger if DB upsert fails
+            if (verifError) {
+                console.warn('[Admin API] Verification upsert failed, using fallback ledger:', verifError.message);
+                try {
+                    const ledgerRes = await supabaseAdmin.from('app_settings').select('*').eq('key', 'fallback_ledger').single();
+                    let ledger = { custom_badges: {}, user_plans: {}, transactions: [], verifications: {} };
+                    let ledgerId = null;
+
+                    if (ledgerRes.data) {
+                        ledgerId = ledgerRes.data.id;
+                        ledger = typeof ledgerRes.data.value === 'string' ? JSON.parse(ledgerRes.data.value) : ledgerRes.data.value;
+                    }
+
+                    if (!ledger.verifications) ledger.verifications = {};
+                    
+                    const existingVerif = ledger.verifications[userId] || {};
+                    ledger.verifications[userId] = {
+                        ...existingVerif,
                         user_id: userId,
                         status: status,
                         reason: reason || '',
-                        reviewed_at: new Date().toISOString(),
-                    },
-                    { onConflict: 'user_id' }
-                )
-                .select()
-                .single();
+                        reviewed_at: new Date().toISOString()
+                    };
 
-            if (error) throw error;
+                    if (ledgerId) {
+                        await supabaseAdmin.from('app_settings').update({ value: ledger, updated_at: new Date().toISOString() }).eq('id', ledgerId);
+                    } else {
+                        await supabaseAdmin.from('app_settings').insert({ key: 'fallback_ledger', value: ledger });
+                    }
 
-            // Send in-app notification to user when verified
+                    verifData = ledger.verifications[userId];
+                } catch (fallbackErr) {
+                    console.error('[Admin API] Fallback verification save failed:', fallbackErr);
+                    return NextResponse.json({ error: 'Failed to update verification status via fallback system.' }, { status: 500 });
+                }
+            }
+
+            // If verified, update the custom badge as well
+            if (status === 'verified') {
+                try {
+                    await supabaseAdmin.from('users').update({ custom_badge: 'Verified' }).eq('id', userId);
+                } catch {}
+
+                // Sync custom badge in ledger
+                try {
+                    const ledgerRes = await supabaseAdmin.from('app_settings').select('*').eq('key', 'fallback_ledger').single();
+                    if (ledgerRes.data) {
+                        const ledger = typeof ledgerRes.data.value === 'string' ? JSON.parse(ledgerRes.data.value) : ledgerRes.data.value;
+                        ledger.custom_badges = ledger.custom_badges || {};
+                        ledger.custom_badges[userId] = 'Verified';
+                        await supabaseAdmin.from('app_settings').update({ value: ledger, updated_at: new Date().toISOString() }).eq('id', ledgerRes.data.id);
+                    }
+                } catch {}
+            }
+
+            // Send in-app notification to user when verified/failed
             if (status === 'verified') {
                 try {
                     await supabaseAdmin
@@ -238,7 +301,7 @@ export async function POST(request) {
                 }
             }
 
-            return NextResponse.json({ success: true, verification: data });
+            return NextResponse.json({ success: true, verification: verifData });
         }
 
         if (action === 'badge') {

@@ -58,30 +58,87 @@ export async function GET(request) {
 
         const get = (res) => res.status === 'fulfilled' ? res.value : { data: null, count: 0, error: res.reason };
 
+        // 1. Get fallback ledger metrics
+        let ledger = { custom_badges: {}, user_plans: {}, transactions: [], verifications: {} };
+        try {
+            const { data: ledgerRec } = await supabaseAdmin
+                .from('app_settings')
+                .select('value')
+                .eq('key', 'fallback_ledger')
+                .single();
+            if (ledgerRec?.value) {
+                ledger = typeof ledgerRec.value === 'string' ? JSON.parse(ledgerRec.value) : ledgerRec.value;
+            }
+        } catch {}
+
         const totalUsers = get(totalUsersRes).count || 0;
         const newUsers = get(newUsersRes).count || 0;
         const activeToday = get(activeUsersRes).count || 0;
         const onlineNow = get(onlineUsersRes).count || 0;
-        const verifiedUsers = get(verifiedUsersRes).count || 0;
         const bannedUsers = get(bannedUsersRes).count || 0;
-        const pendingPayments = get(pendingPaymentsRes).count || 0;
-        const pendingVerifications = get(pendingVerificationsRes).count || 0;
 
-        const completedTransactions = get(transactionsRes).data || [];
-        const totalRevenue = completedTransactions.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+        // Merge DB verifications + fallback ledger verifications
+        let verifiedUsers = get(verifiedUsersRes).count || 0;
+        let pendingVerifications = get(pendingVerificationsRes).count || 0;
+        if (ledger.verifications) {
+            const fallbackVerified = Object.values(ledger.verifications).filter(v => v.status === 'verified').length;
+            const fallbackPending = Object.values(ledger.verifications).filter(v => v.status === 'pending_review' || v.status === 'processing').length;
+            verifiedUsers += fallbackVerified;
+            pendingVerifications += fallbackPending;
+        }
+
+        // Merge DB transactions + fallback transactions
+        let completedTransactions = (get(transactionsRes).data || []).map(t => ({
+            ...t,
+            amount: parseFloat(t.amount) || 0
+        }));
+
+        let pendingPayments = get(pendingPaymentsRes).count || 0;
+
+        if (ledger.transactions && ledger.transactions.length > 0) {
+            const existingCodes = new Set(completedTransactions.map(t => t.code?.toUpperCase()));
+            
+            ledger.transactions.forEach(t => {
+                const isDup = t.code && existingCodes.has(t.code.toUpperCase());
+                if (!isDup) {
+                    if (t.status === 'Completed') {
+                        completedTransactions.push({
+                            amount: parseFloat(t.amount) || 0,
+                            plan: t.plan?.toLowerCase() || 'free',
+                            created_at: t.created_at || t.date || new Date().toISOString(),
+                            status: 'Completed',
+                            code: t.code
+                        });
+                    } else if (t.status === 'Pending') {
+                        pendingPayments++;
+                    }
+                }
+            });
+        }
+
+        const totalRevenue = completedTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
         const todayRevenue = completedTransactions
-            .filter(t => new Date(t.created_at) >= today)
-            .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+            .filter(t => new Date(t.created_at || 0) >= today)
+            .reduce((sum, t) => sum + (t.amount || 0), 0);
         const weekRevenue = completedTransactions
-            .filter(t => new Date(t.created_at) >= new Date(weekAgo))
-            .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+            .filter(t => new Date(t.created_at || 0) >= new Date(weekAgo))
+            .reduce((sum, t) => sum + (t.amount || 0), 0);
 
+        // Subscription Plan breakdown
         const subscriptions = get(subscriptionBreakdownRes).data || [];
         const planBreakdown = { free: 0, silver: 0, gold: 0, diamond: 0 };
         subscriptions.forEach(s => {
             if (planBreakdown[s.plan] !== undefined) planBreakdown[s.plan]++;
-            else planBreakdown.free++;
         });
+
+        // Merge fallback plan counts
+        if (ledger.user_plans) {
+            Object.values(ledger.user_plans).forEach(p => {
+                if (planBreakdown[p.plan] !== undefined) {
+                    planBreakdown[p.plan]++;
+                }
+            });
+        }
 
         const recentTransactions = get(recentTransactionsRes).data || [];
 
@@ -102,7 +159,10 @@ export async function GET(request) {
         // Revenue by plan
         const revenueByPlan = { silver: 0, gold: 0, diamond: 0 };
         completedTransactions.forEach(t => {
-            if (revenueByPlan[t.plan] !== undefined) revenueByPlan[t.plan] += parseFloat(t.amount) || 0;
+            const normalizedPlan = t.plan?.toLowerCase();
+            if (revenueByPlan[normalizedPlan] !== undefined) {
+                revenueByPlan[normalizedPlan] += t.amount || 0;
+            }
         });
 
         return NextResponse.json({

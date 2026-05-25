@@ -84,10 +84,16 @@ export async function GET() {
             // Sync with fallback ledger
             const fallbackBadge = ledger.custom_badges?.[user.id] || '';
             const fallbackPlan = ledger.user_plans?.[user.id];
+            const fallbackVerif = ledger.verifications?.[user.id];
 
             const activePlan = fallbackPlan ? fallbackPlan.plan : userSub.plan;
             const activeStartedAt = fallbackPlan ? fallbackPlan.started_at : userSub.started_at;
             const activeExpiresAt = fallbackPlan ? fallbackPlan.expires_at : userSub.expires_at;
+
+            const activeVerifStatus = fallbackVerif ? fallbackVerif.status : userVerif.status;
+            const activeSelfie = fallbackVerif ? fallbackVerif.selfie_url : userVerif.selfie_url;
+            const activeIdDoc = fallbackVerif ? fallbackVerif.id_doc_url : userVerif.id_doc_url;
+            const activeSubmittedAt = fallbackVerif ? fallbackVerif.submitted_at : userVerif.submitted_at;
 
             return {
                 id: user.id,
@@ -107,10 +113,10 @@ export async function GET() {
                     expiresAt: activeExpiresAt,
                 },
                 verification: {
-                    status: userVerif.status,
-                    selfieUrl: userVerif.selfie_url,
-                    idDocUrl: userVerif.id_doc_url,
-                    submittedAt: userVerif.submitted_at,
+                    status: activeVerifStatus,
+                    selfieUrl: activeSelfie,
+                    idDocUrl: activeIdDoc,
+                    submittedAt: activeSubmittedAt,
                 }
             };
         });
@@ -132,12 +138,12 @@ export async function GET() {
             return prefix.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
         };
 
-        // Seed mock transactions for a premium look
+        // Seed mock transactions with numeric amounts matching live data format
         const mockTransactions = [
-            { id: 'TX-82937', userName: 'Harun Muya', user: 'harunmuya@gmail.com', plan: 'Gold', amount: 'KES 1,000', method: 'M-Pesa Escrow', status: 'Completed', code: 'QET93821LK', ticketId: 'GS-PAY-P8B12K9', date: 'Today, 2:14 PM' },
-            { id: 'TX-82936', userName: 'Kevin Otieno', user: 'kevin.otieno@outlook.com', plan: 'Diamond', amount: 'KES 2,500', method: 'M-Pesa Escrow', status: 'Completed', code: 'QES12495MZ', ticketId: 'GS-PAY-R9B38K1', date: 'Today, 11:05 AM' },
-            { id: 'TX-82935', userName: 'Mary Wambui', user: 'mary.wambui@yahoo.com', plan: 'Silver', amount: 'KES 500', method: 'M-Pesa Direct', status: 'Completed', code: 'QER91024JK', ticketId: 'GS-PAY-X2D18M4', date: 'Yesterday, 6:40 PM' },
-            { id: 'TX-82934', userName: 'Josphat Mutua', user: 'josphat.mutua@gmail.com', plan: 'Gold', amount: 'KES 1,000', method: 'M-Pesa Escrow', status: 'Completed', code: 'QEP38421MN', ticketId: 'GS-PAY-Y7N24L3', date: 'May 22, 10:15 AM' }
+            { id: 'TX-82937', userName: 'Harun Muya', user: 'harunmuya@gmail.com', plan: 'Gold', amount: 1000, method: 'M-Pesa Escrow', status: 'Completed', code: 'QET93821LK', ticketId: 'GS-PAY-P8B12K9', date: 'Today, 2:14 PM', created_at: new Date(Date.now() - 7200000).toISOString() },
+            { id: 'TX-82936', userName: 'Kevin Otieno', user: 'kevin.otieno@outlook.com', plan: 'Diamond', amount: 2500, method: 'M-Pesa Escrow', status: 'Completed', code: 'QES12495MZ', ticketId: 'GS-PAY-R9B38K1', date: 'Today, 11:05 AM', created_at: new Date(Date.now() - 18000000).toISOString() },
+            { id: 'TX-82935', userName: 'Mary Wambui', user: 'mary.wambui@yahoo.com', plan: 'Silver', amount: 500, method: 'M-Pesa Direct', status: 'Completed', code: 'QER91024JK', ticketId: 'GS-PAY-X2D18M4', date: 'Yesterday, 6:40 PM', created_at: new Date(Date.now() - 86400000).toISOString() },
+            { id: 'TX-82934', userName: 'Josphat Mutua', user: 'josphat.mutua@gmail.com', plan: 'Gold', amount: 1000, method: 'M-Pesa Escrow', status: 'Completed', code: 'QEP38421MN', ticketId: 'GS-PAY-Y7N24L3', date: 'May 22, 10:15 AM', created_at: new Date(Date.now() - 3 * 86400000).toISOString() }
         ];
 
         // Formatting transactions with robust fallbacks
@@ -155,11 +161,13 @@ export async function GET() {
             userName: getUserName(tx.email),
             user: tx.email,
             plan: tx.plan ? tx.plan.charAt(0).toUpperCase() + tx.plan.slice(1) : 'Free',
-            amount: `KES ${(tx.amount || 0).toLocaleString()}`,
+            amount: parseFloat(tx.amount) || 0,
+            payment_proof_url: tx.payment_proof_url || null,
             method: tx.method || 'M-Pesa Escrow',
             status: tx.status || 'Pending',
             code: tx.code || 'UNKNOWN',
             ticketId: tx.ticket_id || tx.ticketId || '—',
+            created_at: tx.created_at || null,
             date: tx.created_at 
                 ? new Date(tx.created_at).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
                 : 'N/A'

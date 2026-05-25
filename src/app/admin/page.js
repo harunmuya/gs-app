@@ -341,7 +341,7 @@ export default function AdminDashboard() {
         transactions.forEach(t => {
             if (t.status === 'Voided') return;
             const amt = parseFloat(String(t.amount || '0').replace(/[^0-9.]/g, '')) || 0;
-            const txTime = new Date(t.date || t.created_at || 0).getTime();
+            const txTime = new Date(t.created_at || t.createdAt || t.date || 0).getTime();
             totalRev += amt;
             if (now - txTime < 86400000) todayRev += amt;
             if (now - txTime < 7 * 86400000) weekRev += amt;
