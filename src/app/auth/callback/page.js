@@ -271,9 +271,16 @@ export default function AuthCallbackPage() {
             <p style={{ color: 'var(--color-text-secondary, #495057)', fontSize: '14px', margin: '4px 0 0 0', lineHeight: '1.5', maxWidth: '280px' }}>
               You are now logged in inside the GS mobile application.
             </p>
-            <p style={{ color: '#FF5A5F', fontSize: '13px', fontWeight: '800', margin: '12px 0 0 0', animation: 'pulse 1.5s infinite' }}>
-              Please return to the app to continue.
-            </p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
+              <a href="gonative://browser/close" style={{ display: 'inline-block', background: 'linear-gradient(135deg, #FF5A5F 0%, #FF2A6D 100%)', color: '#FFFFFF', fontSize: '13px', fontWeight: '700', padding: '12px 24px', borderRadius: '14px', textDecoration: 'none', boxShadow: '0 4px 15px rgba(255,90,95,0.3)', outline: 'none' }}>
+                Return to Application
+              </a>
+              <p style={{ color: 'var(--color-text-muted, #868E96)', fontSize: '11px', margin: '4px 0 0 0' }}>
+                If you aren't returned automatically, click the button above.
+              </p>
+            </div>
+            
             <style>{`
               @keyframes pulse {
                 0%, 100% { opacity: 1; }

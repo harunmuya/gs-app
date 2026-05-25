@@ -148,30 +148,40 @@ export default function DiscoverPage() {
                 setCache(page1);
             }
 
+            // Trickle load remaining pages sequentially in the background.
+            // This prevents concurrent network congestion/timeouts and ensures page 1 loads instantly.
             if (totalPages > 1) {
-                const promises = [];
-                for (let p = 2; p <= totalPages; p++) {
-                    promises.push(
-                        fetchWithTimeout(`/api/profiles?page=${p}&per_page=50`, 12000)
-                            .then(r => r.ok ? r.json() : { profiles: [] })
-                            .then(d => d.profiles || [])
-                            .catch(() => [])
-                    );
-                }
-                const results = await Promise.all(promises);
-                const moreProfiles = results.flat();
-                if (moreProfiles.length > 0) {
-                    const all = [...page1, ...moreProfiles];
-                    const seen = new Set();
-                    const unique = all.filter(p => {
-                        if (seen.has(p.wpId)) return false;
-                        seen.add(p.wpId);
-                        return true;
-                    });
-                    setAllProfiles(unique);
-                    setDbTotal(totalPosts);
-                    setCache(unique);
-                }
+                (async () => {
+                    let currentProfiles = [...page1];
+                    for (let p = 2; p <= totalPages; p++) {
+                        // Delay 1.5s between page loads to keep network bandwidth fully free for image loads
+                        await new Promise(resolve => setTimeout(resolve, 1500));
+                        
+                        try {
+                            const res = await fetch(`/api/profiles?page=${p}&per_page=50`);
+                            if (res.ok) {
+                                const data = await res.json();
+                                const pageProfiles = data.profiles || [];
+                                if (pageProfiles.length > 0) {
+                                    currentProfiles = [...currentProfiles, ...pageProfiles];
+                                    
+                                    // Keep unique
+                                    const seen = new Set();
+                                    const unique = currentProfiles.filter(item => {
+                                        if (seen.has(item.wpId)) return false;
+                                        seen.add(item.wpId);
+                                        return true;
+                                    });
+                                    
+                                    setAllProfiles(unique);
+                                    setCache(unique);
+                                }
+                            }
+                        } catch (e) {
+                            console.warn(`Trickle prefetch failed for page ${p}:`, e);
+                        }
+                    }
+                })();
             }
         } catch (err) {
             console.error('Profile load error:', err);
