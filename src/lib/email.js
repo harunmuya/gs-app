@@ -1,5 +1,6 @@
 const DEFAULT_SITE_URL = 'https://genuinesugarmummies.co.ke';
 const DEFAULT_FROM = 'Genuine Sugar Mummies <no-reply@genuinesugarmummies.co.ke>';
+const RESEND_TEST_FROM = 'Genuine Sugar Mummies <onboarding@resend.dev>';
 
 export function getSiteUrl() {
     return (process.env.NEXT_PUBLIC_SITE_URL || DEFAULT_SITE_URL).replace(/\/$/, '');
@@ -67,22 +68,40 @@ export async function sendTransactionalEmail({ to, subject, title, preview, body
         ctaUrl,
     });
 
-    const res = await fetch('https://api.resend.com/emails', {
+    const recipients = Array.isArray(to) ? to : [to];
+    const from = process.env.RESEND_FROM_EMAIL || DEFAULT_FROM;
+
+    const send = (fromAddress) => fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-            from: process.env.RESEND_FROM_EMAIL || DEFAULT_FROM,
-            to: Array.isArray(to) ? to : [to],
+            from: fromAddress,
+            to: recipients,
             subject,
             html,
         }),
     });
 
+    let res = await send(from);
+
     if (!res.ok) {
         const text = await res.text();
+        const domainNeedsVerification = res.status === 403 && text.toLowerCase().includes('domain is not verified');
+
+        if (domainNeedsVerification && process.env.RESEND_ALLOW_TEST_FROM_FALLBACK !== 'false') {
+            const fallbackRes = await send(RESEND_TEST_FROM);
+            if (fallbackRes.ok) {
+                const data = await fallbackRes.json();
+                return { ...data, fallback_from: RESEND_TEST_FROM, original_from_error: text };
+            }
+
+            const fallbackText = await fallbackRes.text();
+            throw new Error(`Resend email failed: ${text}; fallback failed: ${fallbackText}`);
+        }
+
         throw new Error(`Resend email failed: ${text}`);
     }
 

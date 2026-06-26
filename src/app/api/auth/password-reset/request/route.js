@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getSiteUrl, sendTransactionalEmail } from '@/lib/email';
+import { saveResetOtp } from '@/lib/passwordResetOtpStore';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -52,27 +53,15 @@ export async function POST(request) {
         const forwardedFor = request.headers.get('x-forwarded-for') || '';
         const ipAddress = forwardedFor.split(',')[0]?.trim() || request.headers.get('x-real-ip') || '';
 
-        await supabaseAdmin
-            .from('password_reset_otps')
-            .update({ used_at: new Date().toISOString() })
-            .eq('email', normalizedEmail)
-            .is('used_at', null);
-
-        const { error: insertError } = await supabaseAdmin
-            .from('password_reset_otps')
-            .insert({
-                user_id: profile.id,
-                email: normalizedEmail,
-                code_hash: hashOtp(normalizedEmail, code),
-                expires_at: expiresAt,
-                ip_address: ipAddress,
-                user_agent: request.headers.get('user-agent') || '',
-            });
-
-        if (insertError) {
-            console.error('[Password Reset OTP] Insert failed:', insertError.message);
-            return NextResponse.json({ error: 'Password reset is not configured. Run the OTP SQL migration.' }, { status: 500 });
-        }
+        await saveResetOtp(supabaseAdmin, {
+            user_id: profile.id,
+            email: normalizedEmail,
+            code_hash: hashOtp(normalizedEmail, code),
+            attempts: 0,
+            expires_at: expiresAt,
+            ip_address: ipAddress,
+            user_agent: request.headers.get('user-agent') || '',
+        });
 
         const emailResult = await sendTransactionalEmail({
             to: normalizedEmail,

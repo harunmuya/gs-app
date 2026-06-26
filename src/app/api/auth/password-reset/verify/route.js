@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { findActiveResetOtp, updateResetOtp } from '@/lib/passwordResetOtpStore';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -37,38 +38,29 @@ export async function POST(request) {
             return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
         }
 
-        const { data: otp, error: otpError } = await supabaseAdmin
-            .from('password_reset_otps')
-            .select('*')
-            .eq('email', normalizedEmail)
-            .is('used_at', null)
-            .gt('expires_at', new Date().toISOString())
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+        const storeState = await findActiveResetOtp(supabaseAdmin, normalizedEmail);
+        const { otp } = storeState;
 
-        if (otpError) throw otpError;
         if (!otp) {
             return NextResponse.json({ error: 'Reset code has expired. Request a new code.' }, { status: 400 });
         }
 
         if ((otp.attempts || 0) >= 5) {
-            await supabaseAdmin.from('password_reset_otps').update({ used_at: new Date().toISOString() }).eq('id', otp.id);
+            await updateResetOtp(supabaseAdmin, storeState, { used_at: new Date().toISOString() });
             return NextResponse.json({ error: 'Too many attempts. Request a new code.' }, { status: 429 });
         }
 
         const expectedHash = hashOtp(normalizedEmail, normalizedCode);
-        const valid = crypto.timingSafeEqual(Buffer.from(expectedHash), Buffer.from(otp.code_hash));
+        const expectedBuffer = Buffer.from(expectedHash);
+        const actualBuffer = Buffer.from(String(otp.code_hash || ''));
+        const valid = expectedBuffer.length === actualBuffer.length && crypto.timingSafeEqual(expectedBuffer, actualBuffer);
 
         if (!valid) {
             const attempts = (otp.attempts || 0) + 1;
-            await supabaseAdmin
-                .from('password_reset_otps')
-                .update({
-                    attempts,
-                    used_at: attempts >= 5 ? new Date().toISOString() : null,
-                })
-                .eq('id', otp.id);
+            await updateResetOtp(supabaseAdmin, storeState, {
+                attempts,
+                used_at: attempts >= 5 ? new Date().toISOString() : null,
+            });
             return NextResponse.json({ error: attempts >= 5 ? 'Too many attempts. Request a new code.' : 'Invalid reset code' }, { status: 400 });
         }
 
@@ -78,10 +70,10 @@ export async function POST(request) {
         });
         if (updateError) throw updateError;
 
-        await supabaseAdmin
-            .from('password_reset_otps')
-            .update({ used_at: new Date().toISOString(), attempts: (otp.attempts || 0) + 1 })
-            .eq('id', otp.id);
+        await updateResetOtp(supabaseAdmin, storeState, {
+            used_at: new Date().toISOString(),
+            attempts: (otp.attempts || 0) + 1,
+        });
 
         await supabaseAdmin.from('activity').insert({
             user_id: otp.user_id,
