@@ -219,6 +219,21 @@ CREATE TABLE IF NOT EXISTS public.notifications (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS public.password_reset_otps (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    email TEXT NOT NULL,
+    code_hash TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at TIMESTAMPTZ,
+    ip_address TEXT,
+    user_agent TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Verification and subscriptions
 CREATE TABLE IF NOT EXISTS public.verification_requests (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -348,6 +363,7 @@ ALTER TABLE public.direct_conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.direct_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.activity ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.password_reset_otps ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.verification_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
@@ -367,6 +383,12 @@ BEGIN
     EXECUTE format('CREATE POLICY "app all %1$s" ON public.%1$I FOR ALL USING (true) WITH CHECK (true)', t);
   END LOOP;
 END $$;
+
+DROP POLICY IF EXISTS "No public OTP access" ON public.password_reset_otps;
+CREATE POLICY "No public OTP access" ON public.password_reset_otps
+    FOR ALL
+    USING (false)
+    WITH CHECK (false);
 
 -- Realtime publications, skip safely if already added.
 DO $$
@@ -394,6 +416,8 @@ CREATE INDEX IF NOT EXISTS idx_direct_conv_p1 ON public.direct_conversations(par
 CREATE INDEX IF NOT EXISTS idx_direct_conv_p2 ON public.direct_conversations(participant_2, last_message_at DESC);
 CREATE INDEX IF NOT EXISTS idx_direct_messages_conv ON public.direct_messages(conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON public.notifications(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_password_reset_otps_email_created ON public.password_reset_otps(email, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_password_reset_otps_active ON public.password_reset_otps(email, expires_at DESC) WHERE used_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_transactions_status ON public.transactions(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_transactions_email ON public.transactions(email);
 CREATE INDEX IF NOT EXISTS idx_follows_follower ON public.follows(follower_id);

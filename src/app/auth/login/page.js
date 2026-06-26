@@ -3,7 +3,6 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Crown, ArrowRight, ArrowLeft, User, Mail, Heart, Lock, Eye, EyeOff,
@@ -76,7 +75,7 @@ function findNearestCity(lat, lng) {
 }
 
 function LoginPageInner() {
-    const { signIn, signUp, resetPassword } = useAuth();
+    const { signIn, signUp } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
 
@@ -108,6 +107,7 @@ function LoginPageInner() {
 
     const [newPassword, setNewPassword] = useState('');
     const [confirmNewPassword, setConfirmNewPassword] = useState('');
+    const [resetOtp, setResetOtp] = useState('');
 
     const isRegister = mode === 'register';
 
@@ -119,6 +119,11 @@ function LoginPageInner() {
         }
         const recoveryParam = searchParams?.get('recovery');
         if (recoveryParam === 'true') {
+            setMode('reset_password');
+        }
+        if (searchParams?.get('reset') === 'otp') {
+            const resetEmail = searchParams?.get('email');
+            if (resetEmail) setEmail(resetEmail);
             setMode('reset_password');
         }
     }, [searchParams]);
@@ -198,11 +203,18 @@ function LoginPageInner() {
         }
         setLoading(true);
         try {
-            await resetPassword(email);
-            setSuccess('Password reset link sent! Check your email inbox.');
+            const res = await fetch('/api/auth/password-reset/request', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to send reset code');
+            setMode('reset_password');
+            setSuccess('A 6-digit reset code has been sent to your email.');
             setLoading(false);
         } catch (err) {
-            setError(err.message || 'Failed to send reset email. Please try again.');
+            setError(err.message || 'Failed to send reset code. Please try again.');
             setLoading(false);
         }
     };
@@ -216,18 +228,28 @@ function LoginPageInner() {
             setError('New password must be at least 6 characters');
             return;
         }
+        if (!/^\d{6}$/.test(resetOtp.trim())) {
+            setError('Enter the 6-digit code sent to your email');
+            return;
+        }
         if (newPassword !== confirmNewPassword) {
             setError('Passwords do not match');
             return;
         }
         setLoading(true);
         try {
-            const { error } = await supabase.auth.updateUser({ password: newPassword });
-            if (error) throw error;
+            const res = await fetch('/api/auth/password-reset/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, code: resetOtp, password: newPassword }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to reset password');
             setSuccess('Password changed successfully! You can now sign in.');
             setLoading(false);
             setTimeout(() => {
                 setMode('login');
+                setResetOtp('');
                 setNewPassword('');
                 setConfirmNewPassword('');
                 setSuccess('');
@@ -423,7 +445,7 @@ function LoginPageInner() {
                         <motion.div key="forgot" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }} transition={{ duration: 0.3 }} className="w-full max-w-sm">
                             <form onSubmit={handleForgotPassword} className="space-y-3">
                                 <p className="text-sm text-text-secondary text-center mb-4">
-                                    Enter your email address and we&apos;ll send you a password reset link.
+                                    Enter your email address and we&apos;ll send a 6-digit reset code.
                                 </p>
                                 <div className="relative">
                                     <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -433,7 +455,7 @@ function LoginPageInner() {
                                 <button type="submit" disabled={loading}
                                     className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 transition-all active:scale-[0.98] disabled:opacity-60 text-sm">
                                     <Mail size={18} />
-                                    {loading ? 'Sending...' : 'Send Reset Link'}
+                                    {loading ? 'Sending...' : 'Send Reset Code'}
                                 </button>
                             </form>
                         </motion.div>
@@ -444,8 +466,33 @@ function LoginPageInner() {
                         <motion.div key="reset_pw" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }} transition={{ duration: 0.3 }} className="w-full max-w-sm">
                             <form onSubmit={handleChangePassword} className="space-y-3">
                                 <p className="text-sm text-text-secondary text-center mb-4">
-                                    Set your new password below.
+                                    Enter the 6-digit code from your email and choose a new password.
                                 </p>
+                                <div className="relative">
+                                    <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
+                                    <input
+                                        type="email"
+                                        placeholder="Email address"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        required
+                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm"
+                                    />
+                                </div>
+                                <div className="relative">
+                                    <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        pattern="[0-9]{6}"
+                                        maxLength={6}
+                                        placeholder="6-digit reset code"
+                                        value={resetOtp}
+                                        onChange={(e) => setResetOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                        required
+                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm tracking-[0.35em] font-black"
+                                    />
+                                </div>
                                 <div className="relative">
                                     <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
                                     <input type={showPassword ? 'text' : 'password'} placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required
