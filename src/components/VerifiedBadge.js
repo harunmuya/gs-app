@@ -39,7 +39,7 @@ export default function VerifiedBadge({ verified = false, badgeText = '', badge 
     case 'silver':
     case 'silver member':
       icon = <Sparkles size={iconSize} className="shrink-0" />;
-      styleClasses = 'bg-slate-350/15 border border-slate-400/40 text-slate-300 shadow-[0_0_8px_rgba(203,213,225,0.15)]';
+      styleClasses = 'bg-cyan-500/15 border border-cyan-400/40 text-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.2)]';
       break;
     case 'gold':
     case 'gold member':

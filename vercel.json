@@ -1,8 +1,12 @@
 {
-    "buildCommand": "next build",
-    "framework": "nextjs",
-    "installCommand": "npm install --legacy-peer-deps",
-    "env": {
-        "NEXT_TELEMETRY_DISABLED": "1"
-    }
+  "buildCommand": "next build",
+  "framework": "nextjs",
+  "installCommand": "npm install --legacy-peer-deps",
+  "env": {
+    "NEXT_TELEMETRY_DISABLED": "1"
+  },
+  "rewrites": [
+    { "source": "/base-release.apk", "destination": "/downloads/genuine-sugar-mummies-kenya.apk" },
+    { "source": "/base-realese.apk", "destination": "/downloads/genuine-sugar-mummies-kenya.apk" }
+  ]
 }

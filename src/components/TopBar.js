@@ -58,16 +58,16 @@ export default function TopBar() {
           className="flex items-center active:scale-95 transition-transform min-w-0 mr-2"
           aria-label="Go to home"
         >
-          {/* Light mode logo (dark text) */}
+          {/* Light mode logo (dark text on light bg) */}
           <img
-            src="/genuine-logo.png?v=5"
+            src="/genuine-logo.png?v=6"
             alt="Genuine Sugarmummies"
             className="h-7 w-auto max-w-[150px] object-contain dark:hidden"
             style={{ maxHeight: '28px' }}
           />
-          {/* Dark mode logo (white text) */}
+          {/* Dark mode logo (light text on dark bg) */}
           <img
-            src="/genuine-logo-alt.png?v=5"
+            src="/genuine-logo-alt.png?v=6"
             alt="Genuine Sugarmummies"
             className="h-7 w-auto max-w-[150px] object-contain hidden dark:block"
             style={{ maxHeight: '28px' }}

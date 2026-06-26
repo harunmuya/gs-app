@@ -76,7 +76,7 @@ function findNearestCity(lat, lng) {
 }
 
 function LoginPageInner() {
-    const { signIn, signUp, signInWithGoogle, resetPassword } = useAuth();
+    const { signIn, signUp, resetPassword } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
 
@@ -105,15 +105,21 @@ function LoginPageInner() {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [loading, setLoading] = useState(false);
-    const [googleLoading, setGoogleLoading] = useState(false);
+
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
     const isRegister = mode === 'register';
 
-    // Check for OAuth error in URL params
+    // Check for OAuth error or recovery mode in URL params
     useEffect(() => {
         const errorParam = searchParams?.get('error');
         if (errorParam) {
             setError(decodeURIComponent(errorParam));
+        }
+        const recoveryParam = searchParams?.get('recovery');
+        if (recoveryParam === 'true') {
+            setMode('reset_password');
         }
     }, [searchParams]);
 
@@ -142,82 +148,8 @@ function LoginPageInner() {
         else if (gender === 'female') setLookingFor('sugar_daddy');
     }, [gender]);
 
-    // Listen to Google Sign-In Popup events
-    useEffect(() => {
-        const handleAuthMessage = (event) => {
-            if (event.origin !== window.location.origin) return;
-            if (event.data?.type === 'auth-success') {
-                router.push(event.data.nextUrl || '/discover');
-            } else if (event.data?.type === 'auth-error') {
-                setError(event.data.error || 'Authentication failed');
-                setGoogleLoading(false);
-            }
-        };
 
-        window.addEventListener('message', handleAuthMessage);
-        return () => window.removeEventListener('message', handleAuthMessage);
-    }, [router]);
 
-    // Auto-trigger Google Sign-In if launched from inside a mobile app WebView with a sync_code
-    useEffect(() => {
-        const syncCode = searchParams?.get('sync_code');
-        const triggerGoogle = searchParams?.get('trigger_google');
-        if (syncCode && triggerGoogle === 'true') {
-            setGoogleLoading(true);
-            setError('');
-            
-            const runAutoGoogle = async () => {
-                try {
-                    const isLocal = typeof window !== 'undefined' && 
-                        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-                    const redirectOrigin = isLocal ? window.location.origin : 'https://genuine-sugarmummies-app.vercel.app';
-                    
-                    const { error } = await supabase.auth.signInWithOAuth({
-                        provider: 'google',
-                        options: {
-                            redirectTo: `${redirectOrigin}/auth/callback?sync_code=${syncCode}`,
-                            queryParams: {
-                                access_type: 'offline',
-                                prompt: 'consent',
-                            },
-                        },
-                    });
-                    if (error) throw error;
-                } catch (err) {
-                    setError(err.message || 'Auto Google sign-in failed. Please try again.');
-                    setGoogleLoading(false);
-                }
-            };
-            
-            // Short delay to allow hydration and UI to settle
-            const timer = setTimeout(runAutoGoogle, 800);
-            return () => clearTimeout(timer);
-        }
-    }, [searchParams]);
-
-    // Handle Google Sign-In
-    const handleGoogleSignIn = async () => {
-        setGoogleLoading(true);
-        setError('');
-        try {
-            const res = await signInWithGoogle();
-            if (res && res.isPopup && res.popup) {
-                const checkClosed = setInterval(() => {
-                    if (res.popup.closed) {
-                        clearInterval(checkClosed);
-                        setGoogleLoading(false);
-                    }
-                }, 1000);
-            } else {
-                // For secure system browser sync overlay or native flow, we stop the button loading state
-                // as the custom sync overlay / native selector takes over the UI
-                setGoogleLoading(false);
-            }
-        } catch (err) {
-            setError(err.message || 'Google sign-in failed. Please try again.');
-            setGoogleLoading(false);
-        }
-    };
 
     // Handle step 1 submission
     const handleStep1 = (e) => {
@@ -271,6 +203,37 @@ function LoginPageInner() {
             setLoading(false);
         } catch (err) {
             setError(err.message || 'Failed to send reset email. Please try again.');
+            setLoading(false);
+        }
+    };
+
+    // Handle password change (from recovery email link)
+    const handleChangePassword = async (e) => {
+        e.preventDefault();
+        setError('');
+        setSuccess('');
+        if (!newPassword || newPassword.length < 6) {
+            setError('New password must be at least 6 characters');
+            return;
+        }
+        if (newPassword !== confirmNewPassword) {
+            setError('Passwords do not match');
+            return;
+        }
+        setLoading(true);
+        try {
+            const { error } = await supabase.auth.updateUser({ password: newPassword });
+            if (error) throw error;
+            setSuccess('Password changed successfully! You can now sign in.');
+            setLoading(false);
+            setTimeout(() => {
+                setMode('login');
+                setNewPassword('');
+                setConfirmNewPassword('');
+                setSuccess('');
+            }, 2000);
+        } catch (err) {
+            setError(err.message || 'Failed to change password.');
             setLoading(false);
         }
     };
@@ -379,7 +342,7 @@ function LoginPageInner() {
 
             <div className="relative flex-1 flex flex-col items-center justify-center px-6 py-8">
                 {/* Back button */}
-                {(mode === 'forgot' || mode === 'register' || (isRegister && regStep > 1)) && mode !== 'email_sent' && (
+                {(mode === 'forgot' || mode === 'reset_password' || mode === 'register' || (isRegister && regStep > 1)) && mode !== 'email_sent' && (
                     <button onClick={goBack} className="absolute top-6 left-6 p-2 rounded-full bg-bg-card/80 backdrop-blur-sm shadow-sm z-10 border border-border">
                         <ArrowLeft size={20} className="text-text-primary" />
                     </button>
@@ -427,11 +390,12 @@ function LoginPageInner() {
                         <div className="mb-3">
                             <img src="/gs.png" alt="GS" className="w-14 h-14 object-contain" />
                         </div>
-                        <img src="/genuine-logo.png?v=5" alt="Genuine Sugarmummies" className="h-8 object-contain mb-2 dark:hidden" />
-                        <img src="/genuine-logo-alt.png?v=5" alt="Genuine Sugarmummies" className="h-8 object-contain mb-2 hidden dark:block" />
+                        <img src="/genuine-logo.png?v=6" alt="Genuine Sugarmummies" className="h-8 object-contain mb-2 dark:hidden" />
+                        <img src="/genuine-logo-alt.png?v=6" alt="Genuine Sugarmummies" className="h-8 object-contain mb-2 hidden dark:block" />
 
                         <h1 className="text-lg font-extrabold text-gradient mb-0.5 text-center">
                             {mode === 'forgot' ? 'Reset Password' :
+                             mode === 'reset_password' ? 'Set New Password' :
                              isRegister ? (regStep === 1 ? 'Create Account' : regStep === 2 ? 'About You' : regStep === 3 ? 'What Are You Looking For?' : 'Almost Done!') :
                              'Welcome Back'}
                         </h1>
@@ -475,35 +439,40 @@ function LoginPageInner() {
                         </motion.div>
                     )}
 
+                    {/* ========== SET NEW PASSWORD (from recovery link) ========== */}
+                    {mode === 'reset_password' && (
+                        <motion.div key="reset_pw" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }} transition={{ duration: 0.3 }} className="w-full max-w-sm">
+                            <form onSubmit={handleChangePassword} className="space-y-3">
+                                <p className="text-sm text-text-secondary text-center mb-4">
+                                    Set your new password below.
+                                </p>
+                                <div className="relative">
+                                    <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
+                                    <input type={showPassword ? 'text' : 'password'} placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required
+                                        className="w-full py-3.5 pl-12 pr-12 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
+                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted">
+                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
+                                <div className="relative">
+                                    <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
+                                    <input type={showPassword ? 'text' : 'password'} placeholder="Confirm new password" value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} required
+                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
+                                </div>
+                                <button type="submit" disabled={loading}
+                                    className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 transition-all active:scale-[0.98] disabled:opacity-60 text-sm">
+                                    <Lock size={18} />
+                                    {loading ? 'Updating...' : 'Set New Password'}
+                                </button>
+                            </form>
+                        </motion.div>
+                    )}
+
                     {/* ========== STEP 1: Login / Credentials ========== */}
                     {(mode === 'login' || (isRegister && regStep === 1)) && (
                         <motion.div key="step1" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }} transition={{ duration: 0.3 }} className="w-full max-w-sm">
 
-                            {/* Google Sign-In */}
-                            <button
-                                type="button"
-                                onClick={handleGoogleSignIn}
-                                disabled={googleLoading || loading}
-                                className="w-full flex items-center justify-center gap-3 py-3.5 rounded-2xl font-semibold text-text-primary bg-bg-card border border-border hover:shadow-md transition-all active:scale-[0.98] disabled:opacity-60 text-sm mb-4"
-                            >
-                                {googleLoading ? (
-                                    <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                                ) : (
-                                    <svg width="20" height="20" viewBox="0 0 24 24">
-                                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
-                                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                                    </svg>
-                                )}
-                                {googleLoading ? 'Connecting...' : 'Continue with Google'}
-                            </button>
 
-                            <div className="flex items-center gap-3 px-2 mb-4">
-                                <div className="flex-1 h-px bg-border" />
-                                <span className="text-xs text-text-muted uppercase tracking-wider font-medium">or use email</span>
-                                <div className="flex-1 h-px bg-border" />
-                            </div>
 
                             {/* Toggle Login/Register */}
                             <div className="mb-4">
@@ -709,66 +678,7 @@ function LoginPageInner() {
                                 </button>
                             </div>
 
-                            {/* Interests */}
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-text-primary pl-1">Your Interests (comma-separated)</label>
-                                <input
-                                    type="text" placeholder="e.g. Travel, Movies, Music"
-                                    value={interests} onChange={(e) => setInterests(e.target.value)}
-                                    className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
-                                />
-                            </div>
 
-                            {/* Hobbies */}
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-text-primary pl-1">Your Hobbies (comma-separated)</label>
-                                <input
-                                    type="text" placeholder="e.g. Hiking, Cooking, Swimming"
-                                    value={hobbies} onChange={(e) => setHobbies(e.target.value)}
-                                    className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
-                                />
-                            </div>
-
-                            {/* Public profile toggle */}
-                            <div className="flex items-center justify-between p-4 rounded-2xl border border-border bg-bg-card">
-                                <div>
-                                    <p className="text-sm font-bold text-text-primary">Public Profile</p>
-                                    <p className="text-xs text-text-muted">Show my profile in Members section</p>
-                                </div>
-                                <button
-                                    type="button" onClick={() => setIsPublic(!isPublic)}
-                                    className={`w-12 h-7 rounded-full transition-all relative ${isPublic ? 'bg-primary' : 'bg-border'}`}
-                                >
-                                    <div className={`absolute top-1 w-5 h-5 rounded-full bg-bg-card shadow-sm transition-all ${isPublic ? 'left-6' : 'left-1'}`} />
-                                </button>
-                            </div>
-
-                            {/* Summary */}
-                            <div className="p-4 rounded-2xl bg-surface space-y-2">
-                                <p className="text-xs font-bold text-text-primary">Your Profile Summary</p>
-                                <div className="flex flex-wrap gap-2">
-                                    <span className="px-3 py-1.5 rounded-full text-[10px] font-medium bg-bg-card border border-border flex items-center gap-1.5">
-                                        <User size={12} className={gender === 'male' ? 'text-blue-500' : 'text-pink-500'} />
-                                        {gender === 'male' ? 'Male' : 'Female'}
-                                    </span>
-                                    <span className="px-3 py-1.5 rounded-full text-[10px] font-medium bg-bg-card border border-border flex items-center gap-1.5">
-                                        <Heart size={12} className="text-primary" fill="currentColor" />
-                                        {lookingFor === 'sugar_mummy' ? 'Looking for Sugar Mummy' : 'Looking for Sugar Daddy'}
-                                    </span>
-                                    {age && (
-                                        <span className="px-3 py-1.5 rounded-full text-[10px] font-medium bg-bg-card border border-border flex items-center gap-1.5">
-                                            <Calendar size={12} className="text-gold" />
-                                            {age} years
-                                        </span>
-                                    )}
-                                    {location && (
-                                        <span className="px-3 py-1.5 rounded-full text-[10px] font-medium bg-bg-card border border-border flex items-center gap-1.5">
-                                            <MapPin size={12} className="text-primary" />
-                                            {location}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
 
                             {/* Complete button */}
                             <button

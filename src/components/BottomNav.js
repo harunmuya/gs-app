@@ -2,14 +2,14 @@
 
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Compass, Heart, MessageCircle, UserCircle, Zap } from 'lucide-react';
+import { Compass, Heart, MessageCircle, UserCircle, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { motion } from 'framer-motion';
 
 const NAV_ITEMS = [
   { href: '/discover', icon: Compass, label: 'Discover' },
   { href: '/matches', icon: Heart, label: 'Matches' },
-  { href: '/ai', icon: Zap, label: 'GS AI' },
+  { href: '/members', icon: Users, label: 'Members' },
   { href: '/chat', icon: MessageCircle, label: 'Chat' },
   { href: '/profile', icon: UserCircle, label: 'Account' },
 ];

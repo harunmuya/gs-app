@@ -133,7 +133,7 @@ export async function GET(request) {
 
         // Subscription Plan breakdown
         const subscriptions = get(subscriptionBreakdownRes).data || [];
-        const planBreakdown = { free: 0, silver: 0, gold: 0, diamond: 0 };
+        const planBreakdown = { free: 0, basic: 0, silver: 0, gold: 0 };
         subscriptions.forEach(s => {
             if (planBreakdown[s.plan] !== undefined) planBreakdown[s.plan]++;
         });
@@ -165,7 +165,7 @@ export async function GET(request) {
         const dailySignupsChart = Object.entries(dailyMap).map(([date, count]) => ({ date, count }));
 
         // Revenue by plan
-        const revenueByPlan = { silver: 0, gold: 0, diamond: 0 };
+        const revenueByPlan = { basic: 0, silver: 0, gold: 0 };
         completedTransactions.forEach(t => {
             const normalizedPlan = t.plan?.toLowerCase();
             if (revenueByPlan[normalizedPlan] !== undefined) {

@@ -64,6 +64,8 @@ export function AuthProvider({ children }) {
     const [subscription, setSubscription] = useState(null);
     const [realProfilePool, setRealProfilePool] = useState([]);
     const [blockedUsers, setBlockedUsers] = useState([]);
+    const [directConversations, setDirectConversations] = useState([]);
+    const [memberStatuses, setMemberStatuses] = useState([]);
     const [campaigns, setCampaigns] = useState({
         bannerAds: true,
         intercomPromo: false,
@@ -103,66 +105,6 @@ export function AuthProvider({ children }) {
     useEffect(() => {
         let mounted = true;
 
-        // Register GoNative/Median Native Google Sign-In Callback
-        if (typeof window !== 'undefined') {
-            window.gonativeGoogleSignInCallback = async (authData) => {
-                console.log('[Native Google Auth] Callback received:', authData);
-                
-                let payload = authData;
-                if (typeof authData === 'string') {
-                    try {
-                        payload = JSON.parse(authData);
-                    } catch (e) {
-                        console.error('[Native Google Auth] Failed to parse authData string:', e);
-                    }
-                }
-
-                if (payload && payload.idToken) {
-                    setLoading(true);
-                    try {
-                        const { data: authRes, error: authErr } = await supabase.auth.signInWithIdToken({
-                            provider: 'google',
-                            token: payload.idToken
-                        });
-
-                        if (authErr) throw authErr;
-
-                        if (authRes?.user) {
-                            // Perform welcome upsert server-side to guarantee profile is created
-                            const displayName = payload.name || payload.email?.split('@')[0] || 'User';
-                            fetch('/api/welcome', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    userId: authRes.user.id,
-                                    email: payload.email || authRes.user.email,
-                                    displayName: displayName,
-                                    extraData: {
-                                        avatar_url: payload.imageUrl || '',
-                                    }
-                                }),
-                            }).catch(err => console.warn('[Native Google Auth] Welcome API failed:', err));
-
-                            const userData = await fetchUserProfile(authRes.user.id, authRes.user);
-                            if (mounted) {
-                                setUser(userData);
-                                await loadUserData(authRes.user.id);
-                                window.location.href = '/discover';
-                            }
-                        }
-                    } catch (err) {
-                        console.error('[Native Google Auth] Sign-in error:', err);
-                        alert('Native Google Sign-in failed: ' + (err.message || err));
-                    } finally {
-                        if (mounted) setLoading(false);
-                    }
-                } else {
-                    const errText = payload?.error || 'No ID Token received from device.';
-                    console.error('[Native Google Auth] Invalid payload:', payload);
-                    alert('Google Sign-in failed: ' + errText);
-                }
-            };
-        }
 
         // Fast loading: check localStorage and cookies synchronously to resolve loading instantly if no session
         let tokenExists = false;
@@ -539,7 +481,7 @@ export function AuthProvider({ children }) {
                         if (newStatus === 'verified') {
                             // Trigger push notification
                             import('@/lib/notifications').then(({ notifySystem }) => {
-                                notifySystem('✅ Profile Verified!', 'Your identity has been verified. You now have the GS verified badge!');
+                                notifySystem('Profile Verified!', 'Your identity has been verified. You now have the GS verified badge!');
                             });
                         }
                     }
@@ -951,342 +893,7 @@ export function AuthProvider({ children }) {
         }
     }
 
-    async function signInWithGoogle() {
-        try {
-            const isLocal = typeof window !== 'undefined' && 
-                (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-            const redirectOrigin = isLocal ? window.location.origin : 'https://genuine-sugarmummies-app.vercel.app';
 
-            // Check if device is mobile (to bypass popup block issues entirely)
-            const isMobileDevice = typeof window !== 'undefined' && 
-                (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
-
-            // Detect if running inside any WebView (to bypass Google disallowed_useragent blocks)
-            let isWebView = false;
-            if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
-                const ua = navigator.userAgent;
-                const isAndroidWebView = /Android/i.test(ua) && (/Version\/[0-9.]+/i.test(ua) || ua.includes('wv'));
-                const isIOSWebView = /(iPhone|iPod|iPad).*AppleWebKit(?!.*Safari)/i.test(ua);
-                
-                if (isAndroidWebView || 
-                    isIOSWebView || 
-                    window.gonative || 
-                    window.median ||
-                    window.webkit?.messageHandlers?.gonative || 
-                    window.webkit?.messageHandlers?.median ||
-                    ua.includes('GoNative') || 
-                    ua.includes('Median') ||
-                    localStorage.getItem('is_gonative') === 'true') {
-                    isWebView = true;
-                }
-            }
-
-            // 1. FOR WEBVIEWS: Try Native Google Sign-In first (pop up Gmail selector on device)
-            // We ONLY trigger native if the actual JS Bridge or iOS webkit handlers exist.
-            if (isWebView) {
-                let nativeTriggered = false;
-                try {
-                    // Try Median JS API
-                    if (window.median && window.median.google && typeof window.median.google.signIn === 'function') {
-                        console.log('[Native Google Auth] Triggering Median JS API...');
-                        window.median.google.signIn({ callback: 'gonativeGoogleSignInCallback' });
-                        nativeTriggered = true;
-                    } 
-                    // Try GoNative JS API
-                    else if (window.gonative && window.gonative.google && typeof window.gonative.google.signIn === 'function') {
-                        console.log('[Native Google Auth] Triggering GoNative JS API...');
-                        window.gonative.google.signIn({ callback: 'gonativeGoogleSignInCallback' });
-                        nativeTriggered = true;
-                    } 
-                    // Try iOS Median message handler
-                    else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.medianGoogleSignIn) {
-                        console.log('[Native Google Auth] Triggering iOS Median postMessage...');
-                        window.webkit.messageHandlers.medianGoogleSignIn.postMessage({ callback: 'gonativeGoogleSignInCallback' });
-                        nativeTriggered = true;
-                    }
-                    // Try iOS GoNative message handler
-                    else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.gonativeGoogleSignIn) {
-                        console.log('[Native Google Auth] Triggering iOS GoNative postMessage...');
-                        window.webkit.messageHandlers.gonativeGoogleSignIn.postMessage({ callback: 'gonativeGoogleSignInCallback' });
-                        nativeTriggered = true;
-                    }
-                } catch (nativeErr) {
-                    console.warn('[Native Google Auth] Failed to trigger native flow, falling back to secure browser sync...', nativeErr);
-                }
-
-                if (nativeTriggered) {
-                    return { isPopup: false };
-                }
-
-                // --- Fallback: Secure system browser sync flow (with sync_code) ---
-                // Generate a one-time sync code
-                const syncCode = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
-                
-                // Initialize the sync session record in public app_settings table
-                await supabase.from('app_settings').upsert({
-                    key: `auth_sync_${syncCode}`,
-                    value: { status: 'pending', createdAt: Date.now() }
-                }, { onConflict: 'key' });
-
-                // Construct target URL that triggers Google sign-in directly in the external browser.
-                // This ensures the external browser initiates the OAuth flow, writing the PKCE
-                // code_verifier into its own storage, enabling a successful exchange on /auth/callback.
-                const targetUrl = `${redirectOrigin}/auth/login?sync_code=${syncCode}&trigger_google=true`;
-
-                // Define a failproof function to trigger opening in native/external browser
-                const openExternalBrowser = (url) => {
-                    let opened = false;
-                    try {
-                        if (typeof window !== 'undefined') {
-                            if (window.median && window.median.browser && typeof window.median.browser.open === 'function') {
-                                window.median.browser.open({ url });
-                                opened = true;
-                            } else if (window.gonative && window.gonative.browser && typeof window.gonative.browser.open === 'function') {
-                                window.gonative.browser.open({ url });
-                                opened = true;
-                            } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.median) {
-                                window.webkit.messageHandlers.median.postMessage({
-                                    browser: {
-                                        open: url
-                                    }
-                                });
-                                opened = true;
-                            } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.gonative) {
-                                window.webkit.messageHandlers.gonative.postMessage({
-                                    browser: {
-                                        open: url
-                                    }
-                                });
-                                opened = true;
-                            }
-                        }
-                    } catch (bridgeErr) {
-                        console.error('[GoNative/Median Bridge Open Error]', bridgeErr);
-                    }
-
-                    if (!opened) {
-                        try {
-                            const iframe = document.createElement('iframe');
-                            iframe.style.display = 'none';
-                            iframe.src = 'gonative://browser/open?url=' + encodeURIComponent(url);
-                            document.body.appendChild(iframe);
-                            setTimeout(() => iframe.remove(), 500);
-                            opened = true;
-                        } catch (e) {
-                            try {
-                                const iframe = document.createElement('iframe');
-                                iframe.style.display = 'none';
-                                iframe.src = 'median://browser/open?url=' + encodeURIComponent(url);
-                                document.body.appendChild(iframe);
-                                setTimeout(() => iframe.remove(), 500);
-                                opened = true;
-                            } catch (e2) {
-                                window.location.href = 'gonative://browser/open?url=' + encodeURIComponent(url);
-                                opened = true;
-                            }
-                        }
-                    }
-                };
-
-                // Automatically trigger in-app secure tab opening on start (forces Chrome Custom Tabs / Safari View Controller in GoNative)
-                let autoOpened = false;
-                try {
-                    if (typeof window !== 'undefined') {
-                        const pop = window.open(targetUrl, '_blank');
-                        if (pop) autoOpened = true;
-                    }
-                } catch (e) {
-                    console.error('[Auto window.open error]', e);
-                }
-
-                if (!autoOpened) {
-                    openExternalBrowser(targetUrl);
-                }
-
-                // Show a beautiful full-screen loading overlay inside the app WebView
-                let overlay = null;
-                if (typeof document !== 'undefined') {
-                    overlay = document.createElement('div');
-                    overlay.id = 'gs-google-sync-overlay';
-                    overlay.style.position = 'fixed';
-                    overlay.style.inset = '0';
-                    overlay.style.zIndex = '99999';
-                    overlay.style.display = 'flex';
-                    overlay.style.flexDirection = 'column';
-                    overlay.style.alignItems = 'center';
-                    overlay.style.justifyContent = 'center';
-                    overlay.style.background = 'rgba(15, 15, 20, 0.96)';
-                    overlay.style.backdropFilter = 'blur(10px)';
-                    overlay.style.color = '#FFFFFF';
-                    overlay.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-                    overlay.style.padding = '24px';
-                    overlay.style.textAlign = 'center';
-                    overlay.innerHTML = `
-                        <div style="animation: spin 1s linear infinite; width: 44px; height: 44px; border: 3.5px solid rgba(255,255,255,0.1); border-top-color: #FF5A5F; border-radius: 50%; margin-bottom: 20px;"></div>
-                        <h3 style="font-size: 18px; font-weight: 800; margin: 0 0 8px 0; color: #FFFFFF;">Waiting for Google Sign-In</h3>
-                        <p style="font-size: 13px; color: rgba(255,255,255,0.7); max-width: 265px; margin: 0 0 24px 0; line-height: 1.5;">We have opened Google Sign-In in your secure device browser. Please sign in there to connect.</p>
-                        
-                        <!-- Recovery Buttons -->
-                        <div style="display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 240px; margin-bottom: 12px;">
-                            <button id="gs-manual-open-btn" style="background: linear-gradient(135deg, #FF5A5F 0%, #FF2A6D 100%); border: none; color: #FFFFFF; font-size: 13px; font-weight: 700; padding: 12px 20px; border-radius: 14px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 15px rgba(255,90,95,0.3); outline: none; -webkit-tap-highlight-color: transparent;">Open Sign-In Browser</button>
-                            <button id="gs-cancel-sync-btn" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #FFFFFF; font-size: 13px; font-weight: 600; padding: 11px 20px; border-radius: 14px; cursor: pointer; transition: all 0.2s; outline: none; -webkit-tap-highlight-color: transparent;">Cancel</button>
-                        </div>
-                        <p style="font-size: 11px; color: rgba(255,255,255,0.4); max-width: 220px; margin: 0; line-height: 1.4;">If the sign-in page did not open automatically, click the red button above.</p>
-                        
-                        <style>
-                            @keyframes spin { to { transform: rotate(360deg); } }
-                            #gs-manual-open-btn:active { transform: scale(0.96); opacity: 0.9; }
-                            #gs-cancel-sync-btn:active { background: rgba(255,255,255,0.18); transform: scale(0.96); }
-                        </style>
-                    `;
-                    document.body.appendChild(overlay);
-                }
-
-                // Poll the Supabase app_settings table for the session token
-                let pollCount = 0;
-                const pollInterval = setInterval(async () => {
-                    pollCount++;
-                    // Timeout after 5 minutes (200 polls of 1.5s)
-                    if (pollCount > 200) {
-                        clearInterval(pollInterval);
-                        if (overlay) overlay.remove();
-                        supabase.from('app_settings').delete().eq('key', `auth_sync_${syncCode}`).catch(() => {});
-                        alert('Sign-in timed out. Please try again.');
-                        return;
-                    }
-
-                    try {
-                        const { data: syncRes } = await supabase
-                            .from('app_settings')
-                            .select('value')
-                            .eq('key', `auth_sync_${syncCode}`)
-                            .maybeSingle();
-
-                        if (syncRes?.value && syncRes.value.status === 'completed') {
-                            clearInterval(pollInterval);
-                            const sessionData = syncRes.value.session;
-
-                            // Apply session to main WebView Supabase client
-                            const { error: setSessionErr } = await supabase.auth.setSession({
-                                access_token: sessionData.access_token,
-                                refresh_token: sessionData.refresh_token
-                            });
-
-                            if (overlay) overlay.remove();
-                            
-                            // Delete sync code row from database
-                            await supabase.from('app_settings').delete().eq('key', `auth_sync_${syncCode}`).catch(() => {});
-
-                            if (!setSessionErr) {
-                                window.location.href = '/discover';
-                            } else {
-                                alert('Failed to sync session: ' + setSessionErr.message);
-                            }
-                        }
-                    } catch (pollErr) {
-                        console.error('[Google OAuth Poll] Error:', pollErr);
-                    }
-                }, 1500);
-
-                // Wire manual open button
-                const manualOpenBtn = document.getElementById('gs-manual-open-btn');
-                if (manualOpenBtn) {
-                    manualOpenBtn.onclick = () => {
-                        let manualOpened = false;
-                        try {
-                            if (typeof window !== 'undefined') {
-                                const pop = window.open(targetUrl, '_blank');
-                                if (pop) manualOpened = true;
-                            }
-                        } catch (e) {
-                            console.error('[Manual window.open error]', e);
-                        }
-
-                        if (!manualOpened) {
-                            openExternalBrowser(targetUrl);
-                        }
-                    };
-                }
-
-                // Wire cancel button
-                const cancelBtn = document.getElementById('gs-cancel-sync-btn');
-                if (cancelBtn) {
-                    cancelBtn.onclick = async () => {
-                        clearInterval(pollInterval);
-                        if (overlay) overlay.remove();
-                        await supabase.from('app_settings').delete().eq('key', `auth_sync_${syncCode}`).catch(() => {});
-                    };
-                }
-
-                return { isPopup: false };
-            }
-
-            // 2. FOR MOBILE BROWSERS: Always use standard page redirection to avoid popup blockers
-            if (isMobileDevice) {
-                const { error } = await supabase.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: {
-                        redirectTo: `${redirectOrigin}/auth/callback`,
-                        queryParams: {
-                            access_type: 'offline',
-                            prompt: 'consent',
-                        },
-                    },
-                });
-
-                if (error) throw new Error(error.message);
-                return { isPopup: false };
-            }
-
-            // 3. FOR DESKTOP BROWSERS: Try popup first, fallback to standard redirect if blocked
-            const { data, error } = await supabase.auth.signInWithOAuth({
-                provider: 'google',
-                options: {
-                    redirectTo: `${redirectOrigin}/auth/callback`,
-                    queryParams: {
-                        access_type: 'offline',
-                        prompt: 'consent',
-                    },
-                    skipBrowserRedirect: true,
-                },
-            });
-
-            if (error) throw new Error(error.message);
-            if (!data?.url) throw new Error('Failed to generate Google Sign-In URL');
-
-            const width = 500;
-            const height = 650;
-            const left = window.screen.width / 2 - width / 2;
-            const top = window.screen.height / 2 - height / 2;
-            
-            const popup = window.open(
-                data.url,
-                'Google Login',
-                `width=${width},height=${height},top=${top},left=${left},status=no,resizable=yes,scrollbars=yes`
-            );
-
-            if (popup) {
-                return { isPopup: true, popup };
-            }
-
-            // Fallback for desktop browser if popup is blocked
-            const { error: redirectError } = await supabase.auth.signInWithOAuth({
-                provider: 'google',
-                options: {
-                    redirectTo: `${redirectOrigin}/auth/callback`,
-                    queryParams: {
-                        access_type: 'offline',
-                        prompt: 'consent',
-                    },
-                },
-            });
-
-            if (redirectError) throw new Error(redirectError.message);
-            return { isPopup: false };
-        } catch (err) {
-            throw err;
-        }
-    }
 
     async function resetPassword(email) {
         try {
@@ -1295,7 +902,7 @@ export function AuthProvider({ children }) {
             const redirectOrigin = isLocal ? window.location.origin : 'https://genuine-sugarmummies-app.vercel.app';
 
             const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                redirectTo: `${redirectOrigin}/auth/login`,
+                redirectTo: `${redirectOrigin}/auth/callback?type=recovery`,
             });
             if (error) throw new Error(error.message);
             return true;
@@ -1336,7 +943,7 @@ export function AuthProvider({ children }) {
         setBlockedUsers([]);
     }
 
-    // Check if user needs to complete onboarding (Google OAuth users)
+    // Check if user needs to complete onboarding (users without profile data)
     const needsOnboarding = user && (!user.gender || !user.lookingFor || !user.age);
 
     // ---- Profile Management ----
@@ -1355,7 +962,10 @@ export function AuthProvider({ children }) {
             if (updates.avatar_url !== undefined) dbUpdates.avatar_url = updates.avatar_url;
             if (updates.photos !== undefined) dbUpdates.images = updates.photos;
             if (updates.isPublic !== undefined) dbUpdates.is_public = updates.isPublic;
-            if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
+            if (updates.phone !== undefined) { dbUpdates.phone = updates.phone; dbUpdates.phone_number = updates.phone; }
+            if (updates.profile_type !== undefined) dbUpdates.profile_type = updates.profile_type;
+            if (updates.phone_visible !== undefined) dbUpdates.phone_visible = updates.phone_visible;
+            if (updates.country !== undefined) dbUpdates.country = updates.country;
 
             let { data: updated, error } = await supabase
                 .from('users')
@@ -1460,7 +1070,10 @@ export function AuthProvider({ children }) {
             const uploadedUrl = await uploadBase64Image(dataUrl, 'avatars', 'photo');
             const photos = [...(user.photos || []), uploadedUrl].slice(0, 6);
             const updates = { photos };
-            if (!user.avatar_url && photos.length > 0) updates.avatar_url = photos[0];
+            // Auto-set first photo as profile pic if user has no avatar
+            if ((!user.avatar_url || user.avatar_url.trim() === '') && photos.length > 0) {
+                updates.avatar_url = photos[0];
+            }
             await updateProfile(updates);
         } catch (err) {
             console.error('[Profile Add Photo Error]', err);
@@ -1478,6 +1091,13 @@ export function AuthProvider({ children }) {
         if (index === 0) {
             setVerificationStatus(null);
         }
+    }
+
+    function setProfilePhoto(index) {
+        if (!user) return;
+        const photos = user.photos || [];
+        if (index < 0 || index >= photos.length) return;
+        updateProfile({ avatar_url: photos[index] });
     }
 
     // ---- Verification System ----
@@ -1645,7 +1265,7 @@ export function AuthProvider({ children }) {
                         type: 'system',
                         sender: 'GS Support',
                         title: 'Daily Like Limit Reached',
-                        body: 'Free accounts are limited to 10 swipes per day. Upgrade to Silver, Gold, or Diamond to swipe without limits!',
+                        body: 'Free accounts are limited to 10 swipes per day. Upgrade to Basic, Silver, or Gold to unlock more swipes and premium features!',
                     });
                     return { success: false, limitReached: true };
                 }
@@ -1936,6 +1556,20 @@ export function AuthProvider({ children }) {
      const sendChatMessage = useCallback(async (conversationId, text, senderId = null, createdAt = null) => {
          if (!user?.id) return null;
          try {
+             // Enforce message limit for free users (3 per conversation)
+             const plan = subscription?.plan || 'free';
+             const msgLimit = plan === 'free' ? 3 : plan === 'basic' ? 10 : Infinity;
+             if (msgLimit !== Infinity) {
+                 const { count } = await supabase
+                     .from('messages')
+                     .select('id', { count: 'exact', head: true })
+                     .eq('conversation_id', conversationId)
+                     .eq('sender_id', user.id);
+                 if ((count || 0) >= msgLimit) {
+                     return { error: `You've reached the ${msgLimit}-message limit. Upgrade to Basic for 10 messages or Silver/Gold for unlimited messaging.`, limited: true };
+                 }
+             }
+
              const insertData = {
                  conversation_id: conversationId,
                  sender_id: senderId === 'match' ? null : (senderId || user.id),
@@ -2162,14 +1796,240 @@ export function AuthProvider({ children }) {
         resetState();
     }
 
+    // ═══════════════════════════════════════════
+    // MEMBERS HUB — Statuses, DMs, Members
+    // ═══════════════════════════════════════════
+
+    const fetchMembers = useCallback(async () => {
+        try {
+            const res = await fetch(`/api/members?userId=${user?.id || ''}`);
+            const json = await res.json();
+            if (json.error) {
+                console.error('[fetchMembers]', json.error);
+                return [];
+            }
+            return json.members || [];
+        } catch (err) { console.error('[fetchMembers]', err); return []; }
+    }, [user?.id]);
+
+    // ---- Statuses ----
+    const fetchStatuses = useCallback(async () => {
+        try {
+            const res = await fetch(`/api/statuses?userId=${user?.id || ''}`);
+            const json = await res.json();
+            if (json.error) {
+                console.warn('[fetchStatuses]', json.error);
+                return [];
+            }
+            setMemberStatuses(json.statuses || []);
+            return json.statuses || [];
+        } catch { return []; }
+    }, [user?.id]);
+
+    const postStatus = useCallback(async (content, mediaUrl = null, mediaType = 'text', bgColor = '#FF5A5F') => {
+        if (!user?.id) return null;
+        try {
+            const res = await fetch('/api/statuses', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: user.id,
+                    content,
+                    mediaUrl,
+                    mediaType,
+                    backgroundColor: bgColor,
+                }),
+            });
+            const json = await res.json();
+            if (json.status) {
+                setMemberStatuses(prev => [json.status, ...prev]);
+            }
+            return json.status || null;
+        } catch { return null; }
+    }, [user?.id]);
+
+    const deleteStatus = useCallback(async (statusId) => {
+        if (!user?.id) return;
+        try {
+            const url = new URL('/api/statuses', window.location.origin);
+            url.searchParams.set('statusId', statusId);
+            url.searchParams.set('userId', user.id);
+            const res = await fetch(url.toString(), { method: 'DELETE' });
+            const json = await res.json();
+            console.log('[deleteStatus]', json);
+            setMemberStatuses(prev => prev.filter(s => s.id !== statusId));
+        } catch (err) {
+            console.error('[deleteStatus] error:', err);
+        }
+    }, [user?.id]);
+
+    const viewStatus = useCallback(async (statusId) => {
+        if (!user?.id) return;
+        try {
+            await fetch('/api/statuses/interact', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'view', statusId, userId: user.id }),
+            });
+        } catch {}
+    }, [user?.id]);
+
+    const reactToStatus = useCallback(async (statusId, reaction = 'like') => {
+        if (!user?.id) return;
+        try {
+            await fetch('/api/statuses/interact', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'react', statusId, userId: user.id, reaction }),
+            });
+        } catch {}
+    }, [user?.id]);
+
+    const getStatusViews = useCallback(async (statusId) => {
+        try {
+            const res = await fetch(`/api/statuses/interact?statusId=${statusId}`);
+            const json = await res.json();
+            return json.views || [];
+        } catch { return []; }
+    }, []);
+
+    const getStatusReactions = useCallback(async (statusId) => {
+        try {
+            const res = await fetch(`/api/statuses/interact?statusId=${statusId}`);
+            const json = await res.json();
+            return json.reactions || [];
+        } catch { return []; }
+    }, []);
+
+    const getStatusReport = useCallback(async (statusId) => {
+        try {
+            const res = await fetch(`/api/statuses/interact?statusId=${statusId}`);
+            return await res.json();
+        } catch { return { views: [], reactions: [], viewCount: 0, reactionCount: 0 }; }
+    }, []);
+
+    // ---- Direct Messaging ----
+    const getOrCreateDM = useCallback(async (otherUserId, otherName = '', otherAvatar = '') => {
+        if (!user?.id) return null;
+        try {
+            // Check existing
+            const { data: existing } = await supabase
+                .from('direct_conversations')
+                .select('*')
+                .or(`and(participant_1.eq.${user.id},participant_2.eq.${otherUserId}),and(participant_1.eq.${otherUserId},participant_2.eq.${user.id})`)
+                .maybeSingle();
+            if (existing) return existing;
+            // Create new
+            const { data: newConv } = await supabase.from('direct_conversations').insert({
+                participant_1: user.id,
+                participant_2: otherUserId,
+            }).select().single();
+            return newConv;
+        } catch { return null; }
+    }, [user?.id]);
+
+    const fetchDirectConversations = useCallback(async () => {
+        if (!user?.id) return [];
+        try {
+            const { data } = await supabase
+                .from('direct_conversations')
+                .select('*')
+                .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`)
+                .order('last_message_at', { ascending: false });
+            // Enrich with other user info
+            const enriched = await Promise.all((data || []).map(async (conv) => {
+                const otherId = conv.participant_1 === user.id ? conv.participant_2 : conv.participant_1;
+                const { data: otherUser } = await supabase.from('users').select('display_name, avatar_url, is_online, last_seen').eq('id', otherId).maybeSingle();
+                const { count } = await supabase.from('direct_messages').select('id', { count: 'exact', head: true }).eq('conversation_id', conv.id).eq('is_read', false).neq('sender_id', user.id);
+                return { ...conv, otherUser: otherUser || {}, otherId, unreadCount: count || 0 };
+            }));
+            setDirectConversations(enriched);
+            return enriched;
+        } catch { return []; }
+    }, [user?.id]);
+
+    const sendDM = useCallback(async (conversationId, content, messageType = 'text', mediaUrl = null, mediaDuration = null) => {
+        if (!user?.id) return null;
+        try {
+            // Enforce message limit for free users (3 per conversation)
+            const plan = subscription?.plan || 'free';
+            const msgLimit = plan === 'free' ? 3 : plan === 'basic' ? 10 : Infinity;
+            if (msgLimit !== Infinity) {
+                const { count } = await supabase
+                    .from('direct_messages')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('conversation_id', conversationId)
+                    .eq('sender_id', user.id);
+                if ((count || 0) >= msgLimit) {
+                    return { error: `You've reached the ${msgLimit}-message limit. Upgrade to Basic for 10 messages or Silver/Gold for unlimited messaging.`, limited: true };
+                }
+            }
+            // Block images/files for non-Gold users
+            const canSendImages = plan === 'silver' || plan === 'gold';
+            if (messageType !== 'text' && !canSendImages) {
+                return { error: 'Sending images & files requires Silver plan or higher.', limited: true };
+            }
+
+            const { data } = await supabase.from('direct_messages').insert({
+                conversation_id: conversationId,
+                sender_id: user.id,
+                content,
+                message_type: messageType,
+                media_url: mediaUrl,
+                media_duration: mediaDuration,
+            }).select().single();
+            // Update conversation last message
+            await supabase.from('direct_conversations').update({
+                last_message: content || `[${messageType}]`,
+                last_message_at: new Date().toISOString(),
+            }).eq('id', conversationId);
+            return data;
+        } catch { return null; }
+    }, [user?.id, subscription?.plan]);
+
+    const fetchDMs = useCallback(async (conversationId) => {
+        try {
+            const { data } = await supabase
+                .from('direct_messages')
+                .select('*')
+                .eq('conversation_id', conversationId)
+                .order('created_at', { ascending: true })
+                .limit(200);
+            return data || [];
+        } catch { return []; }
+    }, []);
+
+    const markDMsRead = useCallback(async (conversationId) => {
+        if (!user?.id) return;
+        await supabase.from('direct_messages').update({ is_read: true }).eq('conversation_id', conversationId).neq('sender_id', user.id).eq('is_read', false);
+    }, [user?.id]);
+
+    const logCall = useCallback(async (receiverId, callType = 'voice', status = 'missed', duration = 0) => {
+        if (!user?.id) return;
+        await supabase.from('call_logs').insert({ caller_id: user.id, receiver_id: receiverId, call_type: callType, status, duration });
+    }, [user?.id]);
+
+    // ---- Subscription feature check ----
+    const canUseFeature = useCallback((feature) => {
+        const plan = subscription?.plan || 'free';
+        const limits = {
+            free: { viewMembers: Infinity, sendDMs: 3, sendImages: false, voiceMsg: false, voiceCall: false, videoCall: false, revealPhone: false, postStatus: Infinity },
+            basic: { viewMembers: Infinity, sendDMs: 10, sendImages: false, voiceMsg: false, voiceCall: false, videoCall: false, revealPhone: false, postStatus: Infinity },
+            silver: { viewMembers: Infinity, sendDMs: Infinity, sendImages: true, voiceMsg: true, voiceCall: true, videoCall: true, revealPhone: true, postStatus: Infinity },
+            gold: { viewMembers: Infinity, sendDMs: Infinity, sendImages: true, voiceMsg: true, voiceCall: true, videoCall: true, revealPhone: true, priority: true, international: true, postStatus: Infinity },
+        };
+        return limits[plan]?.[feature] ?? limits.free[feature];
+    }, [subscription?.plan]);
+
     const value = {
         user, loading, profile: user,
         needsOnboarding,
         likes, matches, saved, activity, settings,
         messages, conversations, verificationStatus, realProfilePool,
         subscription, blockedUsers, campaigns,
-        signUp, signIn, signInWithGoogle, signOut, resetPassword,
-        updateProfile, addPhoto, removePhoto,
+        directConversations, memberStatuses,
+        signUp, signIn, signOut, resetPassword,
+        updateProfile, addPhoto, removePhoto, setProfilePhoto,
         updateSettings: updateSettingsHandler,
         addLike, addMatch, addPass,
         isProfileSwiped,
@@ -2185,6 +2045,11 @@ export function AuthProvider({ children }) {
         reportUser, blockUser,
         updateSubscription,
         deleteAccount,
+        // Members hub
+        fetchMembers, fetchStatuses, postStatus, deleteStatus,
+        viewStatus, reactToStatus, getStatusViews, getStatusReactions, getStatusReport,
+        getOrCreateDM, fetchDirectConversations, sendDM, fetchDMs, markDMsRead,
+        logCall, canUseFeature,
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

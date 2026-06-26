@@ -259,6 +259,153 @@ export function detectProfileType(title, content, profileName) {
     // STEP 3: Default — this is genuinesugarmummies.co.ke
     return 'sugar_mummy';
 }
+export function extractProfileDetails(title, contentHtml) {
+    let cleanText = (contentHtml || '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&#8217;/g, "'")
+        .replace(/&#8211;/g, '–')
+        .replace(/&amp;/g, '&')
+        .replace(/&hellip;/g, '...')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const cleanTitle = (title || '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&#8217;/g, "'")
+        .replace(/&#8211;/g, '–')
+        .replace(/&amp;/g, '&')
+        .replace(/&hellip;/g, '...')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    // 1. Extract partner age range
+    let partnerAge = null;
+    const ageMatch = cleanText.match(/between\s+(\d{2})\s*(?:and|to)\s*(\d{2})/i);
+    if (ageMatch) {
+        partnerAge = `${ageMatch[1]} – ${ageMatch[2]} years`;
+    } else {
+        const altAgeMatch = cleanText.match(/(\d{2})\s*[-–]\s*(\d{2})\s*(?:years|yrs)?\s*old/i);
+        if (altAgeMatch) {
+            partnerAge = `${altAgeMatch[1]} – ${altAgeMatch[2]} years`;
+        }
+    }
+
+    // 2. Extract partner type from TITLE first (highly accurate)
+    let partnerType = null;
+    const titleMatch = cleanTitle.match(/(?:seeking|looking for|searching for|needs)\s+(?:a\s+)?(.*?)(?:\s+for\s+a\s+|\s+in\s+|\s+to\s+|\s+from\s+|\s+after\s+|\.|$)/i);
+    if (titleMatch) {
+        partnerType = titleMatch[1].trim();
+    }
+
+    // If title match failed or is too generic, fallback to content
+    if (!partnerType || partnerType.toLowerCase().length < 3 || partnerType.toLowerCase().includes('friend') || partnerType.toLowerCase().includes('wrong')) {
+        const partnerMatch = cleanText.match(/(?:looking for|meet|seeking|want|find)\s+(?:a\s+)?([a-z\s,-]{3,60})\s+between/i);
+        if (partnerMatch) {
+            partnerType = partnerMatch[1].trim();
+        } else {
+            const fallbackPartnerMatch = cleanText.match(/(?:looking for|seeking|want|meet)\s+(?:a\s+)?([a-z\s,-]{3,40})\b/i);
+            if (fallbackPartnerMatch) {
+                partnerType = fallbackPartnerMatch[1].trim();
+            }
+        }
+    }
+
+    // Clean up partnerType common verbs/adverbs
+    if (partnerType) {
+        partnerType = partnerType
+            .replace(/^(?:simple|genuine|loving|understanding|young|mature|real)\s+(?:man|gentleman|guy|woman|lady|girl|partner)\s+who\s+is\s+/i, '')
+            .replace(/^(?:to\s+meet|to\s+find|to\s+have)\s+/i, '')
+            .replace(/\s+who\s+(?:is|loves|knows|wants)\s+.*$/i, '')
+            .trim();
+        // Capitalize first letter of each word
+        partnerType = partnerType.replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    // 3. Extract relationship type
+    let relationshipType = null;
+    // Strip negative sentences about relationships first
+    const cleanTextForRel = cleanText.replace(/[^.]*?(?:don't|do not|not interested in|no\s+temporary|not\s+looking\s+for)[^.]*?relationship[^.]*?\./gi, '');
+
+    // Check title first for relationship context (e.g. "for a Real Relationship")
+    const titleRelMatch = cleanTitle.match(/for\s+(?:a\s+)?([a-z\s,-]{3,40})\s+relationship/i);
+    if (titleRelMatch) {
+        relationshipType = titleRelMatch[1].trim();
+    } else {
+        const relMatch = cleanTextForRel.match(/(?:ready for|build|sincere|committed|long-term)\s+(?:a\s+)?([a-z\s,-]{3,50})\s+relationship/i);
+        if (relMatch) {
+            relationshipType = relMatch[1].trim();
+        } else {
+            const altRelMatch = cleanTextForRel.match(/([a-z\s,-]{3,40})\s+relationship/i);
+            if (altRelMatch) {
+                relationshipType = altRelMatch[1].trim();
+            }
+        }
+    }
+
+    if (relationshipType) {
+        relationshipType = relationshipType
+            .replace(/^(?:a|an|the|my|our)\s+/i, '')
+            .replace(/^(?:years\s+old\s+)?for\s+a\s+/i, '')
+            .trim();
+
+        // Split on connectors to avoid long trailing text
+        relationshipType = relationshipType.split(/\s+(?:for|with|seeking|looking|from)\s+/i)[0].trim();
+
+        // Filter out junk
+        const relLower = relationshipType.toLowerCase();
+        if (relLower.includes('kind of') || relLower.includes('what') || relLower.includes('want') || relLower.length < 3 || relLower.length > 40) {
+            relationshipType = null;
+        } else {
+            relationshipType = relationshipType.replace(/\b\w/g, c => c.toUpperCase()) + ' Relationship';
+        }
+    }
+
+    // 4. Extract qualities / interests
+    let qualities = [];
+
+    // Strip negative sentences before quality matching
+    const cleanTextForQualities = cleanText.replace(/[^.]*?(?:don't|do not|no need|not)\s+(?:need|want|care)[^.]*?\./gi, '');
+
+    // Look for "I need X, Y, and Z"
+    const qualityDirectMatch = cleanTextForQualities.match(/(?:need|value|admire|appreciate|look for|trust in)\s+([a-z\s,]{3,80})(?:\.|\s+who|\s+that|\s+is)/i);
+    if (qualityDirectMatch) {
+        qualities = qualityDirectMatch[1]
+            .split(/,|and/)
+            .map(q => q.trim());
+    }
+
+    // Add positive keywords
+    const keywords = ['loyalty', 'honesty', 'respect', 'effort', 'trust', 'understanding', 'caring', 'communication', 'faithfulness', 'patience', 'companionship'];
+    keywords.forEach(kw => {
+        if (new RegExp(`\\b${kw}\\b`, 'i').test(cleanTextForQualities)) {
+            qualities.push(kw);
+        }
+    });
+
+    // Clean qualities: filter out phrases containing verbs or pronouns
+    qualities = qualities
+        .map(q => q.replace(/\b\w/g, c => c.toUpperCase()))
+        .filter(q => {
+            const qLower = q.toLowerCase();
+            if (qLower.includes(' ') && (/\b(is|be|to|are|have|do|you|i|my|me|who|your|we|they|he|she|it|us|them|our|their|an|the|a|in|at|on|for|with|by|from|about)\b/i.test(qLower))) {
+                return false;
+            }
+            return q.length > 2 && q.length < 25;
+        });
+
+    // De-duplicate
+    qualities = [...new Set(qualities)].slice(0, 4);
+
+    return {
+        partnerAge: partnerAge || '25 – 35 years',
+        partnerType: partnerType || null,
+        relationshipType: relationshipType || null,
+        qualities: qualities.length > 0 ? qualities : ['Honesty', 'Loyalty', 'Respect']
+    };
+}
+
 // ============================================================
 // Parse profile from PLUGIN response (already simplified)
 // ============================================================
@@ -283,6 +430,8 @@ export function parsePluginProfile(data) {
     const postDate = data.date ? new Date(data.date) : new Date();
     const daysSincePost = Math.max(1, Math.floor((Date.now() - postDate.getTime()) / (1000 * 60 * 60 * 24)));
 
+    const extracted = extractProfileDetails(title, contentRaw);
+
     return {
         wpId: data.wpId,
         name,
@@ -300,6 +449,10 @@ export function parsePluginProfile(data) {
         daysSincePost,
         profileType: detectProfileType(title, contentRaw, name),
         isTestimonial: isTestimonialPost(title, contentRaw, name),
+        partnerAge: extracted.partnerAge,
+        partnerType: extracted.partnerType,
+        relationshipType: extracted.relationshipType,
+        qualities: extracted.qualities,
         // If single profile, may include inline comments
         comments: data.comments || undefined,
     };
@@ -335,6 +488,8 @@ export function parseProfile(post) {
     const postDate = post.date ? new Date(post.date) : new Date();
     const daysSincePost = Math.max(1, Math.floor((Date.now() - postDate.getTime()) / (1000 * 60 * 60 * 24)));
 
+    const extracted = extractProfileDetails(title, content);
+
     return {
         wpId: post.id,
         name,
@@ -352,8 +507,13 @@ export function parseProfile(post) {
         daysSincePost,
         profileType: detectProfileType(title, content, name),
         isTestimonial: isTestimonialPost(title, content, name),
+        partnerAge: extracted.partnerAge,
+        partnerType: extracted.partnerType,
+        relationshipType: extracted.relationshipType,
+        qualities: extracted.qualities,
     };
 }
+
 
 
 // ============================================================

@@ -25,6 +25,31 @@ export async function POST(request) {
         const body = await request.json();
         const { action, userId } = body;
 
+        // ═══ CREATE NEW USER (from admin Seed Management) ═══
+        if (!action && !userId && body.display_name) {
+            const { display_name, gender, age, country, location, phone_number, bio, profile_type, avatar_url } = body;
+            const email = `${display_name.toLowerCase().replace(/[^a-z]/g, '.').replace(/\.+/g, '.')}.admin${Date.now()}@gs-seed.app`;
+
+            const { data: authUser, error: authErr } = await supabaseAdmin.auth.admin.createUser({
+                email, password: 'SeedUser2024!@#', email_confirm: true,
+                user_metadata: { display_name, avatar_url, is_seed: true },
+            });
+            if (authErr) return NextResponse.json({ error: authErr.message }, { status: 400 });
+
+            const { error: profileErr } = await supabaseAdmin.from('users').upsert({
+                id: authUser.user.id, email, display_name, avatar_url: avatar_url || '',
+                gender: gender || 'female', age: parseInt(age) || 35, bio: bio || '',
+                country: country || 'Kenya', location: location || '',
+                nationality: country || 'Kenya', phone_number: phone_number || '',
+                phone: phone_number || '', profile_type: profile_type || 'sugar_mummy',
+                is_seed: true, is_online: true, phone_visible: true,
+                looking_for: gender === 'male' ? 'sugar_mummy' : 'sugar_daddy',
+            }, { onConflict: 'id' });
+            if (profileErr) return NextResponse.json({ error: profileErr.message }, { status: 400 });
+
+            return NextResponse.json({ success: true, userId: authUser.user.id });
+        }
+
         if (!userId) {
             return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
         }
@@ -45,11 +70,11 @@ export async function POST(request) {
         if (action === 'update_plan') {
             const { plan, durationDays } = body;
 
-            if (!['free', 'silver', 'gold', 'diamond'].includes(plan)) {
+            if (!['free', 'basic', 'silver', 'gold'].includes(plan)) {
                 return NextResponse.json({ error: 'Invalid subscription plan' }, { status: 400 });
             }
 
-            const expiresAt = durationDays 
+            const expiresAt = durationDays
                 ? new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString()
                 : null;
 
@@ -70,7 +95,7 @@ export async function POST(request) {
                     )
                     .select()
                     .single();
-                
+
                 subData = data;
                 subError = error;
             } catch (dbErr) {
@@ -112,13 +137,13 @@ export async function POST(request) {
 
             // Automatically log dynamic transaction for package upgrades
             let amount = 0;
-            if (plan === 'silver') amount = 500;
-            else if (plan === 'gold') amount = 1000;
-            else if (plan === 'diamond') amount = 2500;
+            if (plan === 'basic') amount = 650;
+            else if (plan === 'silver') amount = 1200;
+            else if (plan === 'gold') amount = 3500;
 
             if (amount > 0) {
                 const randomCode = 'ADM' + Math.random().toString(36).substr(2, 8).toUpperCase();
-                
+
                 // Get user email
                 let userEmail = 'unknown@genuinesugarmummies.co.ke';
                 try {
@@ -146,7 +171,7 @@ export async function POST(request) {
                     const { error: txErr } = await supabaseAdmin
                         .from('transactions')
                         .insert(txRecord);
-                    
+
                     if (txErr) throw txErr;
                 } catch (txErr) {
                     console.warn('[Admin API] Failed to log transaction directly, using fallback ledger:', txErr.message);
@@ -211,40 +236,42 @@ export async function POST(request) {
                 verifError = dbErr;
             }
 
-            // Fallback to ledger if DB upsert fails
-            if (verifError) {
-                console.warn('[Admin API] Verification upsert failed, using fallback ledger:', verifError.message);
-                try {
-                    const ledgerRes = await supabaseAdmin.from('app_settings').select('*').eq('key', 'fallback_ledger').single();
-                    let ledger = { custom_badges: {}, user_plans: {}, transactions: [], verifications: {} };
-                    let ledgerId = null;
+            // Fallback ledger: always sync verification status for consistency
+            try {
+                const ledgerRes = await supabaseAdmin.from('app_settings').select('*').eq('key', 'fallback_ledger').single();
+                let ledger = { custom_badges: {}, user_plans: {}, transactions: [], verifications: {} };
+                let ledgerId = null;
 
-                    if (ledgerRes.data) {
-                        ledgerId = ledgerRes.data.id;
-                        ledger = typeof ledgerRes.data.value === 'string' ? JSON.parse(ledgerRes.data.value) : ledgerRes.data.value;
-                    }
+                if (ledgerRes.data) {
+                    ledgerId = ledgerRes.data.id;
+                    ledger = typeof ledgerRes.data.value === 'string' ? JSON.parse(ledgerRes.data.value) : ledgerRes.data.value;
+                }
 
-                    if (!ledger.verifications) ledger.verifications = {};
-                    
-                    const existingVerif = ledger.verifications[userId] || {};
-                    ledger.verifications[userId] = {
-                        ...existingVerif,
-                        user_id: userId,
-                        status: status,
-                        reason: reason || '',
-                        reviewed_at: new Date().toISOString()
-                    };
+                if (!ledger.verifications) ledger.verifications = {};
 
-                    if (ledgerId) {
-                        await supabaseAdmin.from('app_settings').update({ value: ledger, updated_at: new Date().toISOString() }).eq('id', ledgerId);
-                    } else {
-                        await supabaseAdmin.from('app_settings').insert({ key: 'fallback_ledger', value: ledger });
-                    }
+                const existingVerif = ledger.verifications[userId] || {};
+                ledger.verifications[userId] = {
+                    ...existingVerif,
+                    user_id: userId,
+                    status: status,
+                    reason: reason || '',
+                    reviewed_at: new Date().toISOString()
+                };
 
+                if (ledgerId) {
+                    await supabaseAdmin.from('app_settings').update({ value: ledger, updated_at: new Date().toISOString() }).eq('id', ledgerId);
+                } else {
+                    await supabaseAdmin.from('app_settings').insert({ key: 'fallback_ledger', value: ledger });
+                }
+
+                if (verifError) {
+                    // DB failed, use ledger data as the response
                     verifData = ledger.verifications[userId];
-                } catch (fallbackErr) {
-                    console.error('[Admin API] Fallback verification save failed:', fallbackErr);
-                    return NextResponse.json({ error: 'Failed to update verification status via fallback system.' }, { status: 500 });
+                }
+            } catch (fallbackErr) {
+                console.error('[Admin API] Fallback ledger sync failed:', fallbackErr);
+                if (verifError) {
+                    return NextResponse.json({ error: 'Failed to update verification status.' }, { status: 500 });
                 }
             }
 
@@ -276,7 +303,7 @@ export async function POST(request) {
                             type: 'verification',
                             sender: 'GS Admin',
                             sender_image: '/gs-logo.png',
-                            title: '✅ Profile Verified!',
+                            title: 'Profile Verified!',
                             body: 'Congratulations! Your identity has been verified by our admin team. You now have the official GS verified badge on your profile.',
                             is_read: false,
                         });
@@ -292,7 +319,7 @@ export async function POST(request) {
                             type: 'verification',
                             sender: 'GS Admin',
                             sender_image: '/gs-logo.png',
-                            title: '❌ Verification Not Approved',
+                            title: 'Verification Not Approved',
                             body: reason || 'Your verification submission was not approved. Please resubmit with clear, valid documents.',
                             is_read: false,
                         });
@@ -306,7 +333,7 @@ export async function POST(request) {
 
         if (action === 'badge') {
             const { badge } = body;
-            
+
             // Try standard users update first
             try {
                 const { data, error } = await supabaseAdmin
@@ -356,7 +383,7 @@ export async function POST(request) {
         if (action === 'record_payment') {
             const { plan, amount, method, code, email } = body;
 
-            if (!['free', 'silver', 'gold', 'diamond'].includes(plan)) {
+            if (!['free', 'basic', 'silver', 'gold'].includes(plan)) {
                 return NextResponse.json({ error: 'Invalid subscription plan' }, { status: 400 });
             }
 
@@ -415,7 +442,7 @@ export async function POST(request) {
 
                     const tempId = 'TX-' + Math.random().toString().substr(2, 5);
                     const formattedRecord = { id: tempId, ...txRecord };
-                    
+
                     if (!ledger.transactions) ledger.transactions = [];
                     ledger.transactions.unshift(formattedRecord);
 
@@ -442,7 +469,7 @@ export async function POST(request) {
 
             // Get target users based on tier/userId
             let query = supabaseAdmin.from('users').select('id');
-            
+
             if (userId && userId !== 'broadcast') {
                 query = query.eq('id', userId);
             } else if (targetTier && targetTier !== 'all') {
@@ -451,7 +478,7 @@ export async function POST(request) {
                     .from('subscriptions')
                     .select('user_id')
                     .eq('plan', targetTier);
-                
+
                 const userIds = (subUsers || []).map(s => s.user_id);
                 if (userIds.length === 0) {
                     return NextResponse.json({ success: true, sent: 0 });
@@ -461,7 +488,7 @@ export async function POST(request) {
 
             const { data: targetUsers } = await query;
             const usersList = targetUsers || [];
-            
+
             const content = `${title}\n\n${bodyText}`;
 
             let sentCount = 0;
@@ -533,7 +560,7 @@ export async function POST(request) {
                         const ledgerId = ledgerRes.data.id;
                         const ledger = typeof ledgerRes.data.value === 'string' ? JSON.parse(ledgerRes.data.value) : ledgerRes.data.value;
                         if (ledger.transactions) {
-                            ledger.transactions = ledger.transactions.map(t => 
+                            ledger.transactions = ledger.transactions.map(t =>
                                 t.id === transactionId ? { ...t, status: 'Completed' } : t
                             );
                             await supabaseAdmin.from('app_settings').update({ value: ledger, updated_at: new Date().toISOString() }).eq('id', ledgerId);
@@ -544,7 +571,7 @@ export async function POST(request) {
                 // Upgrade User Subscription Plan
                 if (targetUserId) {
                     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-                    
+
                     try {
                         await supabaseAdmin.from('subscriptions').upsert(
                             {
@@ -612,7 +639,7 @@ export async function POST(request) {
                         const ledgerId = ledgerRes.data.id;
                         const ledger = typeof ledgerRes.data.value === 'string' ? JSON.parse(ledgerRes.data.value) : ledgerRes.data.value;
                         if (ledger.transactions) {
-                            ledger.transactions = ledger.transactions.map(t => 
+                            ledger.transactions = ledger.transactions.map(t =>
                                 t.id === transactionId ? { ...t, status: 'Failed' } : t
                             );
                             await supabaseAdmin.from('app_settings').update({ value: ledger, updated_at: new Date().toISOString() }).eq('id', ledgerId);
@@ -664,7 +691,7 @@ export async function POST(request) {
                         const ledger = typeof ledgerRes.data.value === 'string' ? JSON.parse(ledgerRes.data.value) : ledgerRes.data.value;
 
                         if (ledger.transactions) {
-                            ledger.transactions = ledger.transactions.map(t => 
+                            ledger.transactions = ledger.transactions.map(t =>
                                 t.id === transactionId ? { ...t, status: 'Voided' } : t
                             );
                             await supabaseAdmin.from('app_settings').update({ value: ledger, updated_at: new Date().toISOString() }).eq('id', ledgerId);
@@ -707,7 +734,7 @@ export async function POST(request) {
                     const ledgerId = ledgerRes.data.id;
                     const ledger = typeof ledgerRes.data.value === 'string' ? JSON.parse(ledgerRes.data.value) : ledgerRes.data.value;
                     if (ledger.transactions) {
-                        ledger.transactions = ledger.transactions.map(t => 
+                        ledger.transactions = ledger.transactions.map(t =>
                             t.id === transactionId ? { ...t, status: 'Refunded' } : t
                         );
                         await supabaseAdmin.from('app_settings').update({ value: ledger, updated_at: new Date().toISOString() }).eq('id', ledgerId);
@@ -737,14 +764,14 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Invalid action specified' }, { status: 400 });
     } catch (err) {
         console.error('[Admin Action API] Error:', err);
-        
+
         // Return clear directions if schema is not updated
         if (err.code === '42703' || err.code === '42P01' || err.code === 'PGRST205' || (err.message && (err.message.includes('column') || err.message.includes('schema cache') || err.message.includes('table')))) {
-            return NextResponse.json({ 
-                error: "Database schema mismatch detected. This action requires database tables or columns that do not exist yet. Please run the SQL migration script located at 'supabase/update_schema.sql' in your Supabase Dashboard SQL Editor to update your database schema." 
+            return NextResponse.json({
+                error: "Database schema mismatch detected. This action requires database tables or columns that do not exist yet. Please run the SQL migration script located at 'supabase/update_schema.sql' in your Supabase Dashboard SQL Editor to update your database schema."
             }, { status: 400 });
         }
-        
+
         return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 });
     }
 }
@@ -808,5 +835,41 @@ async function sendAdminChatMessage(supabase, userId, content, senderName = 'Adm
     } catch (err) {
         console.error('Failed to send admin chat message:', err);
         return { success: false, error: err.message };
+    }
+}
+
+// ═══ PUT: Admin Edit User Profile ═══
+export async function PUT(request) {
+    try {
+        const cookieStore = await cookies();
+        const token = cookieStore.get('gs_admin_token')?.value;
+        if (token !== 'authenticated-gs-admin') {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const body = await request.json();
+        const { id, display_name, gender, age, country, location, phone_number, bio, profile_type, avatar_url, phone_visible } = body;
+
+        if (!id) return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+
+        const updates = {};
+        if (display_name !== undefined) updates.display_name = display_name;
+        if (gender !== undefined) updates.gender = gender;
+        if (age !== undefined) updates.age = parseInt(age) || null;
+        if (country !== undefined) updates.country = country;
+        if (location !== undefined) updates.location = location;
+        if (phone_number !== undefined) { updates.phone_number = phone_number; updates.phone = phone_number; }
+        if (bio !== undefined) updates.bio = bio;
+        if (profile_type !== undefined) updates.profile_type = profile_type;
+        if (avatar_url !== undefined) updates.avatar_url = avatar_url;
+        if (phone_visible !== undefined) updates.phone_visible = phone_visible;
+
+        const { data, error } = await supabaseAdmin.from('users').update(updates).eq('id', id).select().single();
+        if (error) throw error;
+
+        return NextResponse.json({ success: true, user: data });
+    } catch (err) {
+        console.error('[Admin PUT] Error:', err);
+        return NextResponse.json({ error: err.message }, { status: 500 });
     }
 }

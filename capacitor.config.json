@@ -1,0 +1,13 @@
+{
+  "appId": "ke.co.genuinesugarmummies.app",
+  "appName": "Genuine Sugar Mummies Kenya",
+  "webDir": "public",
+  "server": {
+    "url": "https://genuine-sugarmummies-app.vercel.app",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true
+  }
+}

@@ -85,14 +85,16 @@ export async function GET() {
             const fallbackPlan = ledger.user_plans?.[user.id];
             const fallbackVerif = ledger.verifications?.[user.id];
 
-            const activePlan = fallbackPlan ? fallbackPlan.plan : userSub.plan;
-            const activeStartedAt = fallbackPlan ? fallbackPlan.started_at : userSub.started_at;
-            const activeExpiresAt = fallbackPlan ? fallbackPlan.expires_at : userSub.expires_at;
+            // DB takes priority over fallback ledger (DB is source of truth)
+            const activePlan = userSub.plan && userSub.plan !== 'free' ? userSub.plan : (fallbackPlan ? fallbackPlan.plan : userSub.plan);
+            const activeStartedAt = userSub.started_at || (fallbackPlan ? fallbackPlan.started_at : null);
+            const activeExpiresAt = userSub.expires_at || (fallbackPlan ? fallbackPlan.expires_at : null);
 
-            const activeVerifStatus = fallbackVerif ? fallbackVerif.status : userVerif.status;
-            const activeSelfie = fallbackVerif ? fallbackVerif.selfie_url : userVerif.selfie_url;
-            const activeIdDoc = fallbackVerif ? fallbackVerif.id_doc_url : userVerif.id_doc_url;
-            const activeSubmittedAt = fallbackVerif ? fallbackVerif.submitted_at : userVerif.submitted_at;
+            // Verification: DB takes priority, fallback ledger is secondary
+            const activeVerifStatus = userVerif.status && userVerif.status !== 'none' ? userVerif.status : (fallbackVerif ? fallbackVerif.status : 'none');
+            const activeSelfie = userVerif.selfie_url || (fallbackVerif ? fallbackVerif.selfie_url : null);
+            const activeIdDoc = userVerif.id_doc_url || (fallbackVerif ? fallbackVerif.id_doc_url : null);
+            const activeSubmittedAt = userVerif.submitted_at || (fallbackVerif ? fallbackVerif.submitted_at : null);
 
             return {
                 id: user.id,

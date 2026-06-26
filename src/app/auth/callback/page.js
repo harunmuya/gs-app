@@ -22,21 +22,15 @@ function CallbackHandler({ setStatus, setErrMsg }) {
     const code = searchParams.get('code');
     const error = searchParams.get('error');
     const errorDescription = searchParams.get('error_description');
+    const syncCode = searchParams.get('sync_code');
+    const authType = searchParams.get('type');
 
     if (error) {
       setStatus('error');
       setErrMsg(errorDescription || error);
       setTimeout(() => {
         if (active) {
-          if (window.opener) {
-            window.opener.postMessage({ type: 'auth-error', error: errorDescription || error }, window.location.origin);
-            window.close();
-          } else {
-            try {
-              window.location.href = 'gonative://browser/close';
-            } catch (e) {}
-            router.replace(`/auth/login?error=${encodeURIComponent(errorDescription || error)}`);
-          }
+          router.replace(`/auth/login?error=${encodeURIComponent(errorDescription || error)}`);
         }
       }, 2500);
       return;
@@ -51,7 +45,7 @@ function CallbackHandler({ setStatus, setErrMsg }) {
         // Check for existing session first
         const sessionResult = await Promise.race([
           supabase.auth.getSession(),
-          timeout(6000)
+          timeout(8000)
         ]);
 
         let session = sessionResult?.data?.session;
@@ -60,76 +54,51 @@ function CallbackHandler({ setStatus, setErrMsg }) {
           // Exchange code for session
           const exchangeResult = await Promise.race([
             supabase.auth.exchangeCodeForSession(code),
-            timeout(12000)
+            timeout(15000)
           ]);
 
           if (exchangeResult?.error) throw exchangeResult.error;
           session = exchangeResult?.data?.session;
         }
 
+        if (!session) {
+          throw new Error('No session found. Please try signing in again.');
+        }
+
         if (active) {
-          const syncCode = searchParams.get('sync_code');
+          setStatus('success');
+
+          // If this was a sync_code flow (from WebView), write session back to DB and close
           if (syncCode) {
             try {
-              await supabase.from('app_settings')
-                .update({
-                  value: {
-                    status: 'completed',
-                    session: {
-                      access_token: session.access_token,
-                      refresh_token: session.refresh_token,
-                    },
-                    createdAt: Date.now()
-                  }
-                })
-                .eq('key', `auth_sync_${syncCode}`);
-              setStatus('synced');
-              // Automatically close the popup window after a brief delay so the user is returned to the app
-              setTimeout(() => {
-                if (active) {
-                  // 1. Try GoNative/Median JS Bridge commands if present
-                  try {
-                    if (window.gonative && window.gonative.browser && typeof window.gonative.browser.close === 'function') {
-                      window.gonative.browser.close();
-                    } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.gonative) {
-                      window.webkit.messageHandlers.gonative.postMessage({ browser: { close: true } });
-                    }
-                  } catch (e) {
-                    console.warn('[GoNative Bridge Close Error]', e);
-                  }
-
-                  // 2. Try closing via custom URL schemes (intercepted by WebView client)
-                  try {
-                    const iframe = document.createElement('iframe');
-                    iframe.style.display = 'none';
-                    iframe.src = 'gonative://browser/close';
-                    document.body.appendChild(iframe);
-                    setTimeout(() => iframe.remove(), 500);
-                  } catch (e) {
-                    window.location.href = 'gonative://browser/close';
-                  }
-
-                  // 3. Standard window.close fallback
-                  window.close();
+              await supabase.from('app_settings').upsert({
+                key: `auth_sync_${syncCode}`,
+                value: {
+                  status: 'completed',
+                  session: {
+                    access_token: session.access_token,
+                    refresh_token: session.refresh_token,
+                  },
+                  completedAt: Date.now()
                 }
-              }, 1500);
+              }, { onConflict: 'key' });
             } catch (syncErr) {
-              console.error('[Auth Callback] Failed to write sync session:', syncErr);
-              setStatus('error');
-              setErrMsg('Failed to link session back to the app.');
+              console.error('[Auth Callback] Sync write error:', syncErr);
             }
+            // Show close message — the WebView will pick up the session via polling
+            setStatus('sync_done');
             return;
           }
 
-          setStatus('success');
+          // If this is a password recovery flow, redirect to login with recovery flag
+          if (authType === 'recovery') {
+            setTimeout(() => {
+              if (active) router.replace('/auth/login?recovery=true');
+            }, 800);
+            return;
+          }
 
           // Check if user needs onboarding (Google OAuth users without profile data)
-          const needsOnboarding = session?.user && (
-            !session.user.user_metadata?.gender &&
-            !session.user.user_metadata?.looking_for
-          );
-
-          // Check users table with error shielding
           let profileIncomplete = true;
           if (session?.user?.id) {
             try {
@@ -155,14 +124,9 @@ function CallbackHandler({ setStatus, setErrMsg }) {
 
           setTimeout(() => {
             if (active) {
-              if (window.opener) {
-                window.opener.postMessage({ type: 'auth-success', nextUrl }, window.location.origin);
-                window.close();
-              } else {
-                router.replace(nextUrl);
-              }
+              router.replace(nextUrl);
             }
-          }, 600);
+          }, 800);
         }
       } catch (err) {
         console.error('[Auth Callback] Auth flow error:', err);
@@ -171,17 +135,9 @@ function CallbackHandler({ setStatus, setErrMsg }) {
           setErrMsg(err.message || 'Authentication failed. Please try again.');
           setTimeout(() => {
             if (active) {
-              if (window.opener) {
-                window.opener.postMessage({ type: 'auth-error', error: err.message || 'Authentication failed' }, window.location.origin);
-                window.close();
-              } else {
-                try {
-                  window.location.href = 'gonative://browser/close';
-                } catch (e) {}
-                router.replace(`/auth/login?error=${encodeURIComponent(err.message || 'Authentication failed')}`);
-              }
+              router.replace(`/auth/login?error=${encodeURIComponent(err.message || 'Authentication failed')}`);
             }
-          }, 2500);
+          }, 3000);
         }
       }
     };
@@ -197,6 +153,7 @@ function CallbackHandler({ setStatus, setErrMsg }) {
 export default function AuthCallbackPage() {
   const [status, setStatus] = useState('loading');
   const [errMsg, setErrMsg] = useState('');
+  const router = useRouter();
 
   return (
     <>
@@ -216,15 +173,15 @@ export default function AuthCallbackPage() {
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
         padding: '24px',
       }}>
-        {/* Logo */}
+        {/* Logo — dark text for light mode, light text for dark mode */}
         <img
-          src="/genuine-logo.png?v=5"
+          src="/genuine-logo.png?v=6"
           alt="Genuine Sugarmummies"
           style={{ height: '36px', objectFit: 'contain', marginBottom: '32px' }}
           className="cb-fadeup dark:hidden"
         />
         <img
-          src="/genuine-logo-alt.png?v=5"
+          src="/genuine-logo-alt.png?v=6"
           alt="Genuine Sugarmummies"
           style={{ height: '36px', objectFit: 'contain', marginBottom: '32px' }}
           className="cb-fadeup hidden dark:block"
@@ -258,35 +215,19 @@ export default function AuthCallbackPage() {
           </div>
         )}
 
-        {status === 'synced' && (
+        {status === 'sync_done' && (
           <div className="cb-fadeup" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', textAlign: 'center' }}>
             <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
               <circle cx="26" cy="26" r="26" fill="#37B24D" fillOpacity="0.12" />
               <circle cx="26" cy="26" r="20" fill="#37B24D" />
               <path d="M17 26L23 32L35 20" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <p style={{ color: 'var(--color-text-primary, #1A1919)', fontSize: '18px', fontWeight: '700', margin: 0 }}>
-              Device Synced Successfully!
+            <p style={{ color: 'var(--color-text-primary, #1A1919)', fontSize: '16px', fontWeight: '600', margin: 0 }}>
+              Login complete!
             </p>
-            <p style={{ color: 'var(--color-text-secondary, #495057)', fontSize: '14px', margin: '4px 0 0 0', lineHeight: '1.5', maxWidth: '280px' }}>
-              You are now logged in inside the GS mobile application.
+            <p style={{ color: 'var(--color-text-muted, #868E96)', fontSize: '13px', margin: 0, lineHeight: '1.5' }}>
+              You can close this tab and return to the app. Your session will be synced automatically.
             </p>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
-              <a href="gonative://browser/close" style={{ display: 'inline-block', background: 'linear-gradient(135deg, #FF5A5F 0%, #FF2A6D 100%)', color: '#FFFFFF', fontSize: '13px', fontWeight: '700', padding: '12px 24px', borderRadius: '14px', textDecoration: 'none', boxShadow: '0 4px 15px rgba(255,90,95,0.3)', outline: 'none' }}>
-                Return to Application
-              </a>
-              <p style={{ color: 'var(--color-text-muted, #868E96)', fontSize: '11px', margin: '4px 0 0 0' }}>
-                If you aren't returned automatically, click the button above.
-              </p>
-            </div>
-            
-            <style>{`
-              @keyframes pulse {
-                0%, 100% { opacity: 1; }
-                50% { opacity: 0.5; }
-              }
-            `}</style>
           </div>
         )}
 
@@ -304,6 +245,23 @@ export default function AuthCallbackPage() {
             <p style={{ color: 'var(--color-text-muted, #868E96)', fontSize: '13px', margin: 0, textAlign: 'center', lineHeight: '1.5' }}>
               {errMsg || 'Something went wrong. Redirecting to login…'}
             </p>
+            <button
+              onClick={() => router.replace('/auth/login')}
+              style={{
+                marginTop: '8px',
+                background: 'linear-gradient(135deg, #FF5A5F 0%, #FF2A6D 100%)',
+                color: '#FFFFFF',
+                fontSize: '13px',
+                fontWeight: '700',
+                padding: '12px 24px',
+                borderRadius: '14px',
+                border: 'none',
+                cursor: 'pointer',
+                boxShadow: '0 4px 15px rgba(255,90,95,0.3)',
+              }}
+            >
+              Try Again
+            </button>
           </div>
         )}
 

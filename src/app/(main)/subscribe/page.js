@@ -9,80 +9,47 @@ import { supabase } from '@/lib/supabaseClient';
 
 const PLANS = [
     {
-        id: 'free',
-        name: 'Free',
-        price: 'KES 0',
-        period: 'Forever',
-        color: '#6b7280',
-        icon: Heart,
-        popular: false,
+        id: 'free', name: 'Free', price: 'KES 0', period: 'Starter access', color: '#6b7280', icon: Heart, popular: false,
         features: [
-            { text: 'Browse profiles', included: true },
-            { text: 'Like & pass (10/day)', included: true },
-            { text: 'Comment on profiles', included: true },
-            { text: 'View match scores', included: true },
-            { text: 'Unlimited likes', included: false },
-            { text: 'See who liked you', included: false },
-            { text: 'Direct messaging', included: false },
-            { text: 'Priority support', included: false },
-            { text: 'Verified badge', included: false },
+            { text: 'Browse mixed WP and member profiles', included: true },
+            { text: '10 daily swipes and likes', included: true },
+            { text: '3 messages per conversation', included: true },
+            { text: 'Blurred phone numbers only', included: true },
+            { text: 'Phone reveal', included: false },
+            { text: 'Voice/video calls', included: false },
         ],
     },
     {
-        id: 'silver',
-        name: 'Silver',
-        price: 'KES 500',
-        period: '/month',
-        color: '#9ca3af',
-        icon: Star,
-        popular: false,
+        id: 'basic', name: 'Basic', price: 'KES 650', period: 'Admin approved', color: '#10B981', icon: MessageCircle, popular: false,
         features: [
-            { text: 'Everything in Free', included: true },
-            { text: 'Unlimited likes', included: true },
-            { text: 'See who liked you', included: true },
-            { text: '5 super likes/day', included: true },
-            { text: 'Direct messaging', included: true },
-            { text: 'Priority support', included: false },
-            { text: 'Verified badge', included: false },
-            { text: 'Profile boost', included: false },
+            { text: '10 messages per conversation/day', included: true },
+            { text: '10 likes and 10 swipes', included: true },
+            { text: 'Send gifts and emojis', included: true },
+            { text: 'Browse member photos and details', included: true },
+            { text: 'Phone reveal', included: false },
+            { text: 'Voice/video calls', included: false },
         ],
     },
     {
-        id: 'gold',
-        name: 'Gold',
-        price: 'KES 1,000',
-        period: '/month',
-        color: '#d97706',
-        icon: Crown,
-        popular: true,
+        id: 'silver', name: 'Silver', price: 'KES 1,200', period: 'Admin approved', color: '#0EA5E9', icon: Star, popular: true,
         features: [
-            { text: 'Everything in Silver', included: true },
-            { text: 'Unlimited super likes', included: true },
-            { text: 'Priority in discover', included: true },
-            { text: 'See profile visitors', included: true },
-            { text: 'Priority support', included: true },
-            { text: 'Verified badge', included: true },
-            { text: 'Profile boost (1x/week)', included: true },
-            { text: 'Admin connection assist', included: false },
-        ],
-    },
-    {
-        id: 'diamond',
-        name: 'Diamond',
-        price: 'KES 2,500',
-        period: '/month',
-        color: '#7c3aed',
-        icon: Zap,
-        popular: false,
-        features: [
-            { text: 'Everything in Gold', included: true },
-            { text: 'Admin connection assist', included: true },
-            { text: 'Direct admin hotline', included: true },
-            { text: 'Profile boost (daily)', included: true },
-            { text: 'Featured member badge', included: true },
-            { text: 'Read receipts', included: true },
+            { text: 'Lifetime phone number reveal', included: true },
+            { text: 'Unlimited messages', included: true },
+            { text: '50 likes and swipes', included: true },
+            { text: 'Send images and files in chat', included: true },
+            { text: 'Voice and video call requests', included: true },
             { text: 'Priority matching', included: true },
-            { text: 'VIP events access', included: true },
+        ],
+    },
+    {
+        id: 'gold', name: 'Gold International', price: 'KES 3,500', period: 'Admin approved', color: '#F59E0B', icon: Crown, popular: false,
+        features: [
+            { text: 'International and prominent users', included: true },
+            { text: 'Unlimited messaging, likes and swipes', included: true },
+            { text: 'Phone reveal for all profiles', included: true },
+            { text: 'Premium gifts priority', included: true },
+            { text: 'Top profile placement after approval', included: true },
+            { text: 'Fast admin support', included: true },
         ],
     },
 ];
@@ -351,19 +318,19 @@ export default function SubscribePage() {
                 </p>
                 <div className="grid grid-cols-2 gap-2 text-center text-xs">
                     <div className="p-2.5 rounded-xl bg-bg-secondary border border-border">
-                        <span className="block font-bold text-text-primary">Kenya 🇰🇪</span>
+                        <span className="block font-bold text-text-primary">Kenya (KE)</span>
                         <span className="text-[10px] text-text-muted">M-Pesa, Airtel Money</span>
                     </div>
                     <div className="p-2.5 rounded-xl bg-bg-secondary border border-border">
-                        <span className="block font-bold text-text-primary">Uganda 🇺🇬</span>
+                        <span className="block font-bold text-text-primary">Uganda (UG)</span>
                         <span className="text-[10px] text-text-muted">MTN MoMo, Airtel Money</span>
                     </div>
                     <div className="p-2.5 rounded-xl bg-bg-secondary border border-border">
-                        <span className="block font-bold text-text-primary">Tanzania 🇹🇿</span>
+                        <span className="block font-bold text-text-primary">Tanzania (TZ)</span>
                         <span className="text-[10px] text-text-muted">Vodacom M-Pesa</span>
                     </div>
                     <div className="p-2.5 rounded-xl bg-bg-secondary border border-border">
-                        <span className="block font-bold text-text-primary">International 🌐</span>
+                        <span className="block font-bold text-text-primary">International</span>
                         <span className="text-[10px] text-text-muted">Sendwave, WorldRemit</span>
                     </div>
                 </div>

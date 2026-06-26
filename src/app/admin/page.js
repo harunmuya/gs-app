@@ -9,7 +9,7 @@ import {
     Send, TrendingUp, Sparkles, Megaphone, FileText, ChevronDown, CheckCheck,
     Plus, Lock, BarChart2, Activity, Bell, Volume2, Gift, Trash2,
     DollarSign, Filter, UserCheck, ArrowUpRight, Percent, X, MessageSquare,
-    Zap, Download, LifeBuoy, Camera
+    Zap, Download, LifeBuoy, Camera, Pencil, UserPlus, Database
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import VerifiedBadge from '@/components/VerifiedBadge';
@@ -25,7 +25,7 @@ export default function AdminDashboard() {
     const [selectedDocs, setSelectedDocs] = useState(null);
     const [activeTab, setActiveTab] = useState('users');
     const [showPaymentModal, setShowPaymentModal] = useState(false);
-    const [paymentForm, setPaymentForm] = useState({ userId: 'mock', email: '', plan: 'silver', amount: 500, method: 'M-Pesa Escrow', code: '' });
+    const [paymentForm, setPaymentForm] = useState({ userId: 'mock', email: '', plan: 'basic', amount: 650, method: 'M-Pesa Escrow', code: '' });
     const [selectedUser, setSelectedUser] = useState(null);
     const [alertForm, setAlertForm] = useState({ userId: null, title: '', body: '' });
     const [showAlertModal, setShowAlertModal] = useState(false);
@@ -33,6 +33,39 @@ export default function AdminDashboard() {
     const [logTypeFilter, setLogTypeFilter] = useState('all');
     const [broadcastForm, setBroadcastForm] = useState({ title: '', body: '', targetTier: 'all' });
     const [broadcastLoading, setBroadcastLoading] = useState(false);
+
+    // Seed Management States
+    const [seedStatus, setSeedStatus] = useState(null);
+    const [seedLoading, setSeedLoading] = useState(false);
+    const [seedAction, setSeedAction] = useState(null);
+    const [showAddUserModal, setShowAddUserModal] = useState(false);
+    const [showEditUserModal, setShowEditUserModal] = useState(false);
+    const [editUserData, setEditUserData] = useState(null);
+    const [addUserForm, setAddUserForm] = useState({ display_name: '', gender: 'female', age: 35, country: 'Kenya', location: '', phone_number: '', bio: '', profile_type: 'sugar_mummy', avatar_url: '' });
+    const SEED_COUNTRIES = ['Kenya','Uganda','Tanzania','Zimbabwe','Malawi','Rwanda','Burundi','South Sudan','Ethiopia','Nigeria','Ghana','South Africa'];
+    const SEED_LABELS = [{v:'member',l:'No Label'},{v:'sugar_mummy',l:'Sugar Mummy'},{v:'sugar_daddy',l:'Sugar Daddy'},{v:'toyboy',l:'Toyboy'},{v:'sugar_guy',l:'Sugar Guy'},{v:'young_lady',l:'Young Lady'},{v:'mistress',l:'Mistress'},{v:'cougar',l:'Cougar'}];
+
+    const fetchSeedStatus = async () => { try { const r = await fetch('/api/seed-members'); const d = await r.json(); setSeedStatus(d); } catch(e) { console.error(e); } };
+    const handleBulkSeed = async () => { setSeedAction('seeding'); try { const r = await fetch('/api/seed-members', { method: 'POST' }); const d = await r.json(); alert(d.message || 'Seeded!'); fetchSeedStatus(); fetchUsers(); } catch(e) { alert('Error: ' + e.message); } finally { setSeedAction(null); } };
+    const handleDeleteAllSeeds = async () => { if (!confirm('Delete ALL seed profiles? This cannot be undone.')) return; setSeedAction('deleting'); try { const r = await fetch('/api/seed-members', { method: 'DELETE' }); const d = await r.json(); alert(d.message || 'Deleted!'); fetchSeedStatus(); fetchUsers(); } catch(e) { alert('Error: ' + e.message); } finally { setSeedAction(null); } };
+    const handleAddSingleUser = async () => { setSeedAction('adding'); try { const r = await fetch('/api/admin/user', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(addUserForm) }); const d = await r.json(); if (d.error) { alert('Error: ' + d.error); } else { alert('User created!'); setShowAddUserModal(false); setAddUserForm({ display_name: '', gender: 'female', age: 35, country: 'Kenya', location: '', phone_number: '', bio: '', profile_type: 'sugar_mummy', avatar_url: '' }); fetchSeedStatus(); fetchUsers(); } } catch(e) { alert('Error: ' + e.message); } finally { setSeedAction(null); } };
+    const handleEditUser = async () => { if (!editUserData) return; setSeedAction('editing'); try { const r = await fetch('/api/admin/user', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(editUserData) }); const d = await r.json(); if (d.error) { alert('Error: ' + d.error); } else { alert('User updated!'); setShowEditUserModal(false); setEditUserData(null); fetchUsers(); } } catch(e) { alert('Error: ' + e.message); } finally { setSeedAction(null); } };
+    const [uploading, setUploading] = useState(false);
+    const uploadImage = async (file, target) => {
+        if (!file) return;
+        setUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const r = await fetch('/api/upload', { method: 'POST', body: formData });
+            const d = await r.json();
+            if (d.url) {
+                if (target === 'add') setAddUserForm(p => ({...p, avatar_url: d.url}));
+                else if (target === 'edit') setEditUserData(p => ({...p, avatar_url: d.url}));
+            } else { alert('Upload failed: ' + (d.error || 'Unknown error')); }
+        } catch(e) { alert('Upload error: ' + e.message); }
+        finally { setUploading(false); }
+    };
 
     const [systemLogs, setSystemLogs] = useState([
         { id: 1, type: 'info', event: 'Admin Session Initialized', details: 'Authorized admin authenticated successfully.', time: 'Just now' },
@@ -171,7 +204,7 @@ export default function AdminDashboard() {
         if (users.length === 0) return;
         const headers = ['ID', 'Display Name', 'Email', 'Phone', 'Gender', 'Looking For', 'Age', 'Location', 'Plan', 'Is Banned', 'Joined At'];
         const csvRows = [headers.join(',')];
-        
+
         filteredUsers.forEach(u => {
             const row = [
                 JSON.stringify(u.id || ''),
@@ -188,7 +221,7 @@ export default function AdminDashboard() {
             ];
             csvRows.push(row.join(','));
         });
-        
+
         const csvContent = "data:text/csv;charset=utf-8," + csvRows.join("\n");
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
@@ -231,6 +264,8 @@ export default function AdminDashboard() {
             fetchTickets();
         } else if (activeTab === 'analytics') {
             fetchAnalytics();
+        } else if (activeTab === 'seed') {
+            fetchSeedStatus();
         }
     }, [activeTab, ticketStatusFilter, ticketCategoryFilter]);
 
@@ -354,7 +389,7 @@ export default function AdminDashboard() {
             monthRevenue: monthRev,
             silver: users.filter(u => u.subscription?.plan === 'silver').length,
             gold: users.filter(u => u.subscription?.plan === 'gold').length,
-            diamond: users.filter(u => u.subscription?.plan === 'diamond').length,
+            basic: users.filter(u => u.subscription?.plan === 'basic').length,
             free: users.filter(u => !u.subscription?.plan || u.subscription?.plan === 'free').length,
         };
     };
@@ -386,7 +421,7 @@ export default function AdminDashboard() {
             if (res.ok) {
                 await fetchUsers();
                 setShowPaymentModal(false);
-                setPaymentForm({ userId: 'mock', email: '', plan: 'silver', amount: 500, method: 'M-Pesa Escrow', code: '' });
+                setPaymentForm({ userId: 'mock', email: '', plan: 'basic', amount: 650, method: 'M-Pesa Escrow', code: '' });
                 setSystemLogs(l => [{
                     id: Date.now(), type: 'success',
                     event: 'Payment Recorded',
@@ -420,7 +455,7 @@ export default function AdminDashboard() {
             if (res.ok) {
                 setSystemLogs(l => [{ id: Date.now(), type: 'success', event: 'Broadcast Sent', details: `Notification "${broadcastForm.title}" sent to ${data.sent} users (tier: ${broadcastForm.targetTier}).`, time: 'Just now' }, ...l]);
                 setBroadcastForm({ title: '', body: '', targetTier: 'all' });
-                alert(`✅ Notification sent to ${data.sent} users!`);
+                alert(`Notification sent to ${data.sent} users!`);
             } else {
                 const err = data; alert(err.error || 'Failed to send');
             }
@@ -439,7 +474,7 @@ export default function AdminDashboard() {
                 setSystemLogs(l => [{ id: Date.now(), type: 'info', event: 'Direct Alert Sent', details: `Alert sent to user ${alertForm.userId}: "${alertForm.title}".`, time: 'Just now' }, ...l]);
                 setShowAlertModal(false);
                 setAlertForm({ userId: null, title: '', body: '' });
-                alert('✅ Alert sent!');
+                alert('Alert sent!');
             } else {
                 const err = await res.json(); alert(err.error || 'Failed');
             }
@@ -472,7 +507,7 @@ export default function AdminDashboard() {
                 setSystemLogs(l => [{ id: Date.now(), type: 'success', event: 'Payment Approved', details: `Transaction #${txId} was approved and unlocked.`, time: 'Just now' }, ...l]);
                 // Refresh all data so users list shows updated subscription badge
                 setTimeout(() => fetchUsers(), 1500);
-                alert('✅ Payment approved! User subscription has been activated.');
+                alert('Payment approved! User subscription has been activated.');
             } else {
                 const data = await res.json();
                 alert(data.error || 'Failed to approve payment');
@@ -492,7 +527,7 @@ export default function AdminDashboard() {
                 setTransactions(prev => prev.map(t => t.id === txId ? { ...t, status: 'Failed' } : t));
                 setSystemLogs(l => [{ id: Date.now(), type: 'danger', event: 'Payment Declined', details: `Transaction #${txId} was declined.`, time: 'Just now' }, ...l]);
                 setTimeout(() => fetchUsers(), 1500);
-                alert('❌ Payment declined. User has been notified.');
+                alert('Payment declined. User has been notified.');
             } else {
                 const data = await res.json();
                 alert(data.error || 'Failed to decline payment');
@@ -522,6 +557,7 @@ export default function AdminDashboard() {
 
     const TABS = [
         { key: 'users', icon: Users, label: 'Users' },
+        { key: 'seed', icon: Database, label: 'Seed Mgmt' },
         { key: 'verification', icon: ShieldCheck, label: 'Verification', badge: kpis.pendingVerification },
         { key: 'finance', icon: CreditCard, label: 'Finance', badge: transactions.filter(tx => tx.status === 'Pending').length || null },
         { key: 'analytics', icon: BarChart2, label: 'Analytics' },
@@ -560,7 +596,7 @@ export default function AdminDashboard() {
 
                 {/* Pending Transaction Alert Banner */}
                 {transactions.some(tx => tx.status === 'Pending') && (
-                    <motion.div 
+                    <motion.div
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
                         className="p-4 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center justify-between gap-4 shadow-lg animate-pulse"
@@ -575,7 +611,7 @@ export default function AdminDashboard() {
                                 <span className="text-slate-300">There are pending manual mobile wallet checkouts awaiting verification. Match the user ticket ID from Telegram.</span>
                             </div>
                         </div>
-                        <button 
+                        <button
                             onClick={() => setActiveTab('finance')}
                             className="px-3.5 py-1.5 bg-rose-500 text-white font-extrabold rounded-xl hover:bg-rose-600 transition-all uppercase tracking-wider text-[10px]"
                         >
@@ -621,7 +657,7 @@ export default function AdminDashboard() {
                                             <option value="Free">Free</option>
                                             <option value="Silver">Silver</option>
                                             <option value="Gold">Gold</option>
-                                            <option value="Diamond">Diamond VIP</option>
+                                            <option value="Basic">Basic</option>
                                         </select>
                                     </div>
                                     <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-2xl px-4 py-2.5 text-xs">
@@ -662,7 +698,7 @@ export default function AdminDashboard() {
                                                 free: 'text-slate-400 bg-slate-800/20 border-slate-800/40',
                                                 silver: 'text-slate-300 bg-slate-600/10 border-slate-600/20',
                                                 gold: 'text-amber-500 bg-amber-500/10 border-amber-500/20',
-                                                diamond: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
+                                                basic: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
                                             };
                                             const plan = user.subscription.plan || 'free';
                                             return (
@@ -695,9 +731,9 @@ export default function AdminDashboard() {
                                                             onChange={(e) => triggerAction(user.id, 'update_plan', { plan: e.target.value, durationDays: 30 })}
                                                             className={`px-3 py-1.5 rounded-full border text-[10px] font-bold focus:outline-none cursor-pointer uppercase ${planColors[plan]}`}>
                                                             <option value="free" className="bg-slate-950 text-slate-300">Free</option>
-                                                            <option value="silver" className="bg-slate-950 text-slate-300">Silver</option>
-                                                            <option value="gold" className="bg-slate-950 text-amber-500">Gold</option>
-                                                            <option value="diamond" className="bg-slate-950 text-purple-400">Diamond VIP</option>
+                                                            <option value="basic" className="bg-slate-950 text-emerald-400">Basic</option>
+                                                            <option value="silver" className="bg-slate-950 text-sky-400">Silver</option>
+                                                            <option value="gold" className="bg-slate-950 text-amber-500">Gold International</option>
                                                         </select>
                                                     </td>
                                                     <td className="px-5 py-4 whitespace-nowrap">
@@ -776,7 +812,7 @@ export default function AdminDashboard() {
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
                                 {pendingVerifications.length === 0 ? (
                                     <div className="col-span-full text-center py-12 bg-slate-950/40 rounded-2xl border border-slate-800/80 text-slate-500 text-xs font-semibold">
-                                        ✅ Verification queue is empty!
+                                        Verification queue is empty!
                                     </div>
                                 ) : pendingVerifications.map(u => (
                                     <div key={u.id} className="p-5 rounded-2xl border border-slate-800/80 bg-slate-950/30 flex flex-col justify-between gap-4">
@@ -857,7 +893,7 @@ export default function AdminDashboard() {
                                                 <td className="px-6 py-3.5"><span className="px-2 py-0.5 rounded-full text-[9px] bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold uppercase">{tx.plan}</span></td>
                                                 <td className="px-6 py-3.5">
                                                      <div className="font-bold text-white">{tx.userName || 'Guest Payer'}</div>
-                                                     <div className="text-[10px] text-slate-500">{tx.user || tx.email || '—'}</div>
+                                                     <div className="text-[10px] text-slate-500">{tx.user || tx.email || 'â€”'}</div>
                                                      {tx.payment_proof_url && (
                                                          <a href={tx.payment_proof_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 mt-1 text-[9px] text-rose-400 hover:text-rose-300 font-extrabold hover:underline">
                                                              <Camera size={9} /> View Proof
@@ -865,12 +901,12 @@ export default function AdminDashboard() {
                                                      )}
                                                 </td>
                                                 <td className="px-6 py-3.5 font-mono text-rose-400 font-bold">{tx.code}</td>
-                                                <td className="px-6 py-3.5 font-mono text-amber-400 font-bold">{tx.ticketId || '—'}</td>
+                                                <td className="px-6 py-3.5 font-mono text-amber-400 font-bold">{tx.ticketId || 'â€”'}</td>
                                                 <td className="px-6 py-3.5 font-black text-emerald-400">KES {tx.amount?.toLocaleString?.() || tx.amount}</td>
                                                 <td className="px-6 py-3.5">
                                                     <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
-                                                        tx.status === 'Voided' 
-                                                            ? 'text-slate-500 bg-slate-800/40 border-slate-700' 
+                                                        tx.status === 'Voided'
+                                                            ? 'text-slate-500 bg-slate-800/40 border-slate-700'
                                                             : tx.status === 'Pending'
                                                             ? 'text-amber-400 bg-amber-500/10 border-amber-500/20 animate-pulse'
                                                             : tx.status === 'Failed'
@@ -880,7 +916,7 @@ export default function AdminDashboard() {
                                                         {tx.status || 'Completed'}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-3.5 text-slate-500">{tx.date || tx.created_at ? new Date(tx.date || tx.created_at).toLocaleDateString() : '—'}</td>
+                                                <td className="px-6 py-3.5 text-slate-500">{tx.date || tx.created_at ? new Date(tx.date || tx.created_at).toLocaleDateString() : 'â€”'}</td>
                                                 <td className="px-6 py-3.5 text-right">
                                                     <div className="flex items-center justify-end gap-1.5">
                                                         {tx.status === 'Pending' && (
@@ -959,7 +995,7 @@ export default function AdminDashboard() {
                                                 { label: 'Free', count: analyticsData?.subscriptions?.free ?? stats.free, color: '#6B7280', total: analyticsData?.users?.total ?? kpis.total },
                                                 { label: 'Silver', count: analyticsData?.subscriptions?.silver ?? stats.silver, color: '#94A3B8', total: analyticsData?.users?.total ?? kpis.total },
                                                 { label: 'Gold', count: analyticsData?.subscriptions?.gold ?? stats.gold, color: '#F59E0B', total: analyticsData?.users?.total ?? kpis.total },
-                                                { label: 'Diamond VIP', count: analyticsData?.subscriptions?.diamond ?? stats.diamond, color: '#A78BFA', total: analyticsData?.users?.total ?? kpis.total },
+                                                { label: 'Gold International', count: analyticsData?.subscriptions?.gold ?? stats.gold, color: '#A78BFA', total: analyticsData?.users?.total ?? kpis.total },
                                             ].map(({ label, count, color, total }) => {
                                                 const pct = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
                                                 return (
@@ -1070,7 +1106,7 @@ export default function AdminDashboard() {
                                                             </div>
                                                             <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
                                                                 <span>Submitted by: <strong>{ticket.users?.display_name || 'Anonymous'}</strong> ({ticket.users?.email || 'no-email'})</span>
-                                                                <span>•</span>
+                                                                <span>â€¢</span>
                                                                 <span>{new Date(ticket.created_at).toLocaleString()}</span>
                                                             </div>
                                                         </div>
@@ -1141,10 +1177,10 @@ export default function AdminDashboard() {
                                     <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Quick Templates</p>
                                     <div className="grid grid-cols-2 gap-2">
                                         {[
-                                            { label: '🚀 New Feature', title: 'New Feature Available!', body: 'Check out the latest features we just added to the GS app.' },
-                                            { label: '🎁 Promo Offer', title: '🎁 Special Offer Inside!', body: 'Upgrade to VIP this week and get exclusive sugar mummy contacts. Limited spots!' },
-                                            { label: '🔧 Maintenance', title: 'Scheduled Maintenance', body: 'The app will be under maintenance for 30 minutes. Apologies for any inconvenience.' },
-                                            { label: '🛡️ Safety Alert', title: '⚠️ Safety Reminder', body: 'Never send money to unverified profiles. Always use the GS escrow system for safety.' },
+                                            { label: 'New Feature', title: 'New Feature Available!', body: 'Check out the latest features we just added to the GS app.' },
+                                            { label: 'Promo Offer', title: 'Special Offer Inside!', body: 'Upgrade to VIP this week and get exclusive sugar mummy contacts. Limited spots!' },
+                                            { label: 'Maintenance', title: 'Scheduled Maintenance', body: 'The app will be under maintenance for 30 minutes. Apologies for any inconvenience.' },
+                                            { label: 'Safety Alert', title: 'Safety Reminder', body: 'Never send money to unverified profiles. Always use the GS escrow system for safety.' },
                                         ].map(tpl => (
                                             <button key={tpl.label} onClick={() => setBroadcastForm(prev => ({ ...prev, title: tpl.title, body: tpl.body }))}
                                                 className="px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/40 hover:bg-slate-800 text-[10px] text-slate-300 font-semibold text-left transition-all cursor-pointer">
@@ -1163,13 +1199,13 @@ export default function AdminDashboard() {
                                             <option value="free">Free Tier Only</option>
                                             <option value="silver">Silver Members</option>
                                             <option value="gold">Gold Members</option>
-                                            <option value="diamond">Diamond VIP</option>
+                                            <option value="gold">Gold International</option>
                                         </select>
                                     </div>
                                     <div className="space-y-1.5">
                                         <label className="text-xs font-semibold text-slate-300">Notification Title</label>
                                         <input type="text" required value={broadcastForm.title} onChange={(e) => setBroadcastForm(prev => ({ ...prev, title: e.target.value }))}
-                                            placeholder="e.g. 🎉 Special Offer Just for You!"
+                                            placeholder="e.g. ðŸŽ‰ Special Offer Just for You!"
                                             className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500 placeholder:text-slate-600" />
                                     </div>
                                     <div className="space-y-1.5">
@@ -1236,7 +1272,7 @@ export default function AdminDashboard() {
                                 <div className="space-y-2">
                                     <label className="text-xs font-bold text-slate-300">Custom Banner Ad Text</label>
                                     <textarea rows={3} value={campaigns.customBannerText || ''} onChange={(e) => toggleCampaign('customBannerText', e.target.value)}
-                                        placeholder="e.g. 🔥 Upgrade to VIP — Get this Mummy's Direct Contact!"
+                                        placeholder="e.g. ðŸ”¥ Upgrade to VIP â€” Get this Mummy's Direct Contact!"
                                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500 resize-none placeholder:text-slate-600" />
                                 </div>
                                 <div className="space-y-2 md:col-span-2">
@@ -1255,9 +1291,9 @@ export default function AdminDashboard() {
                                 </div>
                                 <div className="grid grid-cols-3 gap-4">
                                     {[
-                                        { key: 'silverPrice', label: '🥈 Silver Plan', default: '500' },
-                                        { key: 'goldPrice', label: '👑 Gold Plan', default: '1000' },
-                                        { key: 'diamondPrice', label: '💎 Diamond VIP', default: '2500' }
+                                        { key: 'basicPrice', label: 'Basic Plan', default: '650' },
+                                        { key: 'silverPrice', label: 'Silver Plan', default: '1200' },
+                                        { key: 'goldPrice', label: 'Gold International', default: '3500' }
                                     ].map(pkg => (
                                         <div key={pkg.key} className="space-y-1.5">
                                             <label className="text-[10px] font-bold text-slate-300">{pkg.label}</label>
@@ -1277,10 +1313,10 @@ export default function AdminDashboard() {
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     {[
-                                        { key: 'privacyUrl', label: '🛡️ Privacy Policy URL', placeholder: 'https://genuinesugarmummies.co.ke/privacy' },
-                                        { key: 'termsUrl', label: '⚖️ Terms of Service URL', placeholder: 'https://genuinesugarmummies.co.ke/terms' },
-                                        { key: 'aboutUrl', label: 'ℹ️ About Us URL', placeholder: 'https://genuinesugarmummies.co.ke/about' },
-                                        { key: 'contactUrl', label: '📞 Contact Support URL', placeholder: 'https://genuinesugarmummies.co.ke/contact' }
+                                        { key: 'privacyUrl', label: 'ðŸ›¡ï¸ Privacy Policy URL', placeholder: 'https://genuinesugarmummies.co.ke/privacy' },
+                                        { key: 'termsUrl', label: 'âš–ï¸ Terms of Service URL', placeholder: 'https://genuinesugarmummies.co.ke/terms' },
+                                        { key: 'aboutUrl', label: 'â„¹ï¸ About Us URL', placeholder: 'https://genuinesugarmummies.co.ke/about' },
+                                        { key: 'contactUrl', label: 'ðŸ“ž Contact Support URL', placeholder: 'https://genuinesugarmummies.co.ke/contact' }
                                     ].map(link => (
                                         <div key={link.key} className="space-y-1.5">
                                             <label className="text-[10px] font-bold text-slate-350">{link.label}</label>
@@ -1355,6 +1391,83 @@ export default function AdminDashboard() {
                         </div>
                     )}
 
+                    {/* ====== SEED MANAGEMENT TAB ====== */}
+                    {activeTab === 'seed' && (
+                        <div className="bg-slate-900/40 border border-slate-800/80 backdrop-blur rounded-3xl p-6 space-y-5">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h2 className="text-sm font-black text-white uppercase tracking-wider">Seed Profile Management</h2>
+                                    <p className="text-xs text-slate-400">Manage demo profiles, bulk seed, add single users, edit any profile</p>
+                                </div>
+                                <button onClick={fetchSeedStatus} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-sky-500/20 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 text-xs font-bold cursor-pointer"><RefreshCw size={13} /> Refresh</button>
+                            </div>
+
+                            {/* Quick Actions */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <button onClick={handleBulkSeed} disabled={seedAction} className="p-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/15 text-left space-y-2 cursor-pointer transition-all disabled:opacity-50">
+                                    <div className="flex items-center gap-2"><Database size={18} className="text-emerald-400" /><span className="text-xs font-black text-emerald-400 uppercase">{seedAction === 'seeding' ? 'Seeding...' : 'Bulk Seed 126 Profiles'}</span></div>
+                                    <p className="text-[10px] text-slate-400">Auto-create 126 realistic profiles (116F + 10M) with Kenya as majority</p>
+                                </button>
+                                <button onClick={handleDeleteAllSeeds} disabled={seedAction} className="p-4 rounded-2xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/15 text-left space-y-2 cursor-pointer transition-all disabled:opacity-50">
+                                    <div className="flex items-center gap-2"><Trash2 size={18} className="text-red-400" /><span className="text-xs font-black text-red-400 uppercase">{seedAction === 'deleting' ? 'Deleting...' : 'Delete All Seeds'}</span></div>
+                                    <p className="text-[10px] text-slate-400">Remove ALL seed profiles. Real user accounts are untouched.</p>
+                                </button>
+                                <button onClick={() => setShowAddUserModal(true)} className="p-4 rounded-2xl border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/15 text-left space-y-2 cursor-pointer transition-all">
+                                    <div className="flex items-center gap-2"><UserPlus size={18} className="text-purple-400" /><span className="text-xs font-black text-purple-400 uppercase">Add Single User</span></div>
+                                    <p className="text-[10px] text-slate-400">Create a custom profile with full control over all fields</p>
+                                </button>
+                            </div>
+
+                            {/* Seed Status */}
+                            {seedStatus && (
+                                <div className="space-y-3">
+                                    <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Current Seed Status</h3>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                        <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/60"><p className="text-[10px] text-slate-500 uppercase">Total Seeds</p><p className="text-lg font-black text-white">{seedStatus.total || 0}</p></div>
+                                        <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/60"><p className="text-[10px] text-slate-500 uppercase">Female</p><p className="text-lg font-black text-rose-400">{seedStatus.by_gender?.female || 0}</p></div>
+                                        <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/60"><p className="text-[10px] text-slate-500 uppercase">Male</p><p className="text-lg font-black text-sky-400">{seedStatus.by_gender?.male || 0}</p></div>
+                                        <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/60"><p className="text-[10px] text-slate-500 uppercase">Countries</p><p className="text-lg font-black text-amber-400">{Object.keys(seedStatus.by_country || {}).length}</p></div>
+                                    </div>
+                                    {seedStatus.by_country && (
+                                        <div className="flex flex-wrap gap-2">
+                                            {Object.entries(seedStatus.by_country).sort((a,b) => b[1] - a[1]).map(([c, n]) => (
+                                                <span key={c} className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">{c}: {n}</span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Existing Users Quick Edit */}
+                            <div className="space-y-3">
+                                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">All Users â€” Quick Edit</h3>
+                                <p className="text-[10px] text-slate-500">Click the edit icon on any user to modify their profile, including images, labels, country, and phone.</p>
+                                <div className="divide-y divide-slate-800/60 rounded-2xl border border-slate-800/80 bg-slate-950/40 max-h-[400px] overflow-y-auto">
+                                    {users.filter(u => {
+                                        const q = search.toLowerCase();
+                                        return !q || u.displayName?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q);
+                                    }).map(u => (
+                                        <div key={u.id} className="p-3 flex items-center gap-3 hover:bg-slate-800/30 transition-colors">
+                                            <div className="w-9 h-9 rounded-xl overflow-hidden bg-slate-800 shrink-0">
+                                                {u.avatarUrl ? <img src={u.avatarUrl} alt="" className="w-full h-full object-cover" /> :
+                                                    <div className="w-full h-full flex items-center justify-center text-slate-500 font-bold text-xs">{u.displayName?.[0] || '?'}</div>}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-xs font-bold text-white truncate">{u.displayName || 'Unnamed'}</p>
+                                                <p className="text-[10px] text-slate-500 truncate">{u.email} {u.isSeed ? 'â€¢ ðŸŒ± Seed' : ''}</p>
+                                            </div>
+                                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-bold shrink-0">{u.gender || '?'}</span>
+                                            <button onClick={() => { setEditUserData({ id: u.id, display_name: u.displayName || '', email: u.email, gender: u.gender || '', age: u.age || '', country: u.country || '', location: u.location || '', phone_number: u.phone || '', bio: u.bio || '', profile_type: u.profileType || 'member', avatar_url: u.avatarUrl || '', phone_visible: u.phoneVisible || false }); setShowEditUserModal(true); }}
+                                                className="w-8 h-8 rounded-lg flex items-center justify-center border border-amber-500/20 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 cursor-pointer shrink-0">
+                                                <Pencil size={13} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                 </div>
             </main>
 
@@ -1374,7 +1487,7 @@ export default function AdminDashboard() {
                             <div className="p-6 grid grid-cols-2 gap-4">
                                 {['selfieUrl', 'idDocUrl'].map((key, i) => (
                                     <div key={key} className="space-y-2">
-                                        <p className="text-xs font-bold text-slate-300">{i === 0 ? '📸 User Selfie' : '🪪 ID / Passport'}</p>
+                                        <p className="text-xs font-bold text-slate-300">{i === 0 ? 'ðŸ“¸ User Selfie' : 'ðŸªª ID / Passport'}</p>
                                         <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 flex items-center justify-center">
                                             {selectedDocs[key] ? <img src={selectedDocs[key]} alt="" className="w-full h-full object-cover" /> :
                                                 <span className="text-[10px] text-slate-600 font-medium">{i === 0 ? 'No selfie provided' : 'No ID provided'}</span>}
@@ -1442,7 +1555,7 @@ export default function AdminDashboard() {
                                         { label: 'Phone', value: selectedUser.phone || 'Not set' },
                                         { label: 'Plan', value: (selectedUser.subscription?.plan || 'free').toUpperCase() },
                                         { label: 'Verification', value: selectedUser.verification?.status || 'none' },
-                                        { label: 'Account Status', value: selectedUser.isBanned ? '⛔ Banned' : '✅ Active' },
+                                        { label: 'Account Status', value: selectedUser.isBanned ? 'Banned' : 'Active' },
                                         { label: 'Joined', value: selectedUser.joinedAt ? new Date(selectedUser.joinedAt).toLocaleDateString() : 'Unknown' },
                                     ].map(({ label, value }) => (
                                         <div key={label} className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/60 space-y-1">
@@ -1534,11 +1647,11 @@ export default function AdminDashboard() {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-1.5">
                                         <label className="text-xs font-semibold text-slate-300">Package Plan</label>
-                                        <select value={paymentForm.plan} onChange={(e) => { const p = e.target.value; const amt = p === 'silver' ? 500 : p === 'gold' ? 1000 : p === 'diamond' ? 2500 : 0; setPaymentForm(prev => ({ ...prev, plan: p, amount: amt })); }}
+                                        <select value={paymentForm.plan} onChange={(e) => { const p = e.target.value; const amt = p === 'basic' ? 650 : p === 'silver' ? 1200 : p === 'gold' ? 3500 : 0; setPaymentForm(prev => ({ ...prev, plan: p, amount: amt })); }}
                                             className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500">
+                                            <option value="basic">Basic</option>
                                             <option value="silver">Silver</option>
-                                            <option value="gold">Gold</option>
-                                            <option value="diamond">Diamond VIP</option>
+                                            <option value="gold">Gold International</option>
                                         </select>
                                     </div>
                                     <div className="space-y-1.5">
@@ -1568,6 +1681,97 @@ export default function AdminDashboard() {
                                     {actionLoading === 'record_payment' ? 'Logging...' : 'Record Payment & Sync Plan'}
                                 </button>
                             </form>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* ====== Add Single User Modal ====== */}
+            <AnimatePresence>
+                {showAddUserModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md" onClick={() => setShowAddUserModal(false)}>
+                        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+                            onClick={(e) => e.stopPropagation()} className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto">
+                            <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center sticky top-0 bg-slate-900 z-10">
+                                <h3 className="font-bold text-white flex items-center gap-2"><UserPlus size={16} className="text-purple-400" /> Add New User</h3>
+                                <button onClick={() => setShowAddUserModal(false)} className="text-slate-400 hover:text-white"><X size={18} /></button>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5 col-span-2"><label className="text-xs font-semibold text-slate-300">Display Name</label><input type="text" value={addUserForm.display_name} onChange={e => setAddUserForm(p => ({...p, display_name: e.target.value}))} placeholder="e.g. Grace Wanjiku" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500 placeholder:text-slate-600" /></div>
+                                    <div className="space-y-1.5"><label className="text-xs font-semibold text-slate-300">Gender</label><select value={addUserForm.gender} onChange={e => setAddUserForm(p => ({...p, gender: e.target.value}))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500"><option value="female">Female</option><option value="male">Male</option></select></div>
+                                    <div className="space-y-1.5"><label className="text-xs font-semibold text-slate-300">Age</label><input type="number" value={addUserForm.age} onChange={e => setAddUserForm(p => ({...p, age: parseInt(e.target.value)||0}))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500" /></div>
+                                    <div className="space-y-1.5"><label className="text-xs font-semibold text-slate-300">Country</label><select value={addUserForm.country} onChange={e => setAddUserForm(p => ({...p, country: e.target.value}))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500">{SEED_COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                                    <div className="space-y-1.5"><label className="text-xs font-semibold text-slate-300">Location</label><input type="text" value={addUserForm.location} onChange={e => setAddUserForm(p => ({...p, location: e.target.value}))} placeholder="e.g. Nairobi - Westlands" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500 placeholder:text-slate-600" /></div>
+                                    <div className="space-y-1.5"><label className="text-xs font-semibold text-slate-300">Phone Number</label><input type="text" value={addUserForm.phone_number} onChange={e => setAddUserForm(p => ({...p, phone_number: e.target.value}))} placeholder="+254 7xx xxx xxx" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500 placeholder:text-slate-600" /></div>
+                                    <div className="space-y-1.5"><label className="text-xs font-semibold text-slate-300">Profile Label</label><select value={addUserForm.profile_type} onChange={e => setAddUserForm(p => ({...p, profile_type: e.target.value}))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500">{SEED_LABELS.map(l => <option key={l.v} value={l.v}>{l.l}</option>)}</select></div>
+                                    <div className="space-y-1.5 col-span-2"><label className="text-xs font-semibold text-slate-300">Profile Photo</label>
+                                        <div className="flex items-center gap-3">
+                                            {addUserForm.avatar_url && <img src={addUserForm.avatar_url} alt="" className="w-14 h-14 rounded-xl object-cover border border-slate-700" />}
+                                            <label className="flex-1 py-3 border-2 border-dashed border-slate-700 rounded-xl text-center cursor-pointer hover:border-purple-500 transition-colors">
+                                                <input type="file" accept="image/*" className="hidden" onChange={e => uploadImage(e.target.files[0], 'add')} />
+                                                <span className="text-xs text-slate-400 font-medium">{uploading ? 'â³ Uploading...' : 'ðŸ“ Pick from device'}</span>
+                                            </label>
+                                        </div>
+                                        <input type="text" value={addUserForm.avatar_url} onChange={e => setAddUserForm(p => ({...p, avatar_url: e.target.value}))} placeholder="Or paste URL: /seed-photos/seed-f-001.jpg" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-[10px] text-slate-400 focus:outline-none focus:border-purple-500 placeholder:text-slate-600 mt-1" />
+                                    </div>
+                                    <div className="space-y-1.5 col-span-2"><label className="text-xs font-semibold text-slate-300">Bio</label><textarea rows={3} value={addUserForm.bio} onChange={e => setAddUserForm(p => ({...p, bio: e.target.value}))} placeholder="Write a bio..." className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500 resize-none placeholder:text-slate-600" /></div>
+                                </div>
+                                <button onClick={handleAddSingleUser} disabled={seedAction === 'adding' || !addUserForm.display_name}
+                                    className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
+                                    <UserPlus size={14} /> {seedAction === 'adding' ? 'Creating...' : 'Create User'}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* ====== Edit User Modal ====== */}
+            <AnimatePresence>
+                {showEditUserModal && editUserData && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md" onClick={() => { setShowEditUserModal(false); setEditUserData(null); }}>
+                        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+                            onClick={(e) => e.stopPropagation()} className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto">
+                            <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center sticky top-0 bg-slate-900 z-10">
+                                <div>
+                                    <h3 className="font-bold text-white flex items-center gap-2"><Pencil size={16} className="text-amber-400" /> Edit Profile</h3>
+                                    <p className="text-[10px] text-slate-400">{editUserData.email}</p>
+                                </div>
+                                <button onClick={() => { setShowEditUserModal(false); setEditUserData(null); }} className="text-slate-400 hover:text-white"><X size={18} /></button>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5 col-span-2"><label className="text-xs font-semibold text-slate-300">Display Name</label><input type="text" value={editUserData.display_name} onChange={e => setEditUserData(p => ({...p, display_name: e.target.value}))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500" /></div>
+                                    <div className="space-y-1.5"><label className="text-xs font-semibold text-slate-300">Gender</label><select value={editUserData.gender} onChange={e => setEditUserData(p => ({...p, gender: e.target.value}))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"><option value="">Not set</option><option value="female">Female</option><option value="male">Male</option></select></div>
+                                    <div className="space-y-1.5"><label className="text-xs font-semibold text-slate-300">Age</label><input type="number" value={editUserData.age} onChange={e => setEditUserData(p => ({...p, age: parseInt(e.target.value)||''}))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500" /></div>
+                                    <div className="space-y-1.5"><label className="text-xs font-semibold text-slate-300">Country</label><select value={editUserData.country} onChange={e => setEditUserData(p => ({...p, country: e.target.value}))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"><option value="">Not set</option>{SEED_COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                                    <div className="space-y-1.5"><label className="text-xs font-semibold text-slate-300">Location</label><input type="text" value={editUserData.location} onChange={e => setEditUserData(p => ({...p, location: e.target.value}))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500" /></div>
+                                    <div className="space-y-1.5"><label className="text-xs font-semibold text-slate-300">Phone Number</label><input type="text" value={editUserData.phone_number} onChange={e => setEditUserData(p => ({...p, phone_number: e.target.value}))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500" /></div>
+                                    <div className="space-y-1.5"><label className="text-xs font-semibold text-slate-300">Profile Label</label><select value={editUserData.profile_type} onChange={e => setEditUserData(p => ({...p, profile_type: e.target.value}))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500">{SEED_LABELS.map(l => <option key={l.v} value={l.v}>{l.l}</option>)}</select></div>
+                                    <div className="space-y-1.5 col-span-2"><label className="text-xs font-semibold text-slate-300">Profile Photo</label>
+                                        <div className="flex items-center gap-3">
+                                            {editUserData.avatar_url && <img src={editUserData.avatar_url} alt="" className="w-14 h-14 rounded-xl object-cover border border-slate-700" />}
+                                            <label className="flex-1 py-3 border-2 border-dashed border-slate-700 rounded-xl text-center cursor-pointer hover:border-amber-500 transition-colors">
+                                                <input type="file" accept="image/*" className="hidden" onChange={e => uploadImage(e.target.files[0], 'edit')} />
+                                                <span className="text-xs text-slate-400 font-medium">{uploading ? 'â³ Uploading...' : 'ðŸ“ Pick from device'}</span>
+                                            </label>
+                                        </div>
+                                        <input type="text" value={editUserData.avatar_url} onChange={e => setEditUserData(p => ({...p, avatar_url: e.target.value}))} placeholder="Or paste URL" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-[10px] text-slate-400 focus:outline-none focus:border-amber-500 placeholder:text-slate-600 mt-1" />
+                                    </div>
+                                    <div className="space-y-1.5 col-span-2"><label className="text-xs font-semibold text-slate-300">Bio</label><textarea rows={3} value={editUserData.bio} onChange={e => setEditUserData(p => ({...p, bio: e.target.value}))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 resize-none" /></div>
+                                    <div className="col-span-2 flex items-center justify-between">
+                                        <div><span className="text-xs font-semibold text-slate-300 block">Phone Visible</span><span className="text-[10px] text-slate-500">Show blurred number on profile</span></div>
+                                        <button type="button" onClick={() => setEditUserData(p => ({...p, phone_visible: !p.phone_visible}))} className={`w-11 h-6 rounded-full transition-colors relative flex items-center shrink-0 cursor-pointer ${editUserData.phone_visible ? 'bg-emerald-500' : 'bg-slate-800'}`}>
+                                            <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${editUserData.phone_visible ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+                                        </button>
+                                    </div>
+                                </div>
+                                <button onClick={handleEditUser} disabled={seedAction === 'editing'}
+                                    className="w-full py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
+                                    <CheckCircle size={14} /> {seedAction === 'editing' ? 'Saving...' : 'Save Changes'}
+                                </button>
+                            </div>
                         </motion.div>
                     </div>
                 )}

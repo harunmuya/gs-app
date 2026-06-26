@@ -35,3 +35,9 @@ next-env.d.ts
 # scratch files
 /scratch/
 
+
+# android build artifacts
+/android/app/build/
+/android/.gradle/
+/android/keystores/
+

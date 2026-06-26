@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, Search, Sparkles } from 'lucide-react';
+import { MessageCircle, Search, Sparkles, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import UserAvatar from '@/components/UserAvatar';
 import Link from 'next/link';
@@ -18,18 +18,50 @@ function formatTime(iso) {
 }
 
 export default function ChatPage() {
-    const { user, conversations } = useAuth();
+    const { user, conversations, directConversations, fetchDirectConversations } = useAuth();
     const [searchQuery, setSearchQuery] = useState('');
 
+    // Fetch DMs on mount
+    useEffect(() => {
+        if (user?.id) fetchDirectConversations();
+    }, [user?.id, fetchDirectConversations]);
+
+    // Merge profile conversations and direct member conversations into one list
+    const allConversations = useMemo(() => {
+        const profileConvs = (conversations || []).map(c => ({
+            id: c.id,
+            type: 'profile', // profile-based chat
+            name: c.matchName || 'Unknown',
+            image: c.matchImage || '',
+            lastMessage: c.lastMessage || '',
+            lastMessageAt: c.lastMessageAt || c.created_at,
+            unreadCount: c.unreadCount || 0,
+            href: `/chat/${encodeURIComponent(c.id)}`,
+        }));
+
+        const dmConvs = (directConversations || []).map(c => ({
+            id: c.id,
+            type: 'dm', // direct member message
+            name: c.otherUser?.display_name || 'Member',
+            image: c.otherUser?.avatar_url || '',
+            lastMessage: c.last_message || '',
+            lastMessageAt: c.last_message_at || c.created_at,
+            unreadCount: c.unreadCount || 0,
+            otherId: c.otherId || '',
+            href: `/members/chat/${c.id}?name=${encodeURIComponent(c.otherUser?.display_name || 'Member')}&avatar=${encodeURIComponent(c.otherUser?.avatar_url || '')}&otherId=${c.otherId || ''}`,
+        }));
+
+        return [...profileConvs, ...dmConvs];
+    }, [conversations, directConversations]);
+
     const filteredConvs = useMemo(() => {
-        if (!conversations) return [];
-        let convs = [...conversations];
+        let convs = [...allConversations];
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
-            convs = convs.filter(c => c.matchName?.toLowerCase().includes(q));
+            convs = convs.filter(c => c.name?.toLowerCase().includes(q));
         }
         return convs.sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
-    }, [conversations, searchQuery]);
+    }, [allConversations, searchQuery]);
 
     const totalUnread = filteredConvs.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
 
@@ -90,34 +122,41 @@ export default function ChatPage() {
                             <p className="text-sm text-text-secondary leading-relaxed">
                                 {searchQuery
                                     ? `No chats found for "${searchQuery}"`
-                                    : 'Match with someone on Discover to start chatting!'}
+                                    : 'Match with someone or message a member to start chatting!'}
                             </p>
                         </div>
                         {!searchQuery && (
-                            <Link
-                                href="/discover"
-                                className="px-8 py-3.5 rounded-2xl gradient-primary text-white font-bold text-sm shadow-lg shadow-primary/25 active:scale-[0.97] transition-all"
-                            >
-                                Discover Profiles
-                            </Link>
+                            <div className="flex gap-2">
+                                <Link
+                                    href="/discover"
+                                    className="px-6 py-3 rounded-2xl gradient-primary text-white font-bold text-sm shadow-lg shadow-primary/25 active:scale-[0.97] transition-all"
+                                >
+                                    Discover
+                                </Link>
+                                <Link
+                                    href="/members"
+                                    className="px-6 py-3 rounded-2xl font-bold text-sm shadow-lg active:scale-[0.97] transition-all"
+                                    style={{ background: 'linear-gradient(135deg, #06B6D4, #10B981)', color: '#fff', boxShadow: '0 6px 20px rgba(6,182,212,0.25)' }}
+                                >
+                                    Members
+                                </Link>
+                            </div>
                         )}
                     </div>
                 ) : (
                     <div className="space-y-2">
                         {filteredConvs.map((conv, idx) => (
                             <motion.div
-                                key={conv.id}
+                                key={`${conv.type}-${conv.id}`}
                                 initial={{ opacity: 0, y: 8 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: Math.min(idx * 0.04, 0.3) }}
                             >
                                 <Link
-                                    href={`/chat/${encodeURIComponent(conv.id)}`}
+                                    href={conv.href}
                                     className="flex items-center gap-3 p-3.5 rounded-2xl transition-all active:scale-[0.98] border"
                                     style={{
-                                        background: conv.unreadCount > 0
-                                            ? 'var(--color-bg-card)'
-                                            : 'var(--color-bg-card)',
+                                        background: 'var(--color-bg-card)',
                                         borderColor: conv.unreadCount > 0
                                             ? 'var(--color-primary)'
                                             : 'var(--color-border)',
@@ -129,19 +168,27 @@ export default function ChatPage() {
                                     {/* Avatar */}
                                     <div className="relative shrink-0">
                                         <div className="w-12 h-12 rounded-2xl overflow-hidden bg-surface">
-                                            {conv.matchImage ? (
+                                            {conv.image ? (
                                                 <img
-                                                    src={conv.matchImage}
+                                                    src={conv.image}
                                                     alt=""
                                                     className="w-full h-full object-cover"
+                                                    referrerPolicy="no-referrer"
                                                     onError={e => { e.target.style.display = 'none'; }}
                                                 />
                                             ) : (
-                                                <UserAvatar name={conv.matchName} size={48} />
+                                                <UserAvatar name={conv.name} size={48} />
                                             )}
                                         </div>
                                         {conv.unreadCount > 0 && (
                                             <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-primary border-2 border-bg" />
+                                        )}
+                                        {/* DM badge */}
+                                        {conv.type === 'dm' && (
+                                            <div className="absolute -top-1 -left-1 w-4 h-4 rounded-full flex items-center justify-center"
+                                                style={{ background: 'linear-gradient(135deg, #06B6D4, #10B981)' }}>
+                                                <Users size={8} className="text-white" />
+                                            </div>
                                         )}
                                     </div>
 
@@ -149,7 +196,7 @@ export default function ChatPage() {
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center justify-between mb-0.5">
                                             <h3 className={`text-sm truncate ${conv.unreadCount > 0 ? 'font-black text-text-primary' : 'font-bold text-text-primary'}`}>
-                                                {conv.matchName || 'Unknown'}
+                                                {conv.name || 'Unknown'}
                                             </h3>
                                             <span className="text-[10px] text-text-muted shrink-0 ml-2">
                                                 {formatTime(conv.lastMessageAt)}

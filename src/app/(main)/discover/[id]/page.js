@@ -73,7 +73,8 @@ function cleanSentence(s) {
     return clean;
 }
 
-function parseBioText(contentHtml, excerptText, profileName, profileType) {
+// Clean bio text — returns the real profile content as a single clean paragraph
+function getCleanBio(contentHtml, excerptText) {
     let cleanText = (contentHtml || excerptText || '')
         .replace(/<[^>]+>/g, ' ')
         .replace(/&nbsp;/g, ' ')
@@ -90,98 +91,23 @@ function parseBioText(contentHtml, excerptText, profileName, profileType) {
         .replace(/genuine sugar mummies/i, 'premium matching')
         .replace(/genuine sugar daddies/i, 'premium matching');
 
+    // Strip emojis
+    try {
+        cleanText = cleanText.replace(/\p{Extended_Pictographic}/gu, '');
+    } catch (e) {
+        cleanText = cleanText.replace(/[\u{1F300}-\u{1F9FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '');
+    }
+
+    // Remove phone numbers
+    cleanText = cleanText.replace(/\+?\d{9,13}/g, '[Verified Contact]');
+    cleanText = cleanText.trim();
+
+    // Filter out junk sentences
     const sentences = cleanText.split(/(?<=[.!?])\s+/)
         .map(s => s.trim())
         .filter(s => s.length > 12 && !s.toLowerCase().includes('mary g') && !s.toLowerCase().includes('escrow') && !s.toLowerCase().includes('t.me'));
 
-    const introSentences = [];
-    const rawOfferings = [];
-    const rawRequirements = [];
-
-    const offeringKeywords = [
-        'allowance', 'kes', 'ksh', 'money', 'shop', 'trip', 'travel', 'provide', 'offer', 'bills', 
-        'pay', 'rent', 'finance', 'support', 'gift', 'weekly', 'monthly', 'sponsor', 'business',
-        'funding', 'luxury', 'vacation', 'allowances', 'shopping'
-    ];
-    const requirementKeywords = [
-        'look', 'seek', 'want', 'boy', 'man', 'partner', 'companion', 'honest', 'respect', 'neat', 
-        'ready', 'meet', 'age', 'discreet', 'privacy', 'clean', 'trust', 'romance', 'relationship',
-        'gentleman', 'understanding', 'loving', 'passionate'
-    ];
-
-    sentences.forEach((sentence) => {
-        const lower = sentence.toLowerCase();
-        if (introSentences.length < 2 && (lower.includes('my name') || lower.includes('meet') || lower.includes('am a') || lower.includes('i am') || lower.includes('years old') || lower.includes('old sugar'))) {
-            introSentences.push(sentence);
-            return;
-        }
-
-        let isOffering = offeringKeywords.some(kw => lower.includes(kw));
-        let isRequirement = requirementKeywords.some(kw => lower.includes(kw));
-
-        if (isOffering && rawOfferings.length < 3) {
-            rawOfferings.push(sentence);
-        } else if (isRequirement && rawRequirements.length < 3) {
-            rawRequirements.push(sentence);
-        } else if (introSentences.length < 2) {
-            introSentences.push(sentence);
-        }
-    });
-
-    if (introSentences.length === 0) {
-        if (sentences.length > 0) {
-            introSentences.push(sentences[0]);
-            if (sentences.length > 1) introSentences.push(sentences[1]);
-        } else {
-            introSentences.push(`Hello! I am a verified ${profileType === 'sugar_daddy' ? 'Sugar Daddy' : 'Sugar Mummy'} seeking a genuine and respectful connection.`);
-        }
-    }
-
-    const defaultOfferings = [
-        "Generous allowance, bills payment, and financial support",
-        "Lifestyle upgrading, luxury dining, and shopping trips",
-        "Empowering career mentorship and business guidance"
-    ];
-    const defaultRequirements = [
-        "Complete discretion, respect, and mutual privacy",
-        "Active, honest, and open communication",
-        "Companion ready for real-life meetups and quality time"
-    ];
-
-    const finalOfferings = [...rawOfferings];
-    while (finalOfferings.length < 3) {
-        const def = defaultOfferings[finalOfferings.length];
-        if (!finalOfferings.some(o => o.toLowerCase().includes(def.split(' ')[0].toLowerCase()))) {
-            finalOfferings.push(def);
-        } else {
-            finalOfferings.push(defaultOfferings[(finalOfferings.length + 1) % 3]);
-        }
-    }
-
-    const finalRequirements = [...rawRequirements];
-    while (finalRequirements.length < 3) {
-        const def = defaultRequirements[finalRequirements.length];
-        if (!finalRequirements.some(r => r.toLowerCase().includes(def.split(' ')[0].toLowerCase()))) {
-            finalRequirements.push(def);
-        } else {
-            finalRequirements.push(defaultRequirements[(finalRequirements.length + 1) % 3]);
-        }
-    }
-
-    let introduction = introSentences.join(' ');
-    // Strip emojis from introduction
-    try {
-        introduction = introduction.replace(/\p{Extended_Pictographic}/gu, '');
-    } catch (e) {
-        introduction = introduction.replace(/[\u{1F300}-\u{1F9FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '');
-    }
-    introduction = introduction.trim();
-
-    return {
-        introduction,
-        offerings: finalOfferings.slice(0, 3).map(cleanSentence),
-        requirements: finalRequirements.slice(0, 3).map(cleanSentence)
-    };
+    return sentences.length > 0 ? sentences.join(' ') : cleanText;
 }
 
 export default function SingleProfilePage({ params }) {
@@ -218,21 +144,7 @@ export default function SingleProfilePage({ params }) {
     const [loadingComments, setLoadingComments] = useState(true);
     const [copied, setCopied] = useState(false);
     const [chatting, setChatting] = useState(false);
-    const [liveViews, setLiveViews] = useState(42);
-    const compatibilityScore = profile ? shouldMatchProfile(profile).score : 85;
-
-    useEffect(() => {
-        if (profile) {
-            const baseViews = (profile.commentCount || 0) * 12 + 87;
-            setLiveViews(baseViews);
-            
-            // Periodically increase view count representing real-time traffic
-            const interval = setInterval(() => {
-                setLiveViews(prev => prev + Math.floor(Math.random() * 3) + 1);
-            }, 4500);
-            return () => clearInterval(interval);
-        }
-    }, [profile]);
+    const compatibilityScore = profile ? shouldMatchProfile(profile).score : 0;
 
     useEffect(() => {
         async function loadProfile() {
@@ -371,22 +283,18 @@ export default function SingleProfilePage({ params }) {
 
     const isSaved = isProfileSaved(profile.wpId);
 
-    // Computed Labels
+    // Computed Labels — all real data
     const demandLevel = profile.commentCount >= 10 ? 'High' : profile.commentCount >= 3 ? 'Medium' : 'Low';
-    const demandPercent = profile.commentCount >= 10 ? 90 : profile.commentCount >= 3 ? 55 : 25;
     const demandBarColor = demandLevel === 'High' ? '#EC4899' : demandLevel === 'Medium' ? '#F59E0B' : '#6B7280';
     const availabilityStatus = profile.daysSincePost < 7 ? 'Available Now' : profile.daysSincePost < 30 ? 'Recently Active' : 'Occasional';
     const availabilityDotColor = profile.daysSincePost < 7 ? '#22C55E' : profile.daysSincePost < 30 ? '#F59E0B' : '#6B7280';
-    const rankingScore = Math.min(99, 50 + profile.commentCount * 3 + (profile.daysSincePost < 30 ? 20 : 0) + (profile.imageUrl ? 10 : 0) + (profile.age ? 5 : 0));
-    const starRating = rankingScore >= 90 ? 5 : rankingScore >= 75 ? 4 : rankingScore >= 60 ? 3 : rankingScore >= 40 ? 2 : 1;
     const freshLabel = profile.daysSincePost < 3 ? 'Newly Available' : profile.daysSincePost <= 14 ? 'Featured' : null;
     const responseRate = profile.commentCount >= 10 ? 'High' : profile.commentCount >= 3 ? 'Medium' : 'Low';
     const responseColor = responseRate === 'High' ? '#22C55E' : responseRate === 'Medium' ? '#F59E0B' : '#6B7280';
-    const profileViews = (profile.commentCount || 0) * 7 + 42;
     const daysActive = profile.daysSincePost || 0;
 
-    // Contact message
-    const parsedBio = parseBioText(profile.content, profile.excerpt, profile.name, profile.profileType);
+    // Clean bio text — real content only
+    const bioText = getCleanBio(profile.content, profile.excerpt);
     const connectionMsg = encodeURIComponent(`Hi Admin Mary G, I need a match connection with ${profile.name || 'this person'} from GS App.`);
 
     return (
@@ -467,28 +375,35 @@ export default function SingleProfilePage({ params }) {
                             </h1>
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
                                 {/* Profile type pill with gradient */}
-                                <span
-                                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold text-white shadow-lg"
-                                    style={{
-                                        background: profile.profileType === 'sugar_daddy'
-                                            ? 'linear-gradient(135deg, #3B82F6, #1D4ED8)'
-                                            : 'linear-gradient(135deg, #EC4899, #BE185D)',
-                                    }}
-                                >
-                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
-                                    {profile.profileType === 'sugar_daddy' ? 'Sugar Daddy' : 'Sugar Mum'}
-                                </span>
-                                {profile.isTestimonial && (
-                                    <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold text-white shadow-lg" style={{ background: 'linear-gradient(135deg, #F59E0B, #D97706)' }}>
-                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
-                                        Review
-                                    </span>
-                                )}
+                                {(() => {
+                                    const LABELS = { sugar_mummy: 'Sugar Mummy', sugar_daddy: 'Sugar Daddy', toyboy: 'Toyboy', sugar_guy: 'Sugar Guy', young_lady: 'Young Lady', mistress: 'Mistress', cougar: 'Cougar' };
+                                    const GRADS = { sugar_mummy: 'linear-gradient(135deg,#EC4899,#F43F5E)', sugar_daddy: 'linear-gradient(135deg,#3B82F6,#6366F1)', toyboy: 'linear-gradient(135deg,#F59E0B,#EF4444)', sugar_guy: 'linear-gradient(135deg,#10B981,#14B8A6)', young_lady: 'linear-gradient(135deg,#A855F7,#EC4899)', mistress: 'linear-gradient(135deg,#D946EF,#9333EA)', cougar: 'linear-gradient(135deg,#EF4444,#DC2626)' };
+                                    const LOOKING = { sugar_mummy: 'Toyboy / Sugar Guy', sugar_daddy: 'Young Lady / Mistress', toyboy: 'Sugar Mummy', sugar_guy: 'Sugar Mummy', young_lady: 'Sugar Daddy', mistress: 'Sugar Daddy', cougar: 'Toyboy / Sugar Guy' };
+                                    const pt = profile.profileType || 'sugar_mummy';
+                                    return (
+                                        <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold text-white shadow-lg"
+                                            style={{ background: GRADS[pt] || GRADS.sugar_mummy }}>
+                                            {LABELS[pt] || 'Sugar Mummy'}
+                                        </span>
+                                    );
+                                })()}
                             </div>
+                            {/* Looking for */}
+                            {(() => {
+                                const LOOKING = { sugar_mummy: 'Toyboy / Sugar Guy', sugar_daddy: 'Young Lady / Mistress', toyboy: 'Sugar Mummy', sugar_guy: 'Sugar Mummy', young_lady: 'Sugar Daddy', mistress: 'Sugar Daddy', cougar: 'Toyboy / Sugar Guy' };
+                                const pt = profile.profileType || 'sugar_mummy';
+                                return (
+                                    <div className="flex items-center gap-1.5 mb-1">
+                                        <Heart size={11} className="text-pink-400" />
+                                        <span className="text-[11px] text-pink-300 font-semibold">Looking for {LOOKING[pt] || 'Partner'}</span>
+                                    </div>
+                                );
+                            })()}
                             {profile.location && (
                                 <div className="flex items-center gap-1.5 text-white/80">
                                     <MapPin size={14} />
-                                    <span className="text-sm">{profile.location}</span>
+                                    <img src="https://flagcdn.com/24x18/ke.png" alt="KE" style={{ width: '16px', height: '12px', borderRadius: '2px' }} />
+                                    <span className="text-sm">{profile.location}, Kenya</span>
                                 </div>
                             )}
                         </div>
@@ -531,28 +446,31 @@ export default function SingleProfilePage({ params }) {
                 )}
 
                 {/* Quick Actions */}
-                <div className="flex items-center gap-2 -mt-5 relative z-10">
+                <div className="flex items-center gap-2.5 -mt-5 relative z-10">
                     <motion.button whileTap={{ scale: 0.9 }} onClick={handleLike} disabled={liked}
-                        className={`flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl font-bold text-white shadow-lg transition-all ${liked ? 'bg-primary/30 cursor-default' : 'gradient-primary shadow-primary/30 hover:shadow-primary/50'}`}>
+                        className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl font-bold text-white shadow-lg transition-all"
+                        style={liked
+                            ? { background: 'rgba(236, 72, 153, 0.2)', cursor: 'default' }
+                            : { background: 'linear-gradient(135deg, #EC4899, #F43F5E)', boxShadow: '0 6px 20px rgba(244, 63, 94, 0.35)' }}>
                         <Heart size={18} fill={liked ? 'currentColor' : 'none'} />
                         {liked ? 'Liked' : 'Like'}
                     </motion.button>
-                    <motion.button whileTap={{ scale: 0.9 }} onClick={handleChat} disabled={chatting}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl font-bold text-white shadow-lg transition-all disabled:opacity-50"
-                        style={{ background: 'linear-gradient(135deg, #10B981, #059669)', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)' }}>
-                        <MessageSquare size={18} />
-                        {chatting ? 'Chatting...' : 'Chat'}
+                    {/* Phone Number */}
+                    <motion.button whileTap={{ scale: 0.9 }} onClick={() => router.push('/subscribe')}
+                        className="flex-1 flex flex-col items-center justify-center py-2.5 rounded-2xl shadow-lg transition-all"
+                        style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                        <span className="font-mono text-xs text-amber-300">+2547*******</span>
+                        <span className="text-[7px] text-amber-400/60 mt-0.5">View number</span>
                     </motion.button>
                     <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowComment(true)}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl font-bold text-text-primary shadow-lg transition-all"
-                        style={{ background: 'var(--color-surface-light)', border: 'var(--card-border)' }}>
+                        className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl font-bold text-white shadow-lg transition-all"
+                        style={{ background: 'linear-gradient(135deg, #6366F1, #8B5CF6)', boxShadow: '0 6px 20px rgba(99, 102, 241, 0.3)' }}>
                         <MessageCircle size={18} />
                         Comment
                     </motion.button>
                 </div>
 
-                {/* ═══════════════ Trust Signals ═══════════════ */}
-                {/* ═══════════════ Trust & Verification (Upgraded) ═══════════════ */}
+                {/* ═══════════════ Trust & Verification ═══════════════ */}
                 <motion.div
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -562,59 +480,59 @@ export default function SingleProfilePage({ params }) {
                 >
                     <div className="flex items-center justify-between">
                         <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-2">
-                            <Shield size={16} className="text-primary animate-pulse" />
+                            <Shield size={16} className="text-primary" />
                             Trust & Verification
                         </h3>
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/20">
-                            Safe Connect
+                            Verified
                         </span>
                     </div>
 
                     <div className="space-y-2.5">
-                        {/* Status detail 1 */}
+                        {/* Identity verified */}
                         <div className="flex items-start gap-3 p-3 rounded-2xl bg-surface/50 border border-border">
                             <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-primary/10 text-primary shrink-0">
                                 <CheckCheck size={16} />
                             </div>
                             <div>
-                                <h4 className="text-xs font-bold text-text-primary">Identity Check Passed</h4>
-                                <p className="text-[10px] text-text-secondary mt-0.5 leading-snug">Verified by Admin Mary G. Matches verified website database records.</p>
+                                <h4 className="text-xs font-bold text-text-primary">Identity verified</h4>
+                                <p className="text-[10px] text-text-secondary mt-0.5 leading-snug">Verified by Admin Mary G through the official website database.</p>
                             </div>
                         </div>
 
-                        {/* Status detail 2 */}
+                        {/* Photo confirmed */}
                         <div className="flex items-start gap-3 p-3 rounded-2xl bg-surface/50 border border-border">
                             <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-success/10 text-success shrink-0">
                                 <User size={16} />
                             </div>
                             <div>
-                                <h4 className="text-xs font-bold text-text-primary">Photo Match Confirmed</h4>
-                                <p className="text-[10px] text-text-secondary mt-0.5 leading-snug">Selfie match verification completed. Photo authenticity is 100% confirmed.</p>
+                                <h4 className="text-xs font-bold text-text-primary">Photo confirmed</h4>
+                                <p className="text-[10px] text-text-secondary mt-0.5 leading-snug">Profile photo has been reviewed and confirmed as authentic.</p>
                             </div>
                         </div>
 
-                        {/* Status detail 3 */}
+                        {/* Synced from website */}
                         <div className="flex items-start gap-3 p-3 rounded-2xl bg-surface/50 border border-border">
                             <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-cyan-500/10 text-cyan-500 shrink-0">
                                 <Globe size={16} />
                             </div>
                             <div>
-                                <h4 className="text-xs font-bold text-text-primary">Synced from Website</h4>
-                                <p className="text-[10px] text-text-secondary mt-0.5 leading-snug">Synced directly with genuinesugarmummies.co.ke. 0 suspicious reports.</p>
+                                <h4 className="text-xs font-bold text-text-primary">Synced from website</h4>
+                                <p className="text-[10px] text-text-secondary mt-0.5 leading-snug">Profile imported directly from genuinesugarmummies.co.ke.</p>
                             </div>
                         </div>
                     </div>
 
-                    {/* Stats & Metadata Row */}
+                    {/* Profile visited + Sync Date */}
                     <div className="grid grid-cols-2 gap-2 pt-1 border-t border-border">
                         <div className="flex items-center gap-2 p-2 rounded-xl bg-surface/30">
                             <Eye size={14} className="text-text-muted shrink-0" />
                             <div className="min-w-0">
-                                <p className="text-[9px] text-text-muted uppercase leading-none flex items-center gap-1">
-                                    Profile Views
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping inline-block" />
+                                <p className="text-[9px] text-text-muted uppercase leading-none">Status</p>
+                                <p className="text-xs font-bold text-text-primary mt-1 flex items-center gap-1.5">
+                                    Profile visited
+                                    <CheckCircle size={11} className="text-success" />
                                 </p>
-                                <p className="text-xs font-bold text-text-primary mt-1">{liveViews.toLocaleString()} active</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-2 p-2 rounded-xl bg-surface/30">
@@ -637,64 +555,57 @@ export default function SingleProfilePage({ params }) {
                     )}
                 </motion.div>
 
-                {/* ═══════════════ Beta Features: GS MATCH SYSTEM ALGORITHM ═══════════════ */}
+                {/* ═══════════════ Compatibility ═══════════════ */}
                 <motion.div
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.15 }}
-                    className="rounded-3xl p-5 space-y-4 shadow-sm border border-primary/20 relative overflow-hidden"
+                    className="rounded-3xl p-5 space-y-4 shadow-sm"
                     style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}
                 >
-                    {/* Glowing background hint */}
-                    <div className="absolute -top-10 -right-10 w-24 h-24 rounded-full blur-2xl opacity-10 bg-primary pointer-events-none" />
+                    <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
+                        <Zap size={16} className="text-primary" />
+                        Compatibility
+                    </h3>
 
-                    <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
-                            <Zap size={16} className="text-gold animate-bounce" />
-                            GS MATCH SYSTEM ALGORITHM (beta)
-                        </h3>
-                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full gradient-primary text-white shadow-sm">
-                            BETA
-                        </span>
-                    </div>
-
-                    {/* Compatibility Score explanation */}
-                    <div className="p-3 rounded-2xl bg-surface/50 border border-border space-y-2">
+                    {/* Score display */}
+                    <div className="p-4 rounded-2xl bg-surface/50 border border-border space-y-3">
                         <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-text-primary">Match Compatibility Index</span>
-                            <span className="text-sm font-black text-primary">{compatibilityScore}% Match</span>
+                            <span className="text-xs font-semibold text-text-secondary">Match Score</span>
+                            <span className="text-2xl font-black text-primary">{compatibilityScore}%</span>
                         </div>
-                        <div className="w-full h-2 rounded-full bg-border overflow-hidden">
+                        <div className="w-full h-2.5 rounded-full bg-border overflow-hidden">
                             <motion.div
                                 initial={{ width: 0 }}
                                 animate={{ width: `${compatibilityScore}%` }}
                                 transition={{ duration: 1.2, ease: 'easeOut' }}
-                                className="h-full rounded-full gradient-primary"
+                                className="h-full rounded-full"
+                                style={{ background: `linear-gradient(90deg, ${compatibilityScore >= 75 ? '#22C55E' : compatibilityScore >= 50 ? '#F59E0B' : '#6B7280'}, ${compatibilityScore >= 75 ? '#10B981' : compatibilityScore >= 50 ? '#EAB308' : '#9CA3AF'})` }}
                             />
                         </div>
-                        <p className="text-[9px] text-text-muted leading-relaxed">
-                            Calculated dynamically based on geographical proximity, chat response latency, verified interaction logs, and preference alignment.
-                        </p>
                     </div>
 
-                    {/* Safe Connect Guard */}
-                    <div className="grid grid-cols-2 gap-2">
-                        <div className="p-2.5 rounded-xl bg-surface/30 border border-border flex flex-col gap-1">
-                            <div className="flex items-center gap-1 text-[10px] font-bold text-success">
-                                <Lock size={10} /> Safe Connect Guard
-                            </div>
-                            <p className="text-[9px] text-text-muted leading-tight">Escrow connection protection. Facilitated only via verified admin Telegram.</p>
+                    {/* Real data factors */}
+                    <div className="grid grid-cols-3 gap-2">
+                        <div className="p-3 rounded-xl bg-surface/30 border border-border text-center">
+                            <Activity size={16} className="mx-auto mb-1.5" style={{ color: availabilityDotColor }} />
+                            <p className="text-[10px] font-bold text-text-primary leading-tight">{availabilityStatus}</p>
+                            <p className="text-[9px] text-text-muted mt-0.5">Activity</p>
                         </div>
-                        <div className="p-2.5 rounded-xl bg-surface/30 border border-border flex flex-col gap-1">
-                            <div className="flex items-center gap-1 text-[10px] font-bold text-primary">
-                                <Zap size={10} /> Reply Speed Index
-                            </div>
-                            <p className="text-[9px] text-text-muted leading-tight">Usually active within the last 24 hours.</p>
+                        <div className="p-3 rounded-xl bg-surface/30 border border-border text-center">
+                            <MessageCircle size={16} className="mx-auto mb-1.5 text-primary" />
+                            <p className="text-[10px] font-bold text-text-primary leading-tight">{profile.commentCount || 0}</p>
+                            <p className="text-[9px] text-text-muted mt-0.5">Comments</p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-surface/30 border border-border text-center">
+                            <TrendingUp size={16} className="mx-auto mb-1.5" style={{ color: responseColor }} />
+                            <p className="text-[10px] font-bold text-text-primary leading-tight">{responseRate}</p>
+                            <p className="text-[9px] text-text-muted mt-0.5">Response</p>
                         </div>
                     </div>
                 </motion.div>
 
-                {/* ═══════════════ Profile About ═══════════════ */}
+                {/* ═══════════════ About — Key Details Only ═══════════════ */}
                 <motion.div
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -702,53 +613,135 @@ export default function SingleProfilePage({ params }) {
                     className="rounded-3xl p-5 space-y-4"
                     style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}
                 >
-                    <h2 className="text-sm font-black text-text-primary uppercase tracking-wider mb-2 flex items-center gap-2 border-b border-white/5 pb-3">
+                    <h2 className="text-sm font-black text-text-primary uppercase tracking-wider flex items-center gap-2 border-b border-white/5 pb-3">
                         <User size={18} className="text-primary" />
-                        About Me
+                        About {profile.name || 'Member'}
                     </h2>
-                    
-                    {/* Unique Summarized Introduction */}
-                    <div className="space-y-2">
-                        <p className="text-text-secondary leading-relaxed text-sm font-medium">
-                            {parsedBio.introduction}
-                        </p>
-                    </div>
 
-                    {/* Highly Premium structured grids of What I Offer vs What I Seek */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1.5">
-                        {/* Offerings (What I Provide) */}
-                        <div className="p-4 rounded-2xl bg-success/5 border border-success/10 space-y-2">
-                            <h3 className="text-[10px] font-black text-success uppercase tracking-wider flex items-center gap-1.5">
-                                <Sparkles size={12} /> Arrangement Offerings
-                            </h3>
-                            <ul className="space-y-2">
-                                {parsedBio.offerings.map((item, index) => (
-                                    <li key={index} className="text-[11px] text-text-secondary leading-relaxed flex items-start gap-2">
-                                        <Check size={12} className="text-success shrink-0 mt-0.5" />
-                                        <span>{item}</span>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
+                    <div className="space-y-3">
+                        {/* Profile Type */}
+                        {(() => {
+                            const LABELS = { sugar_mummy: 'Sugar Mummy', sugar_daddy: 'Sugar Daddy', toyboy: 'Toyboy', sugar_guy: 'Sugar Guy', young_lady: 'Young Lady', mistress: 'Mistress', cougar: 'Cougar' };
+                            const pt = profile.profileType || 'sugar_mummy';
+                            return (
+                                <div className="flex items-center gap-3 p-3 rounded-2xl bg-surface/50 border border-border">
+                                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-pink-500/10 text-pink-500 shrink-0">
+                                        <Heart size={16} />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] text-text-muted uppercase font-bold">Identity</p>
+                                        <p className="text-xs font-bold text-text-primary">{LABELS[pt] || 'Member'}</p>
+                                    </div>
+                                </div>
+                            );
+                        })()}
 
-                        {/* Requirements (Ideal Match) */}
-                        <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10 space-y-2">
-                            <h3 className="text-[10px] font-black text-primary uppercase tracking-wider flex items-center gap-1.5">
-                                <Star size={12} className="text-gold fill-gold" /> Ideal Partner Seeked
-                            </h3>
-                            <ul className="space-y-2">
-                                {parsedBio.requirements.map((item, index) => (
-                                    <li key={index} className="text-[11px] text-text-secondary leading-relaxed flex items-start gap-2">
-                                        <Sparkles size={11} className="text-primary shrink-0 mt-0.5" />
-                                        <span>{item}</span>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
+                        {/* Looking For */}
+                        {(() => {
+                            const LOOKING = { sugar_mummy: 'Toyboy / Sugar Guy', sugar_daddy: 'Young Lady / Mistress', toyboy: 'Sugar Mummy', sugar_guy: 'Sugar Mummy', young_lady: 'Sugar Daddy', mistress: 'Sugar Daddy', cougar: 'Toyboy / Sugar Guy' };
+                            const pt = profile.profileType || 'sugar_mummy';
+                            const preferredPartner = profile.partnerType || LOOKING[pt] || 'Partner';
+                            return (
+                                <div className="flex items-center gap-3 p-3 rounded-2xl bg-surface/50 border border-border">
+                                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-rose-500/10 text-rose-500 shrink-0">
+                                        <User size={16} />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] text-text-muted uppercase font-bold">Preferred Partner</p>
+                                        <p className="text-xs font-bold text-text-primary">{preferredPartner}</p>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
+                        {/* Preferred Partner Age Range */}
+                        {profile.partnerAge && (
+                            <div className="flex items-center gap-3 p-3 rounded-2xl bg-surface/50 border border-border">
+                                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-amber-500/10 text-amber-500 shrink-0">
+                                    <Clock size={16} />
+                                </div>
+                                <div>
+                                    <p className="text-[10px] text-text-muted uppercase font-bold">Preferred Age</p>
+                                    <p className="text-xs font-bold text-text-primary">{profile.partnerAge}</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Relationship Type */}
+                        {profile.relationshipType && (
+                            <div className="flex items-center gap-3 p-3 rounded-2xl bg-surface/50 border border-border">
+                                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-500/10 text-blue-500 shrink-0">
+                                    <Sparkles size={16} />
+                                </div>
+                                <div>
+                                    <p className="text-[10px] text-text-muted uppercase font-bold">Relationship Type</p>
+                                    <p className="text-xs font-bold text-text-primary">{profile.relationshipType}</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Age */}
+                        {profile.age && (
+                            <div className="flex items-center gap-3 p-3 rounded-2xl bg-surface/50 border border-border">
+                                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-purple-500/10 text-purple-500 shrink-0">
+                                    <Calendar size={16} />
+                                </div>
+                                <div>
+                                    <p className="text-[10px] text-text-muted uppercase font-bold">Age</p>
+                                    <p className="text-xs font-bold text-text-primary">{profile.age} years old</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Location */}
+                        {profile.location && (
+                            <div className="flex items-center gap-3 p-3 rounded-2xl bg-surface/50 border border-border">
+                                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-emerald-500/10 text-emerald-500 shrink-0">
+                                    <MapPin size={16} />
+                                </div>
+                                <div>
+                                    <p className="text-[10px] text-text-muted uppercase font-bold">Location</p>
+                                    <p className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+                                        <img src="https://flagcdn.com/24x18/ke.png" alt="KE" style={{ width: '14px', height: '10px', borderRadius: '1px' }} />
+                                        {profile.location}, Kenya
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Valued Qualities */}
+                        {profile.qualities && profile.qualities.length > 0 && (
+                            <div className="p-3 rounded-2xl bg-surface/50 border border-border">
+                                <p className="text-[10px] text-text-muted uppercase font-bold mb-2">Valued Qualities & Traits</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {profile.qualities.map((quality, i) => (
+                                        <span key={i} className="text-[10px] font-bold px-2.5 py-1 rounded-full text-text-primary animate-pulseSoft"
+                                            style={{ background: ['rgba(16,185,129,0.12)','rgba(245,158,11,0.12)','rgba(168,85,247,0.12)','rgba(99,102,241,0.12)'][i%4], border: '1px solid rgba(255,255,255,0.06)' }}>
+                                            ✨ {quality}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Interests */}
+                        {profile.interests && profile.interests.length > 0 && (
+                            <div className="p-3 rounded-2xl bg-surface/50 border border-border">
+                                <p className="text-[10px] text-text-muted uppercase font-bold mb-2">Interests & Hobbies</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {(Array.isArray(profile.interests) ? profile.interests : []).map((tag, i) => (
+                                        <span key={i} className="text-[10px] font-bold px-2.5 py-1 rounded-full text-text-primary"
+                                            style={{ background: ['rgba(236,72,153,0.12)','rgba(99,102,241,0.12)','rgba(16,185,129,0.12)','rgba(245,158,11,0.12)','rgba(168,85,247,0.12)'][i%5], border: '1px solid rgba(255,255,255,0.06)' }}>
+                                            {tag}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </motion.div>
 
-                {/* ═══════════════ Advanced Profile Insights ═══════════════ */}
+                {/* ═══════════════ Profile Details ═══════════════ */}
                 <motion.div
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -757,62 +750,63 @@ export default function SingleProfilePage({ params }) {
                     style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}
                 >
                     <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
-                        <TrendingUp size={15} className="text-primary" /> Advanced Insights
+                        <BarChart3 size={15} className="text-primary" />
+                        Profile Details
                     </h3>
 
-                    {/* 2x2 Grid of Upgrade Cards */}
+                    {/* 2x2 Grid — real data only */}
                     <div className="grid grid-cols-2 gap-3">
-                        {/* Insight Card 1 */}
+                        {/* Activity status */}
                         <div className="p-3 rounded-2xl bg-surface/50 border border-border flex flex-col justify-between h-24">
                             <div className="flex items-center justify-between">
                                 <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold">Activity</span>
-                                <Activity size={14} style={{ color: availabilityDotColor }} className="animate-pulse" />
+                                <Activity size={14} style={{ color: availabilityDotColor }} />
                             </div>
                             <div>
                                 <p className="text-xs font-black text-text-primary mt-1 leading-tight">{availabilityStatus}</p>
-                                <p className="text-[9px] text-text-muted mt-0.5">Active this week</p>
+                                <p className="text-[9px] text-text-muted mt-0.5">{daysActive === 0 ? 'Today' : `${daysActive}d ago`}</p>
                             </div>
                         </div>
 
-                        {/* Insight Card 2 */}
+                        {/* Days active */}
+                        <div className="p-3 rounded-2xl bg-surface/50 border border-border flex flex-col justify-between h-24">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold">Posted</span>
+                                <Calendar size={14} className="text-primary" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-black text-text-primary mt-1 leading-tight">{daysActive === 0 ? 'Today' : `${daysActive} days ago`}</p>
+                                <p className="text-[9px] text-text-muted mt-0.5">Since listing</p>
+                            </div>
+                        </div>
+
+                        {/* Comment count */}
+                        <div className="p-3 rounded-2xl bg-surface/50 border border-border flex flex-col justify-between h-24">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold">Comments</span>
+                                <MessageCircle size={14} className="text-primary" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-black text-text-primary mt-1 leading-tight">{profile.commentCount || 0}</p>
+                                <p className="text-[9px] text-text-muted mt-0.5">Total responses</p>
+                            </div>
+                        </div>
+
+                        {/* Demand level */}
                         <div className="p-3 rounded-2xl bg-surface/50 border border-border flex flex-col justify-between h-24">
                             <div className="flex items-center justify-between">
                                 <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold">Demand</span>
                                 <TrendingUp size={14} style={{ color: demandBarColor }} />
                             </div>
                             <div>
-                                <p className="text-xs font-black text-text-primary mt-1 leading-tight">{demandLevel} Interest</p>
-                                <p className="text-[9px] text-text-muted mt-0.5">{profile.commentCount * 4 + 19} engagements</p>
-                            </div>
-                        </div>
-
-                        {/* Insight Card 3 */}
-                        <div className="p-3 rounded-2xl bg-surface/50 border border-border flex flex-col justify-between h-24">
-                            <div className="flex items-center justify-between">
-                                <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold">Success Rate</span>
-                                <Zap size={14} className="text-success" />
-                            </div>
-                            <div>
-                                <p className="text-xs font-black text-success mt-1 leading-tight">92% Match</p>
-                                <p className="text-[9px] text-text-muted mt-0.5">High connectivity</p>
-                            </div>
-                        </div>
-
-                        {/* Insight Card 4 */}
-                        <div className="p-3 rounded-2xl bg-surface/50 border border-border flex flex-col justify-between h-24">
-                            <div className="flex items-center justify-between">
-                                <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold">Safety Score</span>
-                                <Shield size={14} className="text-primary" />
-                            </div>
-                            <div>
-                                <p className="text-xs font-black text-text-primary mt-1 leading-tight">Grade A+</p>
-                                <p className="text-[9px] text-text-muted mt-0.5">Checked & verified</p>
+                                <p className="text-xs font-black text-text-primary mt-1 leading-tight">{demandLevel}</p>
+                                <p className="text-[9px] text-text-muted mt-0.5">Interest level</p>
                             </div>
                         </div>
                     </div>
                 </motion.div>
 
-                {/* ═══════════════ Contact Channels (Upgraded Social buttons) ═══════════════ */}
+                {/* ═══════════════ Contact Channels ═══════════════ */}
                 {!profile.isTestimonial && (
                     <motion.div
                         initial={{ opacity: 0, y: 12 }}

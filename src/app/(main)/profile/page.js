@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     User, Camera, Heart, Bookmark, Settings, ChevronRight, LogOut, Trash2, Pencil,
     Shield, HelpCircle, ChevronLeft, X, Mail, MapPin, Calendar, Star, Plus, Phone,
     MessageCircle, ShieldCheck, ShieldAlert, ImagePlus, Check, AlertCircle, Send,
-    MessageSquare, Bell, Crown, CreditCard, BarChart3, Eye, LifeBuoy, Search
+    MessageSquare, Bell, Crown, CreditCard, BarChart3, Eye, LifeBuoy, Search, Users, Flame, Clock
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import VerifiedBadge from '@/components/VerifiedBadge';
@@ -33,6 +33,7 @@ const MENU_ITEMS = [
     { key: 'messages', icon: MessageSquare, label: 'Messages' },
     { key: 'notifications', icon: Bell, label: 'Notifications' },
     { key: 'saved', icon: Bookmark, label: 'Saved Profiles' },
+    { key: 'statuses', icon: Flame, label: 'My Statuses' },
     { key: 'subscribe', icon: Crown, label: 'Membership Plans', link: '/subscribe' },
     { key: 'support', icon: LifeBuoy, label: 'Support & Help Desk', link: '/settings/support' },
     { key: 'settings', icon: Settings, label: 'Settings' },
@@ -42,7 +43,9 @@ const MENU_ITEMS = [
 
 export default function ProfilePage() {
     const router = useRouter();
-    const { user, profile, likes, matches, updateProfile, addPhoto, removePhoto, saved, signOut, deleteAccount, settings, updateSettings, verificationStatus, verifyProfile, clearVerification, messages, markMessagesRead, markSingleMessageRead, deleteMessage, subscription, conversations, getOrCreateConversation, deleteConversation } = useAuth();
+    const { user, profile, likes, matches, updateProfile, addPhoto, removePhoto, setProfilePhoto, saved, signOut, deleteAccount, settings, updateSettings, verificationStatus, verifyProfile, clearVerification, messages, markMessagesRead, markSingleMessageRead, deleteMessage, subscription, conversations, getOrCreateConversation, deleteConversation, memberStatuses, fetchStatuses, deleteStatus, getStatusReport } = useAuth();
+    const [statusReports, setStatusReports] = useState({});
+    const [loadingReport, setLoadingReport] = useState(null);
     const [activeSection, setActiveSection] = useState(null);
     const [editMode, setEditMode] = useState(false);
     const [editData, setEditData] = useState({});
@@ -129,6 +132,18 @@ export default function ProfilePage() {
         setIdDocData(null);
     };
 
+    const COUNTRIES_LIST = ['Kenya','Uganda','Tanzania','Zimbabwe','Malawi','Rwanda','Burundi','South Sudan','Ethiopia','Nigeria','Ghana','South Africa','Other'];
+    const PROFILE_LABELS = [
+        { value: 'member', label: 'No Label' },
+        { value: 'sugar_mummy', label: 'Sugar Mummy' },
+        { value: 'sugar_daddy', label: 'Sugar Daddy' },
+        { value: 'toyboy', label: 'Toyboy' },
+        { value: 'sugar_guy', label: 'Sugar Guy' },
+        { value: 'young_lady', label: 'Young Lady' },
+        { value: 'mistress', label: 'Mistress' },
+        { value: 'cougar', label: 'Cougar' },
+    ];
+
     const startEdit = () => {
         setEditMode(true);
         setEditData({
@@ -141,6 +156,9 @@ export default function ProfilePage() {
             gender: user.gender || '',
             lookingFor: user.lookingFor || '',
             phone: user.phone || '',
+            profile_type: user.profile_type || 'member',
+            phone_visible: user.phone_visible || false,
+            country: user.country || '',
         });
     };
 
@@ -155,6 +173,9 @@ export default function ProfilePage() {
             gender: editData.gender,
             lookingFor: editData.lookingFor,
             phone: editData.phone,
+            profile_type: editData.profile_type,
+            phone_visible: editData.phone_visible,
+            country: editData.country,
         });
         setEditMode(false);
     };
@@ -171,6 +192,7 @@ export default function ProfilePage() {
             case 'messages': return renderMessages();
             case 'notifications': return renderNotifications();
             case 'saved': return renderSaved();
+            case 'statuses': return renderStatuses();
             case 'settings': return renderSettings();
             case 'contact': return renderContact();
             case 'help': return renderHelp();
@@ -244,7 +266,46 @@ export default function ProfilePage() {
                             </select>
                         </div>
 
+                        {/* Profile Label — how you want to appear */}
+                        <div className="space-y-1">
+                            <label className="text-xs text-text-muted font-medium block">Profile Label (shown on your card)</label>
+                            <select
+                                value={editData.profile_type}
+                                onChange={e => setEditData(p => ({ ...p, profile_type: e.target.value }))}
+                                className="w-full rounded-xl p-3 bg-[var(--color-bg-input)] text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
+                            >
+                                {PROFILE_LABELS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+                            </select>
+                        </div>
+
+                        {/* Country Select */}
+                        <div className="space-y-1">
+                            <label className="text-xs text-text-muted font-medium block">Country (flag shown on card)</label>
+                            <select
+                                value={editData.country}
+                                onChange={e => setEditData(p => ({ ...p, country: e.target.value }))}
+                                className="w-full rounded-xl p-3 bg-[var(--color-bg-input)] text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
+                            >
+                                <option value="">Select country...</option>
+                                {COUNTRIES_LIST.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+
+                        {/* Phone Number + Visibility Toggle */}
                         <InputField label="Phone Number" value={editData.phone} onChange={v => setEditData(p => ({ ...p, phone: v }))} placeholder="e.g. +254 712 345 678" />
+                        <div className="flex items-center justify-between px-1">
+                            <div>
+                                <span className="text-xs font-medium text-text-primary block">Show phone on profile</span>
+                                <span className="text-[10px] text-text-muted">Number will appear blurred; viewers pay to reveal</span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setEditData(p => ({ ...p, phone_visible: !p.phone_visible }))}
+                                className={`relative w-11 h-6 rounded-full transition-colors ${editData.phone_visible ? 'bg-emerald-500' : 'bg-gray-400'}`}
+                            >
+                                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${editData.phone_visible ? 'translate-x-5.5 left-[22px]' : 'left-0.5'}`} />
+                            </button>
+                        </div>
 
                         <div className="flex gap-2 pt-2">
                             <button onClick={saveEdit} className="flex-1 py-3 rounded-2xl font-semibold text-white gradient-primary flex items-center justify-center gap-2">
@@ -259,12 +320,10 @@ export default function ProfilePage() {
                     <div className="space-y-4">
                         <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                             <InfoRow icon={User} label="Name" value={user.display_name || 'Not set'} />
-                            <InfoRow icon={Mail} label="Email" value={user.email || 'Not set'} />
                             <InfoRow icon={Calendar} label="Age" value={user.age || 'Not set'} />
                             <InfoRow icon={MapPin} label="Location" value={user.location || 'Not set'} />
                             <InfoRow icon={Heart} label="Gender" value={formatGender(user.gender)} />
                             <InfoRow icon={Search} label="Looking For" value={formatLookingFor(user.lookingFor)} />
-                            <InfoRow icon={Phone} label="Phone" value={user.phone || 'Not set'} />
                             <InfoRow icon={Shield} label="Bio" value={user.bio || 'Not set'} />
                             {user.interests?.length > 0 && (
                                 <div className="space-y-1 mt-2">
@@ -299,18 +358,39 @@ export default function ProfilePage() {
     // ---- Photos ----
     const renderPhotos = () => {
         const photos = user.photos || [];
+        const currentAvatarUrl = user.avatar_url || '';
         return (
             <div className="space-y-4">
                 <div className="grid grid-cols-3 gap-2">
-                    {photos.map((photo, idx) => (
-                        <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden group">
-                            <img src={photo} alt="" className="w-full h-full object-cover" />
-                            <button onClick={() => removePhoto(idx)}
-                                className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-danger text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                <X size={12} />
-                            </button>
-                        </div>
-                    ))}
+                    {photos.map((photo, idx) => {
+                        const isProfilePic = currentAvatarUrl && photo === currentAvatarUrl;
+                        return (
+                            <div key={idx} className={`relative aspect-square rounded-2xl overflow-hidden group ${isProfilePic ? 'ring-[2.5px] ring-primary ring-offset-2' : ''}`}>
+                                <img src={photo} alt="" className="w-full h-full object-cover" />
+                                {/* Current profile pic badge */}
+                                {isProfilePic && (
+                                    <div className="absolute top-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full shadow-lg"
+                                        style={{ background: 'linear-gradient(135deg, #FF5A5F, #FF2A6D)' }}>
+                                        <Star size={8} className="text-white fill-white" />
+                                        <span className="text-[7px] font-extrabold text-white uppercase tracking-wide">Profile</span>
+                                    </div>
+                                )}
+                                {/* Delete button */}
+                                <button onClick={() => removePhoto(idx)}
+                                    className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-danger text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <X size={12} />
+                                </button>
+                                {/* Set as Profile Pic overlay */}
+                                {!isProfilePic && (
+                                    <button onClick={() => setProfilePhoto(idx)}
+                                        className="absolute bottom-0 left-0 right-0 py-1.5 flex items-center justify-center gap-1 text-[9px] font-bold text-white uppercase tracking-wide opacity-0 group-hover:opacity-100 transition-all"
+                                        style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.3))' }}>
+                                        <Camera size={10} /> Set as Profile Pic
+                                    </button>
+                                )}
+                            </div>
+                        );
+                    })}
                     {photos.length < 6 && (
                         <button onClick={() => fileInputRef.current?.click()}
                             className="aspect-square rounded-2xl flex flex-col items-center justify-center gap-1 transition-colors"
@@ -321,7 +401,7 @@ export default function ProfilePage() {
                     )}
                 </div>
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-                <p className="text-xs text-text-muted text-center">Max 6 photos. First photo is your avatar.</p>
+                <p className="text-xs text-text-muted text-center">Max 6 photos. Tap any photo to set it as your profile picture.</p>
             </div>
         );
     };
@@ -335,7 +415,7 @@ export default function ProfilePage() {
                         <div className="w-16 h-16 mx-auto rounded-full bg-success/10 flex items-center justify-center">
                             <ShieldCheck size={32} className="text-success" />
                         </div>
-                        <h3 className="text-lg font-bold text-success">Profile Verified ✓</h3>
+                        <h3 className="text-lg font-bold text-success">Profile Verified</h3>
                         <p className="text-sm text-text-secondary">Your identity has been confirmed. Other users can see your blue verification badge.</p>
                         <div className="flex justify-center gap-2 flex-wrap">
                             <VerifiedBadge size={28} verified={true} />
@@ -352,7 +432,7 @@ export default function ProfilePage() {
                         <div className="w-16 h-16 mx-auto rounded-full bg-gold/10 flex items-center justify-center">
                             <Shield size={32} className="text-gold" />
                         </div>
-                        <h3 className="text-lg font-bold text-gold">⏳ Under Review</h3>
+                        <h3 className="text-lg font-bold text-gold">Under Review</h3>
                         <p className="text-sm text-text-secondary">Your verification submission is being reviewed by our team. This usually takes 24-48 hours.</p>
                         <div className="w-full bg-surface rounded-full h-2 overflow-hidden">
                             <div className="h-full bg-gold rounded-full animate-pulse" style={{ width: '60%' }} />
@@ -422,7 +502,7 @@ export default function ProfilePage() {
                             {selfieData ? (
                                 <div className="flex items-center gap-3 p-2 rounded-xl" style={{ background: 'var(--color-surface)' }}>
                                     <img src={selfieData} alt="selfie" className="w-12 h-12 rounded-lg object-cover" />
-                                    <span className="text-xs text-success font-medium flex-1">Selfie uploaded ✓</span>
+                                    <span className="text-xs text-success font-medium flex-1">Selfie uploaded</span>
                                     <button onClick={() => setSelfieData(null)} className="text-danger"><X size={14} /></button>
                                 </div>
                             ) : (
@@ -443,7 +523,7 @@ export default function ProfilePage() {
                             {idDocData ? (
                                 <div className="flex items-center gap-3 p-2 rounded-xl" style={{ background: 'var(--color-surface)' }}>
                                     <img src={idDocData} alt="ID" className="w-12 h-12 rounded-lg object-cover" />
-                                    <span className="text-xs text-success font-medium flex-1">ID document uploaded ✓</span>
+                                    <span className="text-xs text-success font-medium flex-1">ID document uploaded</span>
                                     <button onClick={() => setIdDocData(null)} className="text-danger"><X size={14} /></button>
                                 </div>
                             ) : (
@@ -645,11 +725,196 @@ export default function ProfilePage() {
         </div>
     );
 
+    // ---- My Statuses ----
+    const [expandedReports, setExpandedReports] = useState({});
+    const [statusesLoaded, setStatusesLoaded] = useState(false);
+
+    // Fetch statuses and reports when section is opened
+    useEffect(() => {
+        if (activeSection === 'statuses' && user?.id) {
+            // Always fetch fresh statuses when opening this section
+            fetchStatuses().then(freshStatuses => {
+                setStatusesLoaded(true);
+                // Load reports for user's statuses
+                (freshStatuses || []).filter(s => s.user_id === user.id).forEach(s => {
+                    getStatusReport(s.id).then(report => {
+                        setStatusReports(prev => ({ ...prev, [s.id]: report }));
+                    });
+                });
+            });
+        }
+    }, [activeSection, user?.id]);
+
+    const renderStatuses = () => {
+        const myStatuses = (memberStatuses || []).filter(s => s.user_id === user?.id);
+
+        const handleDelete = async (statusId) => {
+            await deleteStatus(statusId);
+            // Refetch to update the list
+            await fetchStatuses();
+        };
+
+        const toggleReport = (id) => {
+            setExpandedReports(prev => ({ ...prev, [id]: !prev[id] }));
+        };
+
+        const timeLeft = (expiresAt) => {
+            if (!expiresAt) return '';
+            const diff = (new Date(expiresAt).getTime() - Date.now()) / 1000;
+            if (diff <= 0) return 'Expired';
+            if (diff < 3600) return `${Math.floor(diff / 60)}m left`;
+            return `${Math.floor(diff / 3600)}h left`;
+        };
+
+        return (
+            <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                    <p className="text-xs text-text-muted">{myStatuses.length} active {myStatuses.length === 1 ? 'status' : 'statuses'}</p>
+                    <button onClick={() => router.push('/members')}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white shadow-md active:scale-95 transition-all"
+                        style={{ background: 'linear-gradient(135deg, #FF5A5F, #FF2A6D)', boxShadow: '0 4px 12px rgba(255,90,95,0.3)' }}>
+                        <Flame size={12} /> New Status
+                    </button>
+                </div>
+
+                {myStatuses.length === 0 ? (
+                    <div className="text-center py-12 space-y-3">
+                        <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto" style={{ background: 'linear-gradient(135deg, rgba(255,90,95,0.1), rgba(255,42,109,0.1))' }}>
+                            <Flame size={28} style={{ color: '#FF5A5F' }} />
+                        </div>
+                        <p className="text-sm font-bold text-text-primary">No active statuses</p>
+                        <p className="text-xs text-text-muted">Share what&apos;s on your mind with other members</p>
+                    </div>
+                ) : (
+                    myStatuses.map(status => {
+                        const report = statusReports[status.id];
+                        const isOpen = !!expandedReports[status.id];
+                        return (
+                            <div key={status.id} className="rounded-2xl overflow-hidden shadow-sm" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                                {/* Status preview */}
+                                <div className="relative h-28 flex items-center justify-center px-8"
+                                    style={{ background: status.media_type === 'image' && status.media_url ? '#000' : (status.background_color || '#FF5A5F') }}>
+                                    {status.media_type === 'image' && status.media_url && (
+                                        <img src={status.media_url} alt="" className="absolute inset-0 w-full h-full object-cover opacity-50" />
+                                    )}
+                                    <p className="text-base font-bold text-white text-center relative z-10 line-clamp-2 drop-shadow-md">
+                                        {status.content || 'Photo Status'}
+                                    </p>
+                                    <div className="absolute top-2.5 right-2.5 flex items-center gap-1 px-2 py-1 rounded-full z-10"
+                                        style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+                                        <Clock size={10} className="text-white/70" />
+                                        <span className="text-[9px] font-bold text-white/80">{timeLeft(status.expires_at)}</span>
+                                    </div>
+                                </div>
+
+                                {/* Stats cards */}
+                                <div className="flex gap-2 px-3 -mt-4 relative z-10">
+                                    <div className="flex-1 flex items-center gap-2 py-2.5 px-3 rounded-xl shadow-sm"
+                                        style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}>
+                                        <Eye size={15} style={{ color: '#6366F1' }} />
+                                        <div>
+                                            <p className="text-sm font-extrabold text-text-primary">{status.view_count || 0}</p>
+                                            <p className="text-[9px] text-text-muted">Views</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 flex items-center gap-2 py-2.5 px-3 rounded-xl shadow-sm"
+                                        style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}>
+                                        <Heart size={15} style={{ color: '#EC4899' }} />
+                                        <div>
+                                            <p className="text-sm font-extrabold text-text-primary">{report?.reactionCount ?? 0}</p>
+                                            <p className="text-[9px] text-text-muted">Reactions</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Action buttons */}
+                                <div className="flex items-center gap-2 px-3 py-3 relative z-20">
+                                    <button onClick={() => toggleReport(status.id)}
+                                        className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm"
+                                        style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1))', color: '#6366F1', border: '1px solid rgba(99,102,241,0.2)' }}>
+                                        <BarChart3 size={14} />
+                                        {isOpen ? 'Hide Report' : 'View Report'}
+                                    </button>
+                                    <button onClick={() => handleDelete(status.id)}
+                                        className="flex items-center justify-center gap-1.5 py-3 px-5 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm"
+                                        style={{ background: 'rgba(239,68,68,0.08)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+                                        <Trash2 size={14} />
+                                        Delete
+                                    </button>
+                                </div>
+
+                                {/* Expanded report */}
+                                {isOpen && report && (
+                                    <div className="border-t px-4 py-4 space-y-4" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+                                        <div>
+                                            <div className="flex items-center gap-2 mb-2.5">
+                                                <Eye size={13} style={{ color: '#6366F1' }} />
+                                                <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Viewers ({report.viewCount})</p>
+                                            </div>
+                                            {(report.views || []).length === 0 ? (
+                                                <p className="text-xs text-text-muted pl-5">No views yet</p>
+                                            ) : (
+                                                <div className="space-y-2 max-h-44 overflow-y-auto pl-5">
+                                                    {report.views.map((v, i) => (
+                                                        <div key={i} className="flex items-center gap-2.5">
+                                                            <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 ring-1 ring-border">
+                                                                {v.viewer?.avatar_url ? (
+                                                                    <img src={v.viewer.avatar_url} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                                                ) : (
+                                                                    <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-text-muted" style={{ background: 'var(--color-bg-card)' }}>
+                                                                        {(v.viewer?.display_name || 'U')[0]}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <span className="text-xs text-text-primary font-semibold">{v.viewer?.display_name || 'User'}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2 mb-2.5">
+                                                <Heart size={13} style={{ color: '#EC4899' }} />
+                                                <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Reactions ({report.reactionCount})</p>
+                                            </div>
+                                            {(report.reactions || []).length === 0 ? (
+                                                <p className="text-xs text-text-muted pl-5">No reactions yet</p>
+                                            ) : (
+                                                <div className="space-y-2 max-h-44 overflow-y-auto pl-5">
+                                                    {report.reactions.map((r, i) => (
+                                                        <div key={i} className="flex items-center gap-2.5">
+                                                            <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 ring-1 ring-border">
+                                                                {r.user?.avatar_url ? (
+                                                                    <img src={r.user.avatar_url} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                                                ) : (
+                                                                    <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-text-muted" style={{ background: 'var(--color-bg-card)' }}>
+                                                                        {(r.user?.display_name || 'U')[0]}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <span className="text-xs text-text-primary font-semibold flex-1">{r.user?.display_name || 'User'}</span>
+                                                            <span className="text-base">{r.reaction === 'love' ? '❤️' : r.reaction === 'fire' ? '🔥' : r.reaction === 'laugh' ? '😂' : r.reaction === 'sad' ? '😢' : '👍'}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })
+                )}
+            </div>
+        );
+    };
+
     // ---- Settings ----
     const renderSettings = () => (
         <div className="space-y-4">
             <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                 <ToggleRow icon={Shield} label="Public Profile" checked={settings.isPublic} onChange={v => updateSettings({ isPublic: v })} />
+                <ToggleRow icon={Users} label="Visible on Members" checked={user?.show_on_members !== false} onChange={v => updateProfile({ show_on_members: v })} />
                 <ToggleRow icon={MapPin} label="Share Location" checked={settings.locationEnabled} onChange={v => updateSettings({ locationEnabled: v })} />
                 <ToggleRow icon={Bell} label="Push Notifications" checked={settings.notifications} onChange={v => updateSettings({ notifications: v })} />
                 <ToggleRow icon={Mail} label="Email Notifications" checked={settings.emailNotifications} onChange={v => updateSettings({ emailNotifications: v })} />

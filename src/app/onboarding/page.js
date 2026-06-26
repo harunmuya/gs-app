@@ -36,17 +36,21 @@ export default function OnboardingPage() {
     const { user, loading, updateProfile, needsOnboarding } = useAuth();
     const router = useRouter();
 
-    const [step, setStep] = useState(1); // 1=gender, 2=role, 3=age+location, 4=interests+hobbies
+    const [step, setStep] = useState(1); // 1=gender, 2=I am a, 3=age+location+country, 4=interests+hobbies
     const [gender, setGender] = useState('');
+    const [profileType, setProfileType] = useState('');
     const [lookingFor, setLookingFor] = useState('');
     const [age, setAge] = useState('');
     const [location, setLocation] = useState('');
+    const [country, setCountry] = useState('Kenya');
     const [interests, setInterests] = useState('');
     const [hobbies, setHobbies] = useState('');
     const [isPublic, setIsPublic] = useState(true);
     const [detectingLocation, setDetectingLocation] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
+
+    const ONBOARD_COUNTRIES = ['Kenya','Uganda','Tanzania','Zimbabwe','Malawi','Rwanda','Burundi','South Sudan','Ethiopia','Nigeria','Ghana','South Africa','Other'];
 
     // Redirect if not logged in or already onboarded
     useEffect(() => {
@@ -59,10 +63,14 @@ export default function OnboardingPage() {
         }
     }, [user, loading, needsOnboarding, router]);
 
-    useEffect(() => {
-        if (gender === 'male') setLookingFor('sugar_mummy');
-        else if (gender === 'female') setLookingFor('sugar_daddy');
-    }, [gender]);
+    const LOOKING_FOR_MAP = {
+        sugar_mummy: 'Toyboy / Sugar Guy',
+        sugar_daddy: 'Young Lady / Mistress',
+        toyboy: 'Sugar Mummy',
+        sugar_guy: 'Sugar Mummy',
+        young_lady: 'Sugar Daddy',
+        mistress: 'Sugar Daddy',
+    };
 
     const detectLocation = () => {
         if (!navigator.geolocation) return;
@@ -82,8 +90,13 @@ export default function OnboardingPage() {
         setTimeout(() => setStep(2), 300);
     };
 
-    const handleRoleSelect = (role) => {
-        setLookingFor(role);
+    const handleProfileTypeSelect = (type) => {
+        setProfileType(type);
+        // Auto-set lookingFor based on profile type
+        if (type === 'sugar_mummy' || type === 'cougar') setLookingFor('toyboy');
+        else if (type === 'sugar_daddy') setLookingFor('young_lady');
+        else if (type === 'toyboy' || type === 'sugar_guy') setLookingFor('sugar_mummy');
+        else if (type === 'young_lady' || type === 'mistress') setLookingFor('sugar_daddy');
         setTimeout(() => { setStep(3); detectLocation(); }, 300);
     };
 
@@ -106,6 +119,8 @@ export default function OnboardingPage() {
             await updateProfile({ 
                 gender, 
                 lookingFor, 
+                profile_type: profileType,
+                country,
                 age: ageNum, 
                 location, 
                 interests: parsedInterests,
@@ -209,22 +224,28 @@ export default function OnboardingPage() {
                         </motion.div>
                     )}
 
-                    {/* Step 2: Looking For */}
+                    {/* Step 2: I Am A... */}
                     {step === 2 && (
                         <motion.div key="role" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }} className="w-full max-w-sm space-y-3">
-                            <p className="text-center text-sm font-semibold text-text-primary mb-2">What are you looking for?</p>
-                            {[
-                                { value: 'sugar_mummy', label: 'Sugar Mummy', desc: 'Connect with a Sugar Mummy', color: 'from-pink-500 to-rose-600' },
-                                { value: 'sugar_daddy', label: 'Sugar Daddy', desc: 'Connect with a Sugar Daddy', color: 'from-blue-500 to-indigo-600' },
-                            ].map(opt => (
+                            <p className="text-center text-sm font-semibold text-text-primary mb-2">I am a...</p>
+                            {(gender === 'female' ? [
+                                { value: 'sugar_mummy', label: 'Sugar Mummy', desc: 'Looking for a Toyboy / Sugar Guy', color: 'from-pink-500 to-rose-600', icon: '👑' },
+                                { value: 'cougar', label: 'Cougar', desc: 'Looking for a younger partner', color: 'from-red-500 to-orange-600', icon: '🔥' },
+                                { value: 'young_lady', label: 'Young Lady', desc: 'Looking for a Sugar Daddy', color: 'from-purple-500 to-pink-500', icon: '💎' },
+                                { value: 'mistress', label: 'Mistress', desc: 'Looking for a Sugar Daddy', color: 'from-fuchsia-500 to-purple-600', icon: '✨' },
+                            ] : [
+                                { value: 'toyboy', label: 'Toyboy', desc: 'Looking for a Sugar Mummy', color: 'from-amber-500 to-orange-600', icon: '🌟' },
+                                { value: 'sugar_guy', label: 'Sugar Guy', desc: 'Looking for a Sugar Mummy', color: 'from-emerald-500 to-teal-600', icon: '💪' },
+                                { value: 'sugar_daddy', label: 'Sugar Daddy', desc: 'Looking for a Young Lady / Mistress', color: 'from-blue-500 to-indigo-600', icon: '👔' },
+                            ]).map(opt => (
                                 <motion.button
                                     key={opt.value}
                                     whileTap={{ scale: 0.97 }}
-                                    onClick={() => handleRoleSelect(opt.value)}
-                                    className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 transition-all text-left ${lookingFor === opt.value ? 'border-primary bg-primary/5' : 'border-border bg-bg-card hover:border-primary/40'}`}
+                                    onClick={() => handleProfileTypeSelect(opt.value)}
+                                    className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 transition-all text-left ${profileType === opt.value ? 'border-primary bg-primary/5' : 'border-border bg-bg-card hover:border-primary/40'}`}
                                 >
-                                    <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${opt.color} flex items-center justify-center text-white shadow-md shrink-0`}>
-                                        {opt.value === 'sugar_mummy' ? <Heart size={24} fill="currentColor" /> : <Crown size={24} />}
+                                    <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${opt.color} flex items-center justify-center text-white shadow-md shrink-0 text-2xl`}>
+                                        {opt.icon}
                                     </div>
                                     <div>
                                         <span className="font-bold text-text-primary block">{opt.label}</span>
@@ -268,6 +289,16 @@ export default function OnboardingPage() {
                                     <Target size={14} className={detectingLocation ? 'animate-spin' : ''} />
                                     {detectingLocation ? 'Detecting...' : 'Auto-detect my location'}
                                 </button>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-text-primary pl-1">Your Country</label>
+                                <select
+                                    value={country} onChange={e => setCountry(e.target.value)}
+                                    className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
+                                >
+                                    {ONBOARD_COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
                             </div>
 
                             {/* Profile visibility */}
