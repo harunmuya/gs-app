@@ -75,13 +75,17 @@ export async function POST(request) {
             attempts: (otp.attempts || 0) + 1,
         });
 
-        await supabaseAdmin.from('activity').insert({
-            user_id: otp.user_id,
-            type: 'security',
-            title: 'Password reset',
-            message: 'Your password was reset using an email OTP.',
-            created_at: new Date().toISOString(),
-        }).catch(() => {});
+        try {
+            await supabaseAdmin.from('activity').insert({
+                user_id: otp.user_id,
+                type: 'security',
+                title: 'Password reset',
+                message: 'Your password was reset using an email OTP.',
+                created_at: new Date().toISOString(),
+            });
+        } catch (activityError) {
+            console.warn('[Password Reset OTP] Activity log skipped:', activityError?.message || activityError);
+        }
 
         return NextResponse.json({ success: true });
     } catch (err) {
