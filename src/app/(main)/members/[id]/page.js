@@ -22,6 +22,8 @@ export default function MemberProfilePage() {
     const [member, setMember] = useState(null);
     const [loading, setLoading] = useState(true);
     const [startingChat, setStartingChat] = useState(false);
+    const [revealedPhone, setRevealedPhone] = useState('');
+    const [revealingPhone, setRevealingPhone] = useState(false);
 
     // ═══ IMAGE LIGHTBOX ═══
     const [lightboxImage, setLightboxImage] = useState(null);
@@ -48,6 +50,30 @@ export default function MemberProfilePage() {
             router.push(`/members/chat/${conv.id}?name=${encodeURIComponent(member.display_name || 'User')}&avatar=${encodeURIComponent(member.avatar_url || '')}&otherId=${member.id}`);
         }
         setStartingChat(false);
+    };
+
+    const handleRevealPhone = async () => {
+        if (!member?.id || !user?.id) return;
+        if (!canUseFeature('revealPhone')) {
+            router.push('/subscribe');
+            return;
+        }
+        if (revealedPhone) return;
+        setRevealingPhone(true);
+        try {
+            const res = await fetch(`/api/members/reveal?userId=${encodeURIComponent(user.id)}&memberId=${encodeURIComponent(member.id)}`);
+            const data = await res.json();
+            if (data.upgradeRequired) {
+                router.push('/subscribe');
+                return;
+            }
+            if (!res.ok) throw new Error(data.error || 'Could not reveal phone');
+            setRevealedPhone(data.phone);
+        } catch (err) {
+            alert(err.message || 'Phone number is not available');
+        } finally {
+            setRevealingPhone(false);
+        }
     };
 
     const timeAgo = (date) => {
@@ -199,6 +225,28 @@ export default function MemberProfilePage() {
                     {!canUseFeature('videoCall') && <Lock size={10} className="absolute top-2 right-2 text-white/60" />}
                 </motion.button>
             </div>
+
+            {member.phone_masked && (
+                <div className="px-4 mt-4">
+                    <div className="rounded-2xl p-3 flex items-center justify-between gap-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                                <Phone size={14} className="text-amber-500" />
+                                <span className="text-xs font-bold text-text-primary">Phone Number</span>
+                            </div>
+                            <p className="font-mono text-sm text-text-secondary tracking-wider truncate">{revealedPhone || member.phone_masked}</p>
+                        </div>
+                        <button
+                            onClick={handleRevealPhone}
+                            className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-white text-[10px] font-bold"
+                            style={{ background: 'linear-gradient(135deg, #F59E0B, #EF4444)' }}
+                        >
+                            {revealedPhone ? <Phone size={11} /> : <Lock size={11} />}
+                            {revealedPhone ? 'Unlocked' : revealingPhone ? 'Revealing...' : 'View Number'}
+                        </button>
+                    </div>
+                </div>
+            )}
 
             <div className="px-4 mt-5 space-y-4">
                 {/* ═══ PHOTO GALLERY ═══ */}

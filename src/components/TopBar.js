@@ -14,7 +14,8 @@ export default function TopBar() {
   // Initialize dark mode from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('gs_dark_mode');
-    if (saved === 'true') {
+    const userSetTheme = localStorage.getItem('gs_theme_user_set') === 'true';
+    if (saved === 'true' && userSetTheme) {
       setDarkMode(true);
       document.documentElement.classList.add('dark');
     } else {
@@ -32,6 +33,7 @@ export default function TopBar() {
       document.documentElement.classList.remove('dark');
     }
     localStorage.setItem('gs_dark_mode', String(newMode));
+    localStorage.setItem('gs_theme_user_set', 'true');
   };
 
   const unreadMessages = (messages || []).filter(m => !m.read).length;
@@ -51,7 +53,7 @@ export default function TopBar() {
       className="sticky top-0 z-50 border-b border-border w-full"
       style={{ background: 'var(--color-bg)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
     >
-      <div className="w-full max-w-[450px] mx-auto flex items-center justify-between px-4 h-[52px]">
+      <div className="w-full max-w-[1180px] mx-auto flex items-center justify-between px-4 h-[52px]">
         {/* Logo — dark/light aware */}
         <button
           onClick={handleLogoClick}

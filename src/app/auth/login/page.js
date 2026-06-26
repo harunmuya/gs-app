@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Crown, ArrowRight, ArrowLeft, User, Mail, Heart, Lock, Eye, EyeOff,
-    UserPlus, LogIn, MapPin, Target, Search, Shield, Users, CheckCircle, Calendar, Send
+    UserPlus, LogIn, MapPin, Target, Search, Calendar, Send
 } from 'lucide-react';
 
 const KENYAN_CITIES = [
@@ -557,19 +557,6 @@ function LoginPageInner() {
                                         </button>
                                     </p>
                                 )}
-
-                                {/* Trust signals */}
-                                <div className="flex items-center justify-center gap-4 pt-2">
-                                    <span className="flex items-center gap-1 text-[10px] text-text-muted">
-                                        <Shield size={10} className="text-success" /> Encrypted
-                                    </span>
-                                    <span className="flex items-center gap-1 text-[10px] text-text-muted">
-                                        <Users size={10} className="text-primary" /> 10K+ Members
-                                    </span>
-                                    <span className="flex items-center gap-1 text-[10px] text-text-muted">
-                                        <CheckCircle size={10} className="text-gold" /> Verified
-                                    </span>
-                                </div>
 
                                 <p className="text-center text-[10px] text-text-muted mt-3 px-4 leading-relaxed">
                                     By continuing, you agree to our{' '}

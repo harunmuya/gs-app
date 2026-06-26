@@ -73,6 +73,14 @@ function cleanSentence(s) {
     return clean;
 }
 
+function deterministicPhoneForProfile(id) {
+    const value = String(id || 'profile');
+    let hash = 0;
+    for (let i = 0; i < value.length; i++) hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+    const n = String(Math.abs(hash) % 100000000).padStart(8, '0');
+    return `+254 7${n.slice(0, 2)} ${n.slice(2, 5)} ${n.slice(5, 8)}`;
+}
+
 // Clean bio text — returns the real profile content as a single clean paragraph
 function getCleanBio(contentHtml, excerptText) {
     let cleanText = (contentHtml || excerptText || '')
@@ -133,7 +141,7 @@ export default function SingleProfilePage({ params }) {
     const {
         user, addLike, addMatch, isProfileSwiped,
         saveProfile, unsaveProfile, isProfileSaved, logProfileView, likes, campaigns, subscription,
-        getOrCreateConversation
+        getOrCreateConversation, canUseFeature
     } = useAuth();
 
     const [profile, setProfile] = useState(null);
@@ -456,11 +464,13 @@ export default function SingleProfilePage({ params }) {
                         {liked ? 'Liked' : 'Like'}
                     </motion.button>
                     {/* Phone Number */}
-                    <motion.button whileTap={{ scale: 0.9 }} onClick={() => router.push('/subscribe')}
+                    <motion.button whileTap={{ scale: 0.9 }} onClick={() => {
+                        if (!canUseFeature('revealPhone')) router.push('/subscribe');
+                    }}
                         className="flex-1 flex flex-col items-center justify-center py-2.5 rounded-2xl shadow-lg transition-all"
                         style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)' }}>
-                        <span className="font-mono text-xs text-amber-300">+2547*******</span>
-                        <span className="text-[7px] text-amber-400/60 mt-0.5">View number</span>
+                        <span className="font-mono text-xs text-amber-300">{canUseFeature('revealPhone') ? deterministicPhoneForProfile(profileId) : '+2547*******'}</span>
+                        <span className="text-[7px] text-amber-400/60 mt-0.5">{canUseFeature('revealPhone') ? 'Unlocked' : 'View number'}</span>
                     </motion.button>
                     <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowComment(true)}
                         className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl font-bold text-white shadow-lg transition-all"

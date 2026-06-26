@@ -127,15 +127,20 @@ body {
 }
 
 body:not(.admin-body) {
-  max-width: 450px;
-  margin: 0 auto;
-  box-shadow: 0 0 60px rgba(0, 0, 0, 0.06);
-  border-left: 1px solid var(--color-border);
-  border-right: 1px solid var(--color-border);
+  margin: 0;
   overflow-x: hidden;
-  /* Safe-area for notched phones (iPhone X+, Android w/ cutouts) */
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
+}
+
+@media (max-width: 640px) {
+  body:not(.admin-body) {
+    max-width: 450px;
+    margin: 0 auto;
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.06);
+    border-left: 1px solid var(--color-border);
+    border-right: 1px solid var(--color-border);
+  }
 }
 
 body:has(.admin-dashboard-container),

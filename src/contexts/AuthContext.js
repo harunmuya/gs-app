@@ -899,7 +899,8 @@ export function AuthProvider({ children }) {
         try {
             const isLocal = typeof window !== 'undefined' && 
                 (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-            const redirectOrigin = isLocal ? window.location.origin : 'https://genuine-sugarmummies-app.vercel.app';
+            const configuredOrigin = process.env.NEXT_PUBLIC_SITE_URL || 'https://genuinesugarmummies.co.ke';
+            const redirectOrigin = isLocal ? window.location.origin : configuredOrigin.replace(/\/$/, '');
 
             const { error } = await supabase.auth.resetPasswordForEmail(email, {
                 redirectTo: `${redirectOrigin}/auth/callback?type=recovery`,

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
+import { getSiteUrl, sendTransactionalEmail } from '@/lib/email';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -468,7 +469,7 @@ export async function POST(request) {
             }
 
             // Get target users based on tier/userId
-            let query = supabaseAdmin.from('users').select('id');
+            let query = supabaseAdmin.from('users').select('id, email, display_name');
 
             if (userId && userId !== 'broadcast') {
                 query = query.eq('id', userId);
@@ -492,14 +493,34 @@ export async function POST(request) {
             const content = `${title}\n\n${bodyText}`;
 
             let sentCount = 0;
+            let emailCount = 0;
             for (const u of usersList) {
                 const res = await sendAdminChatMessage(supabaseAdmin, u.id, content, 'Admin Mary G', '/gs-logo.png');
                 if (res.success) {
                     sentCount++;
                 }
+                if (u.email) {
+                    try {
+                        const emailRes = await sendTransactionalEmail({
+                            to: u.email,
+                            subject: title,
+                            title,
+                            preview: bodyText,
+                            bodyHtml: `
+                                <p>Hi ${u.display_name || 'there'},</p>
+                                <p>${String(bodyText).replace(/\n/g, '<br />')}</p>
+                            `,
+                            ctaLabel: 'Open App',
+                            ctaUrl: `${getSiteUrl()}/alerts`,
+                        });
+                        if (!emailRes.skipped) emailCount++;
+                    } catch (emailErr) {
+                        console.error('[Admin Broadcast Email] Failed:', emailErr.message);
+                    }
+                }
             }
 
-            return NextResponse.json({ success: true, sent: sentCount });
+            return NextResponse.json({ success: true, sent: sentCount, emailed: emailCount });
         }
 
         if (action === 'approve_payment' || action === 'decline_payment') {

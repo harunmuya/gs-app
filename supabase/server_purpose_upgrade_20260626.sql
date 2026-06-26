@@ -1,4 +1,4 @@
--- Genuine Sugar Mummies Kenya app server-purpose upgrade
+﻿-- Genuine Sugar Mummies Kenya app server-purpose upgrade
 -- Run in Supabase SQL Editor for genuine-sugarmummies-app / genuinesugarmummies.co.ke.
 -- Safe to run multiple times.
 
@@ -240,6 +240,20 @@ CREATE TABLE IF NOT EXISTS public.subscriptions (
 );
 
 ALTER TABLE public.subscriptions DROP CONSTRAINT IF EXISTS subscriptions_plan_check;
+
+-- Normalize old/invalid plan names before adding the stricter package check.
+-- Existing apps may have rows such as diamond, premium, VIP, blank, or NULL.
+UPDATE public.subscriptions
+SET plan = CASE
+    WHEN plan IS NULL OR btrim(plan) = '' THEN 'free'
+    WHEN lower(btrim(plan)) IN ('free', 'trial') THEN 'free'
+    WHEN lower(btrim(plan)) IN ('basic', 'bronze', 'starter') THEN 'basic'
+    WHEN lower(btrim(plan)) IN ('silver', 'standard') THEN 'silver'
+    WHEN lower(btrim(plan)) IN ('gold', 'diamond', 'premium', 'vip', 'international') THEN 'gold'
+    ELSE 'free'
+END;
+
+ALTER TABLE public.subscriptions ALTER COLUMN plan SET DEFAULT 'free';
 ALTER TABLE public.subscriptions ADD CONSTRAINT subscriptions_plan_check CHECK (plan IN ('free','basic','silver','gold'));
 
 CREATE TABLE IF NOT EXISTS public.transactions (

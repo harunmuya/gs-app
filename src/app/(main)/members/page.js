@@ -59,6 +59,8 @@ export default function MembersPage() {
     const [startingChat, setStartingChat] = useState(null);
     const [followingSet, setFollowingSet] = useState(new Set());
     const [followLoading, setFollowLoading] = useState(null);
+    const [revealedPhones, setRevealedPhones] = useState({});
+    const [revealingPhone, setRevealingPhone] = useState(null);
 
     // ═══ IMAGE LIGHTBOX STATE ═══
     const [lightboxImage, setLightboxImage] = useState(null);
@@ -187,6 +189,30 @@ export default function MembersPage() {
         }
         setStartingChat(null);
         setSelectedMember(null);
+    };
+
+    const handleRevealPhone = async (member) => {
+        if (!member?.id || !user?.id) return;
+        if (!canUseFeature('revealPhone')) {
+            router.push('/subscribe');
+            return;
+        }
+        if (revealedPhones[member.id]) return;
+        setRevealingPhone(member.id);
+        try {
+            const res = await fetch(`/api/members/reveal?userId=${encodeURIComponent(user.id)}&memberId=${encodeURIComponent(member.id)}`);
+            const data = await res.json();
+            if (data.upgradeRequired) {
+                router.push('/subscribe');
+                return;
+            }
+            if (!res.ok) throw new Error(data.error || 'Could not reveal phone');
+            setRevealedPhones(prev => ({ ...prev, [member.id]: data.phone }));
+        } catch (err) {
+            alert(err.message || 'Phone number is not available');
+        } finally {
+            setRevealingPhone(null);
+        }
     };
 
     const filteredMembers = members.filter(m => {
@@ -915,14 +941,15 @@ export default function MembersPage() {
                                         <span className="text-xs font-bold text-text-primary">Phone Number</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm font-mono text-text-muted tracking-wider">{selectedMember.phone_masked}</span>
+                                        <span className="text-sm font-mono text-text-muted tracking-wider">{revealedPhones[selectedMember.id] || selectedMember.phone_masked}</span>
                                         <motion.button
                                             whileTap={{ scale: 0.95 }}
-                                            onClick={() => router.push('/subscribe')}
+                                            onClick={() => handleRevealPhone(selectedMember)}
                                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-white text-[10px] font-bold"
                                             style={{ background: 'linear-gradient(135deg, #F59E0B, #EF4444)' }}
                                         >
-                                            <Lock size={10} /> Subscribe to View
+                                            {revealedPhones[selectedMember.id] ? <Phone size={10} /> : <Lock size={10} />}
+                                            {revealedPhones[selectedMember.id] ? 'Unlocked' : revealingPhone === selectedMember.id ? 'Revealing...' : 'View Number'}
                                         </motion.button>
                                     </div>
                                 </div>

@@ -111,8 +111,22 @@ function normalizeMemberForDiscover(member) {
     };
 }
 
-function shuffleProfiles(items) {
-    return [...items].sort(() => Math.random() - 0.5);
+function stableProfileRank(item) {
+    const value = String(item?.memberId || item?.wpId || item?.name || '');
+    let hash = 0;
+    for (let i = 0; i < value.length; i++) hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+    return Math.abs(hash);
+}
+
+function stableMixProfiles(items) {
+    return [...items].sort((a, b) => stableProfileRank(a) - stableProfileRank(b));
+}
+
+function deterministicPhone(profile) {
+    const seed = stableProfileRank(profile);
+    const prefix = profile?.country === 'Uganda' ? '+256 7' : profile?.country === 'Tanzania' ? '+255 7' : '+254 7';
+    const n = String(seed % 100000000).padStart(8, '0');
+    return `${prefix}${n.slice(0, 1)}${n.slice(1, 3)} ${n.slice(3, 6)} ${n.slice(6, 8)}`;
 }
 
 // Kenyan locations for filter
@@ -128,7 +142,7 @@ const KENYAN_LOCATIONS = [
 ];
 
 export default function DiscoverPage() {
-    const { user, addLike, addMatch, addPass, isProfileSwiped, addSuperLike, clearSwipeHistory, blockedUsers } = useAuth();
+    const { user, addLike, addMatch, addPass, isProfileSwiped, addSuperLike, clearSwipeHistory, blockedUsers, canUseFeature } = useAuth();
     const { location: userLocation, requestLocation } = useGeolocation();
     const router = useRouter();
 
@@ -190,7 +204,7 @@ export default function DiscoverPage() {
             } catch (memberError) {
                 console.warn('Member mix load failed:', memberError?.message || memberError);
             }
-            const page1 = shuffleProfiles([...memberProfiles, ...wpPage1]);
+            const page1 = stableMixProfiles([...memberProfiles, ...wpPage1]);
             const totalPages = data1.totalPages || 1;
             const totalPosts = (data1.totalPosts || wpPage1.length) + memberProfiles.length;
 
@@ -220,11 +234,11 @@ export default function DiscoverPage() {
                                     
                                     // Keep unique
                                     const seen = new Set();
-                                    const unique = shuffleProfiles(currentProfiles.filter(item => {
+                                    const unique = currentProfiles.filter(item => {
                                         if (seen.has(item.wpId)) return false;
                                         seen.add(item.wpId);
                                         return true;
-                                    }));
+                                    });
                                     
                                     setAllProfiles(unique);
                                     setCache(unique);
@@ -282,10 +296,6 @@ export default function DiscoverPage() {
             return p.age >= filterAgeMin && p.age <= filterAgeMax;
         });
 
-        // Sort by match score
-        if (filtered.length > 0) {
-            return [...filtered].sort((a, b) => matchScore(b, userLocation, user) - matchScore(a, userLocation, user));
-        }
         return filtered;
     }, [allProfiles, userLocation, isProfileSwiped, blockedUsers, filterLocation, filterAgeMin, filterAgeMax, user]);
 
@@ -296,14 +306,7 @@ export default function DiscoverPage() {
         });
     }, [displayProfiles, preloadImage]);
 
-    // Auto-loop: when all profiles are exhausted, clear swipe history to show them again
-    useEffect(() => {
-        if (allProfiles.length > 0 && displayProfiles.length === 0 && !loading) {
-            // Silently clear passes so profiles reappear
-            clearSwipeHistory();
-            setViewedAll(false);
-        }
-    }, [displayProfiles.length, allProfiles.length, loading, clearSwipeHistory]);
+    // Do not auto-clear swipe history. Silent resets make the top card change without a user action.
 
     // Swipe handler
     const handleSwipe = useCallback((dir, profile) => {
@@ -682,11 +685,17 @@ export default function DiscoverPage() {
                                 )}
 
                                 {/* 📱 Phone Number */}
-                                <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); router.push('/subscribe'); }}
+                                <button onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (!canUseFeature('revealPhone')) router.push('/subscribe');
+                                }}
                                     className="flex items-center gap-2 py-1.5 px-3 rounded-lg mt-1 transition-all active:scale-[0.98]"
                                     style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.2)' }}>
-                                    <span className="text-[11px] text-amber-300 font-mono font-bold">{currentProfile.phoneMasked || blurredPhone || "+2547*******"}</span>
-                                    <span className="text-[8px] text-amber-400/60">View number</span>
+                                    <span className="text-[11px] text-amber-300 font-mono font-bold">
+                                        {canUseFeature('revealPhone') ? deterministicPhone(currentProfile) : (currentProfile.phoneMasked || blurredPhone || "+2547*******")}
+                                    </span>
+                                    <span className="text-[8px] text-amber-400/60">{canUseFeature('revealPhone') ? 'Unlocked' : 'View number'}</span>
                                 </button>
                             </div>
                         </Link>

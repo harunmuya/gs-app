@@ -33,8 +33,8 @@ export default function BottomNav() {
   };
 
   return (
-    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[450px] z-50 bg-bg/90 backdrop-blur-xl border-t border-border" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-      <div className="max-w-md mx-auto flex items-center justify-around h-16 px-2">
+    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[1180px] z-50 bg-bg/90 backdrop-blur-xl border-t border-border" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      <div className="max-w-3xl mx-auto flex items-center justify-around h-16 px-2">
         {NAV_ITEMS.map(item => {
           const isActive = pathname === item.href || (item.href !== '/' && pathname?.startsWith(item.href));
           const badge = getBadge(item.href);

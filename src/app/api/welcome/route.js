@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getSiteUrl, sendTransactionalEmail } from '@/lib/email';
 
 // Admin client — bypasses RLS entirely
 const supabaseAdmin = createClient(
@@ -121,70 +122,34 @@ export async function POST(req) {
         // 1b. Send actual welcome message to user's chat (opens like SMS!)
         await sendAdminChatMessage(supabaseAdmin, userId, welcomeBody, 'Admin Mary G', '/gs-logo.png').catch(() => {});
 
-        // 2. Send physical welcome email via Resend if API Key is configured
-        if (process.env.RESEND_API_KEY) {
-            try {
-                // Fetch the user's email address from auth system
-                const { data: authUser, error: authErr } = await supabaseAdmin.auth.admin.getUserById(userId);
-                const userEmail = authUser?.user?.email;
-
-                if (userEmail && !authErr) {
-                    const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
-                    const htmlBody = `
-                      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 580px; margin: 0 auto; padding: 30px; border: 1px solid #f1f3f5; border-radius: 16px; background-color: #ffffff; color: #212529;">
-                        <div style="text-align: center; margin-bottom: 25px;">
-                          <img src="https://genuine-sugarmummies-app.vercel.app/genuine-logo.png?v=5" alt="Genuine Sugar Mummies" style="height: 38px; object-fit: contain;" />
+        // 2. Send physical welcome email via Resend when RESEND_API_KEY is configured.
+        try {
+            const { data: authUser, error: authErr } = await supabaseAdmin.auth.admin.getUserById(userId);
+            const userEmail = authUser?.user?.email || email;
+            if (userEmail && !authErr) {
+                await sendTransactionalEmail({
+                    to: userEmail,
+                    subject: 'Welcome to Genuine Sugar Mummies',
+                    title: `Welcome, ${name}!`,
+                    preview: 'Your Genuine Sugar Mummies account is ready.',
+                    bodyHtml: `
+                        <p>We are thrilled to welcome you to <strong>Genuine Sugar Mummies</strong>, Kenya's trusted platform for premium matchmaking.</p>
+                        <div style="background:#fff5f5;border-left:4px solid #e03131;padding:14px 18px;border-radius:10px;margin:18px 0;">
+                            <p style="margin:0 0 8px;font-weight:800;color:#c92a2a;">Getting started</p>
+                            <ul style="margin:0;padding-left:20px;">
+                                <li>Complete your profile and upload clear photos.</li>
+                                <li>Browse Discover and Members to find matches.</li>
+                                <li>Activate a package after admin approval to unlock premium features.</li>
+                            </ul>
                         </div>
-                        <h2 style="color: #E03131; font-size: 22px; font-weight: 700; margin-top: 0; margin-bottom: 16px; text-align: center;">Welcome, ${name}!</h2>
-                        <p style="font-size: 15px; line-height: 1.6; color: #495057; margin-bottom: 20px;">
-                          We are thrilled to welcome you to <strong>Genuine Sugar Mummies</strong>, Kenya's most trusted and secure platform for premium matchmaking.
-                        </p>
-                        
-                        <div style="background-color: #fff5f5; border-left: 4px solid #E03131; padding: 15px 20px; border-radius: 8px; margin-bottom: 24px;">
-                          <h3 style="margin-top: 0; margin-bottom: 8px; font-size: 14px; color: #C92A2A; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Getting Started</h3>
-                          <ul style="margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6; color: #495057;">
-                            <li><strong>Complete your profile:</strong> Fill in your details and upload clear photos to stand out.</li>
-                            <li><strong>Explore matches:</strong> Visit the Discover feed to swipe and find connections.</li>
-                            <li><strong>Activate VIP:</strong> Upgrade your account to unlock unlimited messaging and direct calls.</li>
-                          </ul>
-                        </div>
-                        
-                        <p style="font-size: 14px; line-height: 1.5; color: #495057; margin-bottom: 24px;">
-                          Need support? Connect with our administration team at <a href="mailto:admin@genuinesugarmummies.co.ke" style="color: #E03131; text-decoration: none; font-weight: 600;">admin@genuinesugarmummies.co.ke</a> or message Mary G directly on Telegram at <a href="https://t.me/GSADMINMARYGAGENCY" style="color: #E03131; text-decoration: none; font-weight: 600;">@GSADMINMARYGAGENCY</a>.
-                        </p>
-                        
-                        <hr style="border: 0; border-top: 1px solid #e9ecef; margin: 25px 0;" />
-                        <p style="font-size: 11px; color: #868e96; text-align: center; margin: 0; line-height: 1.4;">
-                          Genuine Sugar Mummies App &copy; 2026. All rights reserved.<br/>
-                          This email was sent to ${userEmail} as a welcome notice for your registration.
-                        </p>
-                      </div>
-                    `;
-
-                    const emailRes = await fetch('https://api.resend.com/emails', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`
-                        },
-                        body: JSON.stringify({
-                            from: fromEmail,
-                            to: [userEmail],
-                            subject: 'Welcome to Genuine Sugar Mummies!',
-                            html: htmlBody
-                        })
-                    });
-
-                    if (!emailRes.ok) {
-                        const errTxt = await emailRes.text();
-                        console.error('[Welcome Email API] Resend call failed:', errTxt);
-                    } else {
-                        console.log('[Welcome Email API] Welcome email sent successfully to', userEmail);
-                    }
-                }
-            } catch (emailErr) {
-                console.error('[Welcome Email API] Failed to send welcome email:', emailErr.message);
+                        <p>Need support? Email <a href="mailto:admin@genuinesugarmummies.co.ke" style="color:#e03131;font-weight:700;">admin@genuinesugarmummies.co.ke</a>.</p>
+                    `,
+                    ctaLabel: 'Open Genuine Sugar Mummies',
+                    ctaUrl: `${getSiteUrl()}/discover`,
+                });
             }
+        } catch (emailErr) {
+            console.error('[Welcome Email API] Failed to send welcome email:', emailErr.message);
         }
 
         if (error) {

@@ -128,8 +128,12 @@ export default function RootLayout({ children }) {
                             (function(){
                                 try {
                                     var d = localStorage.getItem('gs_dark_mode');
-                                    if (d === 'true') {
+                                    var userSetTheme = localStorage.getItem('gs_theme_user_set') === 'true';
+                                    if (d === 'true' && userSetTheme) {
                                         document.documentElement.classList.add('dark');
+                                    } else {
+                                        document.documentElement.classList.remove('dark');
+                                        if (!userSetTheme) localStorage.setItem('gs_dark_mode', 'false');
                                     }
                                     
                                     // Detect GoNative/Median app wrapper and persist

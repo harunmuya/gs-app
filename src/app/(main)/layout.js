@@ -13,7 +13,7 @@ export default function MainLayout({ children }) {
         <AuthGuard>
             <div className={`min-h-dvh bg-bg w-full ${isChatRoom ? '' : 'pb-20'}`}>
                 {!isChatRoom && <TopBar />}
-                <main className={`w-full max-w-[450px] mx-auto ${isChatRoom ? 'px-0' : 'px-1 pt-14'}`}>
+                <main className={`w-full max-w-[1180px] mx-auto ${isChatRoom ? 'px-0' : 'px-2 sm:px-4 lg:px-6 pt-14'}`}>
                     {children}
                 </main>
                 <BottomNav />
