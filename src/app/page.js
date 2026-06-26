@@ -53,7 +53,7 @@ export default function Home() {
 
             {/* GS Icon */}
             <img
-                src="/gs.png"
+                src="/gs-logo.png?v=7"
                 alt="GS"
                 style={{
                     width: 80,
@@ -61,18 +61,6 @@ export default function Home() {
                     objectFit: 'contain',
                     marginBottom: 20,
                     animation: 'splashZoom 1.2s ease-in-out infinite',
-                }}
-            />
-
-            {/* Brand Logo */}
-            <img
-                src="/genuine-logo-alt.png?v=5"
-                alt="Genuine Sugarmummies"
-                style={{
-                    height: 32,
-                    objectFit: 'contain',
-                    marginBottom: 8,
-                    filter: 'brightness(1.1)',
                 }}
             />
 

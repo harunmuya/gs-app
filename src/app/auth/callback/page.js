@@ -175,16 +175,10 @@ export default function AuthCallbackPage() {
       }}>
         {/* Logo — dark text for light mode, light text for dark mode */}
         <img
-          src="/genuine-logo.png?v=6"
-          alt="Genuine Sugarmummies"
-          style={{ height: '36px', objectFit: 'contain', marginBottom: '32px' }}
-          className="cb-fadeup dark:hidden"
-        />
-        <img
-          src="/genuine-logo-alt.png?v=6"
-          alt="Genuine Sugarmummies"
-          style={{ height: '36px', objectFit: 'contain', marginBottom: '32px' }}
-          className="cb-fadeup hidden dark:block"
+          src="/gs-logo.png?v=7"
+          alt="GS"
+          style={{ width: '72px', height: '72px', objectFit: 'contain', marginBottom: '32px' }}
+          className="cb-fadeup"
         />
 
         {status === 'loading' && (

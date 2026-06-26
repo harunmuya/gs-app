@@ -8,7 +8,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
-import Link from 'next/link';
 
 // ---- Ultra-fast profile cache ----
 const CACHE_KEY = 'gsm_profiles_v2';
@@ -142,7 +141,7 @@ const KENYAN_LOCATIONS = [
 ];
 
 export default function DiscoverPage() {
-    const { user, addLike, addMatch, addPass, isProfileSwiped, addSuperLike, clearSwipeHistory, blockedUsers, canUseFeature } = useAuth();
+    const { user, settings, addLike, addMatch, addPass, isProfileSwiped, addSuperLike, clearSwipeHistory, blockedUsers, canUseFeature } = useAuth();
     const { location: userLocation, requestLocation } = useGeolocation();
     const router = useRouter();
 
@@ -153,7 +152,11 @@ export default function DiscoverPage() {
     const [viewedAll, setViewedAll] = useState(false);
     const [dbTotal, setDbTotal] = useState(0);
     const [showFilters, setShowFilters] = useState(false);
+    const [locallySwiped, setLocallySwiped] = useState(() => new Set());
     const fetchingRef = useRef(false);
+    const swipeLockedRef = useRef(false);
+    const locationRequestedRef = useRef(false);
+    const wasDraggedRef = useRef(false);
 
     // Filters
     const [filterLocation, setFilterLocation] = useState('All');
@@ -268,9 +271,15 @@ export default function DiscoverPage() {
 
     useEffect(() => { loadProfiles(); }, [loadProfiles]);
 
+    useEffect(() => {
+        if (!settings?.locationEnabled || userLocation || locationRequestedRef.current) return;
+        locationRequestedRef.current = true;
+        requestLocation();
+    }, [settings?.locationEnabled, userLocation, requestLocation]);
+
     // Filter + sort profiles
     const displayProfiles = useMemo(() => {
-        let filtered = allProfiles.filter(p => !isProfileSwiped(p.wpId));
+        let filtered = allProfiles.filter(p => !isProfileSwiped(p.wpId) && !locallySwiped.has(p.wpId));
 
         // Block filter
         if (blockedUsers && blockedUsers.length > 0) {
@@ -297,7 +306,7 @@ export default function DiscoverPage() {
         });
 
         return filtered;
-    }, [allProfiles, userLocation, isProfileSwiped, blockedUsers, filterLocation, filterAgeMin, filterAgeMax, user]);
+    }, [allProfiles, userLocation, isProfileSwiped, locallySwiped, blockedUsers, filterLocation, filterAgeMin, filterAgeMax, user]);
 
     // Preload next 3 images
     useEffect(() => {
@@ -310,8 +319,14 @@ export default function DiscoverPage() {
 
     // Swipe handler
     const handleSwipe = useCallback((dir, profile) => {
-        if (!profile) return;
+        if (!profile || swipeLockedRef.current) return;
+        swipeLockedRef.current = true;
         setSwipeDir(dir);
+        setLocallySwiped(prev => {
+            const next = new Set(prev);
+            next.add(profile.wpId);
+            return next;
+        });
         if (dir === 'right') {
             addLike(profile).then(res => {
                 if (res?.limitReached) {
@@ -332,7 +347,10 @@ export default function DiscoverPage() {
         } else {
             addPass(profile.wpId);
         }
-        setTimeout(() => setSwipeDir(null), 300);
+        setTimeout(() => {
+            setSwipeDir(null);
+            swipeLockedRef.current = false;
+        }, 320);
     }, [addLike, addMatch, addPass, addSuperLike, userLocation, user, router]);
 
     // Touch gesture handlers
@@ -340,14 +358,18 @@ export default function DiscoverPage() {
         const touch = e.touches[0];
         setTouchStart({ x: touch.clientX, y: touch.clientY });
         setIsDragging(true);
+        wasDraggedRef.current = false;
     };
 
     const handleTouchMove = (e) => {
         if (!touchStart) return;
         const touch = e.touches[0];
+        const dx = touch.clientX - touchStart.x;
+        const dy = touch.clientY - touchStart.y;
+        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) wasDraggedRef.current = true;
         setTouchDelta({
-            x: touch.clientX - touchStart.x,
-            y: touch.clientY - touchStart.y,
+            x: dx,
+            y: dy,
         });
     };
 
@@ -371,9 +393,19 @@ export default function DiscoverPage() {
         setIsDragging(false);
     };
 
+    const handleCardClick = (profile) => {
+        if (!profile) return;
+        if (wasDraggedRef.current) {
+            setTimeout(() => { wasDraggedRef.current = false; }, 0);
+            return;
+        }
+        router.push(profile.detailHref || `/discover/${profile.wpId}`);
+    };
+
     const handleRefresh = () => {
         setRefreshing(true);
         setViewedAll(false);
+        setLocallySwiped(new Set());
         clearSwipeHistory();
         loadProfiles(true);
     };
@@ -595,8 +627,9 @@ export default function DiscoverPage() {
                         onTouchStart={handleTouchStart}
                         onTouchMove={handleTouchMove}
                         onTouchEnd={handleTouchEnd}
+                        onClick={() => handleCardClick(currentProfile)}
                     >
-                        <Link href={currentProfile.detailHref || `/discover/${currentProfile.wpId}`} className="block w-full h-full">
+                        <div className="block w-full h-full cursor-pointer">
                             {currentProfile.imageUrl ? (
                                 <img src={currentProfile.imageUrl} alt={currentProfile.name} loading="eager" draggable={false}
                                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
@@ -698,7 +731,7 @@ export default function DiscoverPage() {
                                     <span className="text-[8px] text-amber-400/60">{canUseFeature('revealPhone') ? 'Unlocked' : 'View number'}</span>
                                 </button>
                             </div>
-                        </Link>
+                        </div>
                     </motion.div>
                 </AnimatePresence>
             </div>

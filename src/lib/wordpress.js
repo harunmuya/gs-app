@@ -164,6 +164,55 @@ export function extractBio(excerpt, content) {
     return text || 'Looking for a genuine connection. Tap to learn more.';
 }
 
+function cleanProfileText(html) {
+    return (html || '')
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&#8217;/g, "'")
+        .replace(/&#8211;/g, '-')
+        .replace(/&amp;/g, '&')
+        .replace(/&hellip;/g, '...')
+        .replace(/\+?\d[\d\s().-]{7,}\d/g, '[Verified Contact]')
+        .replace(/continue\s+reading.*$/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function shortProfileSentence(text, max = 170) {
+    const cleaned = cleanProfileText(text)
+        .replace(/\b(?:whatsapp|telegram|t\.me|escrow)\b[^.?!]*/gi, '')
+        .replace(/admin\s+mary\s+g[^.?!]*/gi, '')
+        .trim();
+    if (!cleaned) return '';
+    const sentences = cleaned
+        .split(/(?<=[.!?])\s+/)
+        .map(s => s.trim())
+        .filter(s => s.length > 20 && !/whatsapp|telegram|t\.me|escrow|admin mary g/i.test(s));
+    const best = sentences[0] || cleaned;
+    return best.length > max ? `${best.slice(0, max - 3).trim()}...` : best;
+}
+
+export function buildProfileSummary({ title, content, excerpt, details }) {
+    const cleanPiece = (value) => String(value || '')
+        .replace(/\u2013|\u2014|â|â€“/g, '-')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const pieces = [];
+    if (details?.partnerType) pieces.push(`Looking for ${cleanPiece(details.partnerType)}`);
+    if (details?.partnerAge) pieces.push(`Preferred age ${cleanPiece(details.partnerAge)}`);
+    if (details?.relationshipType) pieces.push(cleanPiece(details.relationshipType));
+    if (Array.isArray(details?.qualities) && details.qualities.length) {
+        pieces.push(`Values ${details.qualities.slice(0, 3).map(cleanPiece).join(', ')}`);
+    }
+
+    const structured = pieces.filter(Boolean).join('. ');
+    if (structured) return `${structured}.`;
+
+    return shortProfileSentence(excerpt || content || title) || 'Looking for a genuine connection.';
+}
+
 // Common Kenyan female names for name-based gender detection
 const FEMALE_NAMES = new Set([
     'amina', 'aisha', 'wanjiku', 'wambui', 'njeri', 'nyambura', 'wangari', 'muthoni', 'wairimu',
@@ -431,6 +480,7 @@ export function parsePluginProfile(data) {
     const daysSincePost = Math.max(1, Math.floor((Date.now() - postDate.getTime()) / (1000 * 60 * 60 * 24)));
 
     const extracted = extractProfileDetails(title, contentRaw);
+    const summary = buildProfileSummary({ title, content: contentRaw, excerpt: excerptRaw, details: extracted });
 
     return {
         wpId: data.wpId,
@@ -438,8 +488,9 @@ export function parsePluginProfile(data) {
         age,
         location,
         bio,
-        excerpt: extractBio(excerptRaw, ''),
-        content: contentRaw,
+        excerpt: summary,
+        aboutSummary: summary,
+        content: summary,
         imageUrl,
         wpUrl: data.link || '',
         date: data.date || '',
@@ -489,6 +540,7 @@ export function parseProfile(post) {
     const daysSincePost = Math.max(1, Math.floor((Date.now() - postDate.getTime()) / (1000 * 60 * 60 * 24)));
 
     const extracted = extractProfileDetails(title, content);
+    const summary = buildProfileSummary({ title, content, excerpt, details: extracted });
 
     return {
         wpId: post.id,
@@ -496,8 +548,9 @@ export function parseProfile(post) {
         age,
         location,
         bio,
-        excerpt: excerptText,
-        content: content,
+        excerpt: summary || excerptText,
+        aboutSummary: summary || excerptText,
+        content: summary || excerptText,
         imageUrl,
         wpUrl: post.link || '',
         date: post.date || '',

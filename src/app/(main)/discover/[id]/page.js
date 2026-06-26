@@ -115,7 +115,8 @@ function getCleanBio(contentHtml, excerptText) {
         .map(s => s.trim())
         .filter(s => s.length > 12 && !s.toLowerCase().includes('mary g') && !s.toLowerCase().includes('escrow') && !s.toLowerCase().includes('t.me'));
 
-    return sentences.length > 0 ? sentences.join(' ') : cleanText;
+    const summary = sentences.length > 0 ? sentences[0] : cleanText;
+    return summary.length > 190 ? `${summary.slice(0, 187).trim()}...` : summary;
 }
 
 export default function SingleProfilePage({ params }) {
@@ -302,7 +303,7 @@ export default function SingleProfilePage({ params }) {
     const daysActive = profile.daysSincePost || 0;
 
     // Clean bio text — real content only
-    const bioText = getCleanBio(profile.content, profile.excerpt);
+    const bioText = profile.aboutSummary || getCleanBio(profile.content, profile.excerpt);
     const connectionMsg = encodeURIComponent(`Hi Admin Mary G, I need a match connection with ${profile.name || 'this person'} from GS App.`);
 
     return (
@@ -731,6 +732,13 @@ export default function SingleProfilePage({ params }) {
                                         </span>
                                     ))}
                                 </div>
+                            </div>
+                        )}
+
+                        {bioText && (
+                            <div className="p-3 rounded-2xl bg-surface/50 border border-border">
+                                <p className="text-[10px] text-text-muted uppercase font-bold mb-2">Short About</p>
+                                <p className="text-xs text-text-secondary leading-relaxed">{bioText}</p>
                             </div>
                         )}
 

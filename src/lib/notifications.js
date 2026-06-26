@@ -43,8 +43,8 @@ export async function sendNotification(title, body, options = {}) {
 
     const notifOptions = {
         body,
-        icon: options.icon || '/icon-192.png',
-        badge: '/icon-192.png',
+        icon: options.icon || '/gs-logo.png',
+        badge: '/gs-logo.png',
         vibrate: [200, 100, 200],
         tag: options.tag || 'gs-' + Date.now(),
         renotify: true,

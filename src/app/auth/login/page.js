@@ -410,10 +410,8 @@ function LoginPageInner() {
                         className="flex flex-col items-center mb-6"
                     >
                         <div className="mb-3">
-                            <img src="/gs.png" alt="GS" className="w-14 h-14 object-contain" />
+                            <img src="/gs-logo.png?v=7" alt="GS" className="w-16 h-16 object-contain" />
                         </div>
-                        <img src="/genuine-logo.png?v=6" alt="Genuine Sugarmummies" className="h-8 object-contain mb-2 dark:hidden" />
-                        <img src="/genuine-logo-alt.png?v=6" alt="Genuine Sugarmummies" className="h-8 object-contain mb-2 hidden dark:block" />
 
                         <h1 className="text-lg font-extrabold text-gradient mb-0.5 text-center">
                             {mode === 'forgot' ? 'Reset Password' :

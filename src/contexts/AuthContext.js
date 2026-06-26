@@ -8,7 +8,7 @@ const AuthContext = createContext({});
 
 const DEFAULT_SETTINGS = {
     isPublic: true,
-    locationEnabled: false,
+    locationEnabled: true,
     notifications: true,
     showOnline: true,
     showAge: true,
@@ -447,7 +447,7 @@ export function AuthProvider({ children }) {
             if (prefsRes.data) {
                 setSettings({
                     isPublic: prefsRes.data.is_public ?? true,
-                    locationEnabled: prefsRes.data.location_enabled ?? false,
+                    locationEnabled: prefsRes.data.location_enabled ?? true,
                     notifications: prefsRes.data.notifications_enabled ?? true,
                     showOnline: prefsRes.data.show_online ?? true,
                     showAge: prefsRes.data.show_age ?? true,

@@ -8,7 +8,7 @@ export function getSiteUrl() {
 
 function baseEmailTemplate({ title, preview, bodyHtml, ctaLabel, ctaUrl }) {
     const siteUrl = getSiteUrl();
-    const logoUrl = `${siteUrl}/genuine-logo.png?v=6`;
+    const logoUrl = `${siteUrl}/gs-logo.png?v=7`;
     const safePreview = preview || title || 'Genuine Sugar Mummies update';
 
     return `<!doctype html>

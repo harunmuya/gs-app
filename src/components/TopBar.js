@@ -60,19 +60,10 @@ export default function TopBar() {
           className="flex items-center active:scale-95 transition-transform min-w-0 mr-2"
           aria-label="Go to home"
         >
-          {/* Light mode logo (dark text on light bg) */}
           <img
-            src="/genuine-logo.png?v=6"
-            alt="Genuine Sugarmummies"
-            className="h-7 w-auto max-w-[150px] object-contain dark:hidden"
-            style={{ maxHeight: '28px' }}
-          />
-          {/* Dark mode logo (light text on dark bg) */}
-          <img
-            src="/genuine-logo-alt.png?v=6"
-            alt="Genuine Sugarmummies"
-            className="h-7 w-auto max-w-[150px] object-contain hidden dark:block"
-            style={{ maxHeight: '28px' }}
+            src="/gs-logo.png?v=7"
+            alt="GS"
+            className="h-9 w-9 object-contain"
           />
         </button>
 
