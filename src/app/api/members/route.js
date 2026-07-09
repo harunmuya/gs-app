@@ -328,6 +328,8 @@ function dedupeMemberRows(rows = []) {
 function inferProfileLabel(member = {}) {
     const raw = String(member.profile_label || member.member_category || '').toLowerCase().replace(/[\s-]+/g, '_');
     const valid = ['sugar_mummy', 'sugar_daddy', 'mistress', 'toyboy'];
+    // ALWAYS trust a valid profile_label from the database first — never override it from photo URLs
+    if (valid.includes(raw)) return raw;
     if (member.is_seed_profile) {
         const media = `${member.avatar_url || ''} ${Array.isArray(member.photos) ? member.photos.join(' ') : ''}`.toLowerCase();
         const seedIdentity = `${member.email || ''} ${member.username || ''} ${member.display_name || ''}`.toLowerCase().replace(/[\s-]+/g, '_');
@@ -339,9 +341,7 @@ function inferProfileLabel(member = {}) {
         if (seedIdentity.includes('sugar_mummy') || seedIdentity.includes('sugarmum')) return 'sugar_mummy';
         if (seedIdentity.includes('sugar_daddy') || seedIdentity.includes('sugardad')) return 'sugar_daddy';
         if (seedIdentity.includes('mistress')) return 'mistress';
-        if (valid.includes(raw)) return raw;
     }
-    if (valid.includes(raw)) return raw;
     if (raw.startsWith('sugar_mummy')) return 'sugar_mummy';
     if (raw.startsWith('sugar_daddy')) return 'sugar_daddy';
     if (raw.startsWith('mistress')) return 'mistress';

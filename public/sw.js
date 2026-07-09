@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gscoke-cache-v10';
+const CACHE_NAME = 'gscoke-cache-v11';
 const OFFLINE_URL = '/offline.html';
 
 const PRECACHE_URLS = [

@@ -12,9 +12,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fallbackProfileImageSrc, useProfileImageFallback } from '@/lib/profileImages';
 import { displayDistanceKm, distanceText as profileDistanceText } from '@/lib/geo';
 
-const CACHE_KEY = 'gsk_app_discover_deck_v16';
-const CURRENT_CARD_KEY = 'gsk_app_discover_current_card_v1';
-const OLD_CACHE_KEYS = ['gscom_discover_deck_v3', 'gsk_app_discover_deck_v3', 'gsk_app_discover_deck_v4', 'gsk_app_discover_deck_v5', 'gsk_app_discover_deck_v6', 'gsk_app_discover_deck_v7', 'gsk_app_discover_deck_v8', 'gsk_app_discover_deck_v9', 'gsk_app_discover_deck_v10', 'gsk_app_discover_deck_v11', 'gsk_app_discover_deck_v12', 'gsk_app_discover_deck_v13', 'gsk_app_discover_deck_v14', 'gsk_app_discover_deck_v15'];
+const CACHE_KEY = 'gsk_app_discover_deck_v17';
+const CURRENT_CARD_KEY = 'gsk_app_discover_current_card_v2';
+const OLD_CACHE_KEYS = ['gscom_discover_deck_v3', 'gsk_app_discover_deck_v3', 'gsk_app_discover_deck_v4', 'gsk_app_discover_deck_v5', 'gsk_app_discover_deck_v6', 'gsk_app_discover_deck_v7', 'gsk_app_discover_deck_v8', 'gsk_app_discover_deck_v9', 'gsk_app_discover_deck_v10', 'gsk_app_discover_deck_v11', 'gsk_app_discover_deck_v12', 'gsk_app_discover_deck_v13', 'gsk_app_discover_deck_v14', 'gsk_app_discover_deck_v15', 'gsk_app_discover_deck_v16', 'gsk_app_discover_current_card_v1'];
 const CACHE_LIMIT = 80;
 const DECK_PAGE_SIZE = 20;
 const VALID_PROFILE_LABELS = new Set(['sugar_mummy', 'sugar_daddy', 'mistress', 'toyboy']);

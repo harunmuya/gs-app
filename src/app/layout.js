@@ -75,7 +75,7 @@ export default function RootLayout({ children }) {
                             if ('serviceWorker' in navigator) {
                                 window.addEventListener('load', () => {
                                     navigator.serviceWorker.getRegistrations?.().then((regs) => regs.forEach((reg) => reg.update?.())).catch(() => {});
-                                    navigator.serviceWorker.register('/sw.js?v=20260709-2', { updateViaCache: 'none' }).catch(() => {});
+                                    navigator.serviceWorker.register('/sw.js?v=20260709-3', { updateViaCache: 'none' }).catch(() => {});
                                 });
                             }
                         `,
