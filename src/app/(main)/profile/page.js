@@ -1,1136 +1,775 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    User, Camera, Heart, Bookmark, Settings, ChevronRight, LogOut, Trash2, Pencil,
-    Shield, HelpCircle, ChevronLeft, X, Mail, MapPin, Calendar, Star, Plus, Phone,
-    MessageCircle, ShieldCheck, ShieldAlert, ImagePlus, Check, AlertCircle, Send,
-    MessageSquare, Bell, Crown, CreditCard, BarChart3, Eye, LifeBuoy, Search, Users, Flame, Clock
+    User, Mail, Camera, Trash2, Shield, ShieldCheck, LogOut,
+    Settings, ChevronRight, Heart, MessageCircle, Bell, Bookmark,
+    MapPin, Edit3, Plus, X, Send, AlertTriangle, ExternalLink,
+    Info, HelpCircle, Trash, Clock, Gem, Users, PackageCheck, Headphones,
+    Eye, Lock, Phone, SlidersHorizontal, UserCog, Image as ImageIcon, Wallet,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
-import TelegramIcon from '@/components/TelegramIcon';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import VerifiedBadge from '@/components/VerifiedBadge';
+import StoriesStrip from '@/components/StoriesStrip';
+import AccountActivityPanel from '@/components/AccountActivityPanel';
 
-const KENYAN_CITIES = [
-    'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Ruiru', 'Kikuyu',
-    'Thika', 'Naivasha', 'Kakamega', 'Kisii', 'Kitale', 'Athi River', 'Mlolongo',
-    'Garissa', 'Malindi', 'Ngong', 'Rongai', 'Karen', 'Westlands', 'Kilimani',
-    'Langata', 'South B', 'South C', 'Roysambu', 'Kasarani', 'Embakasi',
-    'Juja', 'Kiambu', 'Nyeri', 'Machakos', 'Meru', 'Nanyuki', 'Diani',
-    'Kilifi', 'Voi', 'Kericho', 'Homabay', 'Migori', 'Bomet', 'Webuye',
-    'Wajir', 'Limuru', 'Lodwar', 'Mandera', 'Narok', 'Isiolo', 'Marsabit',
-    'Lamu', 'Watamu', 'Bamburi', 'Nyali',
-];
-
-const MENU_ITEMS = [
-    { key: 'profile', icon: User, label: 'My Profile' },
-    { key: 'photos', icon: Camera, label: 'My Photos' },
-    { key: 'verification', icon: ShieldCheck, label: 'Verify Profile' },
-    { key: 'messages', icon: MessageSquare, label: 'Messages' },
-    { key: 'notifications', icon: Bell, label: 'Notifications' },
-    { key: 'saved', icon: Bookmark, label: 'Saved Profiles' },
-    { key: 'statuses', icon: Flame, label: 'My Statuses' },
-    { key: 'subscribe', icon: Crown, label: 'Membership Plans', link: '/subscribe' },
-    { key: 'support', icon: LifeBuoy, label: 'Support & Help Desk', link: '/settings/support' },
-    { key: 'settings', icon: Settings, label: 'Settings' },
-    { key: 'contact', icon: Phone, label: 'Contact Us' },
-    { key: 'help', icon: HelpCircle, label: 'FAQ' },
-];
+const PREFERENCE_LABELS = {
+    sugar_mummy_looking_for_toyboy: 'Sugar Mummy seeking Sugar Guy / Toyboy',
+    sugar_daddy_looking_for_mistress: 'Sugar Daddy seeking Mistress',
+    mistress_looking_for_sugar_daddy: 'Mistress seeking Sugar Daddy',
+    toyboy_looking_for_sugar_mummy: 'Sugar Guy / Toyboy seeking Sugar Mummy',
+};
 
 export default function ProfilePage() {
-    const router = useRouter();
-    const { user, profile, likes, matches, updateProfile, addPhoto, removePhoto, setProfilePhoto, saved, signOut, deleteAccount, settings, updateSettings, verificationStatus, verifyProfile, clearVerification, messages, markMessagesRead, markSingleMessageRead, deleteMessage, subscription, conversations, getOrCreateConversation, deleteConversation, memberStatuses, fetchStatuses, deleteStatus, getStatusReport } = useAuth();
-    const [statusReports, setStatusReports] = useState({});
-    const [loadingReport, setLoadingReport] = useState(null);
+    const {
+        user, guest, profile, likes, matches, saved, messages,
+        verificationStatus, verificationTimer, settings, preference, liveLocationData,
+        signOut, updateProfile, addPhoto, removePhoto,
+        updateSettings, updatePreference, verifyProfile, clearVerification, deleteAccount, addMessage,
+    } = useAuth();
+
     const [activeSection, setActiveSection] = useState(null);
-    const [editMode, setEditMode] = useState(false);
-    const [editData, setEditData] = useState({});
-    const [selfieData, setSelfieData] = useState(null);
-    const [idDocData, setIdDocData] = useState(null);
-    const [expandedMessages, setExpandedMessages] = useState({});
-    const [selectedMessage, setSelectedMessage] = useState(null);
+    const [editField, setEditField] = useState(null);
+    const [editValue, setEditValue] = useState('');
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [showPreferencePicker, setShowPreferencePicker] = useState(false);
+    const [moderationCountdown, setModerationCountdown] = useState('');
+    const [verificationForm, setVerificationForm] = useState({ selfieDataUrl: '', documentDataUrl: '', documentType: 'id', phone: profile?.phone_number || profile?.phone || '' });
+    const [supportForm, setSupportForm] = useState({ service: 'payment_issue', subject: '', message: '' });
+    const [supportStatus, setSupportStatus] = useState('');
+    const [signingOut, setSigningOut] = useState(false);
+    const [photoStatus, setPhotoStatus] = useState('');
+    const [photoBusy, setPhotoBusy] = useState(false);
+    const [editStatus, setEditStatus] = useState('');
+    const [editBusy, setEditBusy] = useState(false);
+    const [deleteBusy, setDeleteBusy] = useState(false);
+    const [deleteStatus, setDeleteStatus] = useState('');
     const fileInputRef = useRef(null);
     const selfieInputRef = useRef(null);
-    const idDocInputRef = useRef(null);
+    const documentInputRef = useRef(null);
 
-    const handleMessageClick = async (msg) => {
-        if (!msg.read) {
-            await markSingleMessageRead(msg.id);
-        }
-        
-        // If it is a notification with a profileId (real member match/message)
-        if (msg.profileId) {
-            const conv = conversations?.find(c => String(c.matchWpId) === String(msg.profileId));
-            if (conv) {
-                router.push(`/chat/${encodeURIComponent(conv.id)}`);
-            } else {
-                router.push(`/discover/${msg.profileId}`);
-            }
-            return;
-        }
+    const isLoggedIn = !!user;
+    const currentTier = String(profile?.subscription_tier || profile?.subscriptionTier || 'free').toLowerCase();
+    const packageApproved = Boolean(!profile?.package_locked && ['basic', 'silver', 'gold', 'diamond'].includes(currentTier));
+    const canRevealPhone = packageApproved && ['silver', 'gold', 'diamond'].includes(currentTier);
+    const canUseBasic = packageApproved && ['basic', 'silver', 'gold', 'diamond'].includes(currentTier);
+    const displayName = profile?.display_name || user?.email?.split('@')[0] || 'Guest';
+    const username = String(displayName || 'member').trim().toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24) || 'member';
+    const userPhotos = profile?.photos || [];
+    const profilePhotoMissing = !(profile?.avatar_url || userPhotos[0]);
+    const profileComplete = Boolean((profile?.avatar_url || userPhotos[0]) && profile?.bio && profile?.age && profile?.location && (profile?.phone_number || profile?.phone));
+    const effectiveVerificationStatus = profile?.verification_status || verificationStatus;
+    const unreadMessages = messages.filter((item) => !item.read).length;
+    const accountStatus = profileComplete ? (profile?.show_in_public !== false && settings.isPublic ? 'Visible in Members' : 'Hidden by Privacy') : 'Profile incomplete';
+    const verificationLabel = effectiveVerificationStatus === 'verified' ? 'Verified' : effectiveVerificationStatus === 'pending_admin' ? 'Under review' : effectiveVerificationStatus === 'reverify_required' ? 'Reverify needed' : 'Not verified';
+    const packageLabel = packageApproved ? `${currentTier.toUpperCase()} active` : 'Free account';
+    const missingFields = [
+        !(profile?.avatar_url || userPhotos[0]) && 'profile photo',
+        !profile?.bio && 'bio',
+        !profile?.age && 'age',
+        !profile?.location && 'location',
+        !profile?.phone_number && !profile?.phone && 'phone number',
+    ].filter(Boolean);
 
-        // Clickable actions based on notification types
-        if (msg.type === 'support') {
-            router.push('/settings/support');
-            return;
-        } else if (msg.type === 'verification') {
-            setActiveSection('verification');
-            return;
-        } else if (msg.type === 'upgrade' || msg.type === 'system') {
-            setActiveSection('profile');
-            return;
-        } else if (msg.type === 'welcome') {
-            router.push('/discover');
-            return;
-        } else if (msg.type === 'match' || msg.type === 'like') {
-            router.push('/matches');
-            return;
-        }
+    // Moderation countdown timer
+    useEffect(() => {
+        if (verificationStatus !== 'moderation_review' || !verificationTimer) return;
 
-        // Fallback: open the detail modal popup
-        setSelectedMessage(msg);
-    };
+        const update = () => {
+            const remaining = Math.max(0, verificationTimer - Date.now());
+            const min = Math.floor(remaining / 60000);
+            const sec = Math.floor((remaining % 60000) / 1000);
+            setModerationCountdown(`${min}:${sec.toString().padStart(2, '0')}`);
+        };
 
+        update();
+        const interval = setInterval(update, 1000);
+        return () => clearInterval(interval);
+    }, [verificationStatus, verificationTimer]);
 
-    if (!user) return null;
-
+    // Photo upload
     const handlePhotoUpload = (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = (ev) => addPhoto(ev.target.result);
+        reader.onload = (ev) => {
+            const canvas = document.createElement('canvas');
+            const img = new Image();
+            img.onload = async () => {
+                const MAX = 800;
+                let w = img.width, h = img.height;
+                if (w > MAX || h > MAX) {
+                    if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+                    else { w = Math.round(w * MAX / h); h = MAX; }
+                }
+                canvas.width = w; canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                setPhotoBusy(true);
+                setPhotoStatus('Saving photo...');
+                try {
+                    await addPhoto(canvas.toDataURL('image/webp', 0.85));
+                    setPhotoStatus('Photo saved to your account.');
+                } catch (error) {
+                    setPhotoStatus(error.message || 'Photo could not be saved. Try again.');
+                } finally {
+                    setPhotoBusy(false);
+                }
+            };
+            img.src = ev.target.result;
+        };
         reader.readAsDataURL(file);
         e.target.value = '';
     };
 
-    const handleSelfieUpload = (e) => {
+    const readCompressedImage = (file, callback) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX = 900;
+                let w = img.width, h = img.height;
+                if (w > MAX || h > MAX) {
+                    if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+                    else { w = Math.round(w * MAX / h); h = MAX; }
+                }
+                canvas.width = w;
+                canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                callback(canvas.toDataURL('image/webp', 0.82));
+            };
+            img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleSelfieCapture = (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => setSelfieData(ev.target.result);
-        reader.readAsDataURL(file);
+        readCompressedImage(file, (dataUrl) => setVerificationForm((current) => ({ ...current, selfieDataUrl: dataUrl })));
         e.target.value = '';
     };
 
-    const handleIdDocUpload = (e) => {
+    const handleDocumentCapture = (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => setIdDocData(ev.target.result);
-        reader.readAsDataURL(file);
+        readCompressedImage(file, (dataUrl) => setVerificationForm((current) => ({ ...current, documentDataUrl: dataUrl })));
         e.target.value = '';
     };
 
-    const handleSubmitVerification = async () => {
-        if (!selfieData || !idDocData) return;
-        await verifyProfile(selfieData, idDocData);
-        setSelfieData(null);
-        setIdDocData(null);
+    const submitVerification = () => {
+        verifyProfile({ ...verificationForm, phone: verificationForm.phone || profile?.phone_number || profile?.phone || '' });
     };
 
-    const COUNTRIES_LIST = ['Kenya','Uganda','Tanzania','Zimbabwe','Malawi','Rwanda','Burundi','South Sudan','Ethiopia','Nigeria','Ghana','South Africa','Other'];
-    const PROFILE_LABELS = [
-        { value: 'member', label: 'No Label' },
-        { value: 'sugar_mummy', label: 'Sugar Mummy' },
-        { value: 'sugar_daddy', label: 'Sugar Daddy' },
-        { value: 'toyboy', label: 'Toyboy' },
-        { value: 'sugar_guy', label: 'Sugar Guy' },
-        { value: 'young_lady', label: 'Young Lady' },
-        { value: 'mistress', label: 'Mistress' },
-        { value: 'cougar', label: 'Cougar' },
-    ];
-
-    const startEdit = () => {
-        setEditMode(true);
-        setEditData({
-            display_name: user.display_name || '',
-            bio: user.bio || '',
-            interests: (user.interests || []).join(', '),
-            hobbies: (user.hobbies || []).join(', '),
-            age: user.age || '',
-            location: user.location || '',
-            gender: user.gender || '',
-            lookingFor: user.lookingFor || '',
-            phone: user.phone || '',
-            profile_type: user.profile_type || 'member',
-            phone_visible: user.phone_visible || false,
-            country: user.country || '',
-        });
-    };
-
-    const saveEdit = () => {
-        updateProfile({
-            display_name: editData.display_name,
-            bio: editData.bio,
-            interests: typeof editData.interests === 'string' ? editData.interests.split(',').map(i => i.trim()).filter(Boolean) : (editData.interests || []),
-            hobbies: typeof editData.hobbies === 'string' ? editData.hobbies.split(',').map(h => h.trim()).filter(Boolean) : (editData.hobbies || []),
-            age: parseInt(editData.age) || null,
-            location: editData.location,
-            gender: editData.gender,
-            lookingFor: editData.lookingFor,
-            phone: editData.phone,
-            profile_type: editData.profile_type,
-            phone_visible: editData.phone_visible,
-            country: editData.country,
-        });
-        setEditMode(false);
-    };
-
-    const unreadConversations = (conversations || []).reduce((sum, c) => sum + (c.unreadCount || 0), 0);
-    const unreadNotifications = (messages || []).filter(m => !m.read).length;
-
-    // ---- SECTION RENDERERS ----
-    const renderSection = () => {
-        switch (activeSection) {
-            case 'profile': return renderProfileEdit();
-            case 'photos': return renderPhotos();
-            case 'verification': return renderVerification();
-            case 'messages': return renderMessages();
-            case 'notifications': return renderNotifications();
-            case 'saved': return renderSaved();
-            case 'statuses': return renderStatuses();
-            case 'settings': return renderSettings();
-            case 'contact': return renderContact();
-            case 'help': return renderHelp();
-            default: return null;
+    const submitSupportTicket = async () => {
+        const serviceLabels = {
+            payment_issue: 'Payment issue',
+            package_unlock: 'Package unlock',
+            refund: 'Refund or cancellation',
+            verification: 'Verification help',
+            safety_report: 'Report scam or fake profile',
+            account_profile: 'Account or profile',
+            direct_connection: 'Direct connection service',
+            general: 'General support',
+        };
+        const subject = supportForm.subject.trim() || serviceLabels[supportForm.service] || 'Support request';
+        const message = supportForm.message.trim();
+        if (message.length < 3) { setSupportStatus('Write a short message for support.'); return; }
+        setSupportStatus('Submitting...');
+        try {
+            const res = await fetch('/api/members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'support_ticket',
+                    memberId: profile?.id || user?.id,
+                    email: user?.email || profile?.email || '',
+                    display_name: profile?.display_name || user?.display_name || '',
+                    subject,
+                    message,
+                    service: supportForm.service,
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Support request failed.');
+            if (data.autoResponse) {
+                addMessage({
+                    type: 'ticket_auto_response',
+                    sender: data.autoResponse.senderLabel || data.autoResponse.team || 'GS Support',
+                    title: data.autoResponse.title,
+                    body: data.autoResponse.body,
+                    timestamp: new Date().toISOString(),
+                });
+            }
+            setSupportStatus(data.autoResponse?.shortStatus || 'Ticket submitted. A team reply has been sent to your inbox and email.');
+            setSupportForm({ service: 'payment_issue', subject: '', message: '' });
+        } catch (error) {
+            setSupportStatus(error.message || 'Support request failed.');
         }
     };
 
-    // ---- Profile Edit ----
-    const renderProfileEdit = () => {
-        const formatGender = (g) => {
-            if (g === 'male') return 'Male';
-            if (g === 'female') return 'Female';
-            if (g === 'other') return 'Other';
-            return 'Not set';
-        };
-
-        const formatLookingFor = (l) => {
-            if (l === 'sugar_mummy') return 'Sugar Mummy';
-            if (l === 'sugar_daddy') return 'Sugar Daddy';
-            return 'Not set';
-        };
-
-        return (
-            <div className="space-y-4">
-                {editMode ? (
-                    <div className="space-y-3">
-                        <InputField label="Display Name" value={editData.display_name} onChange={v => setEditData(p => ({ ...p, display_name: v }))} />
-                        <InputField label="Bio" value={editData.bio} onChange={v => setEditData(p => ({ ...p, bio: v }))} multiline />
-                        <InputField label="Interests" value={editData.interests} onChange={v => setEditData(p => ({ ...p, interests: v }))} placeholder="e.g. Travel, Dining, Music" />
-                        <InputField label="Hobbies" value={editData.hobbies} onChange={v => setEditData(p => ({ ...p, hobbies: v }))} placeholder="e.g. Hiking, Cooking, Swimming" />
-                        <InputField label="Age" value={editData.age} onChange={v => setEditData(p => ({ ...p, age: v }))} />
-                        
-                        {/* Location Select */}
-                        <div className="space-y-1">
-                            <label className="text-xs text-text-muted font-medium block">Location</label>
-                            <select
-                                value={editData.location}
-                                onChange={e => setEditData(p => ({ ...p, location: e.target.value }))}
-                                className="w-full rounded-xl p-3 bg-[var(--color-bg-input)] text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
-                            >
-                                <option value="">Select location...</option>
-                                {KENYAN_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                        </div>
-
-                        {/* Gender Select */}
-                        <div className="space-y-1">
-                            <label className="text-xs text-text-muted font-medium block">Gender</label>
-                            <select
-                                value={editData.gender}
-                                onChange={e => setEditData(p => ({ ...p, gender: e.target.value }))}
-                                className="w-full rounded-xl p-3 bg-[var(--color-bg-input)] text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
-                            >
-                                <option value="">Select gender...</option>
-                                <option value="male">Male</option>
-                                <option value="female">Female</option>
-                            </select>
-                        </div>
-
-                        {/* Looking For Select */}
-                        <div className="space-y-1">
-                            <label className="text-xs text-text-muted font-medium block">Looking For</label>
-                            <select
-                                value={editData.lookingFor}
-                                onChange={e => setEditData(p => ({ ...p, lookingFor: e.target.value }))}
-                                className="w-full rounded-xl p-3 bg-[var(--color-bg-input)] text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
-                            >
-                                <option value="">Select connection...</option>
-                                <option value="sugar_mummy">Sugar Mummy</option>
-                                <option value="sugar_daddy">Sugar Daddy</option>
-                            </select>
-                        </div>
-
-                        {/* Profile Label — how you want to appear */}
-                        <div className="space-y-1">
-                            <label className="text-xs text-text-muted font-medium block">Profile Label (shown on your card)</label>
-                            <select
-                                value={editData.profile_type}
-                                onChange={e => setEditData(p => ({ ...p, profile_type: e.target.value }))}
-                                className="w-full rounded-xl p-3 bg-[var(--color-bg-input)] text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
-                            >
-                                {PROFILE_LABELS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
-                            </select>
-                        </div>
-
-                        {/* Country Select */}
-                        <div className="space-y-1">
-                            <label className="text-xs text-text-muted font-medium block">Country (flag shown on card)</label>
-                            <select
-                                value={editData.country}
-                                onChange={e => setEditData(p => ({ ...p, country: e.target.value }))}
-                                className="w-full rounded-xl p-3 bg-[var(--color-bg-input)] text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
-                            >
-                                <option value="">Select country...</option>
-                                {COUNTRIES_LIST.map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                        </div>
-
-                        {/* Phone Number + Visibility Toggle */}
-                        <InputField label="Phone Number" value={editData.phone} onChange={v => setEditData(p => ({ ...p, phone: v }))} placeholder="e.g. +254 712 345 678" />
-                        <div className="flex items-center justify-between px-1">
-                            <div>
-                                <span className="text-xs font-medium text-text-primary block">Show phone on profile</span>
-                                <span className="text-[10px] text-text-muted">Number will appear blurred; viewers pay to reveal</span>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setEditData(p => ({ ...p, phone_visible: !p.phone_visible }))}
-                                className={`relative w-11 h-6 rounded-full transition-colors ${editData.phone_visible ? 'bg-emerald-500' : 'bg-gray-400'}`}
-                            >
-                                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${editData.phone_visible ? 'translate-x-5.5 left-[22px]' : 'left-0.5'}`} />
-                            </button>
-                        </div>
-
-                        <div className="flex gap-2 pt-2">
-                            <button onClick={saveEdit} className="flex-1 py-3 rounded-2xl font-semibold text-white gradient-primary flex items-center justify-center gap-2">
-                                <Check size={18} /> Save
-                            </button>
-                            <button onClick={() => setEditMode(false)} className="flex-1 py-3 rounded-2xl font-semibold text-text-secondary" style={{ background: 'var(--color-surface)' }}>
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                        <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                            <InfoRow icon={User} label="Name" value={user.display_name || 'Not set'} />
-                            <InfoRow icon={Calendar} label="Age" value={user.age || 'Not set'} />
-                            <InfoRow icon={MapPin} label="Location" value={user.location || 'Not set'} />
-                            <InfoRow icon={Heart} label="Gender" value={formatGender(user.gender)} />
-                            <InfoRow icon={Search} label="Looking For" value={formatLookingFor(user.lookingFor)} />
-                            <InfoRow icon={Shield} label="Bio" value={user.bio || 'Not set'} />
-                            {user.interests?.length > 0 && (
-                                <div className="space-y-1 mt-2">
-                                    <span className="text-[10px] text-text-muted font-bold uppercase tracking-wider block">Interests</span>
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {user.interests.map((i, idx) => (
-                                            <span key={idx} className="px-2.5 py-1 text-xs font-medium rounded-full bg-primary/10 text-primary">{i}</span>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            {user.hobbies?.length > 0 && (
-                                <div className="space-y-1 mt-2">
-                                    <span className="text-[10px] text-text-muted font-bold uppercase tracking-wider block">Hobbies</span>
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {user.hobbies.map((h, idx) => (
-                                            <span key={idx} className="px-2.5 py-1 text-xs font-medium rounded-full bg-gold/10 text-gold">{h}</span>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                        <button onClick={startEdit} className="w-full py-3 rounded-2xl font-semibold text-white gradient-primary flex items-center justify-center gap-2">
-                            <Pencil size={16} /> Edit Profile
-                        </button>
-                    </div>
-                )}
-            </div>
-        );
+    // Edit field
+    const startEdit = (field, currentValue) => {
+        setEditField(field);
+        setEditValue(currentValue || '');
+        setEditStatus('');
     };
 
-    // ---- Photos ----
-    const renderPhotos = () => {
-        const photos = user.photos || [];
-        const currentAvatarUrl = user.avatar_url || '';
-        return (
-            <div className="space-y-4">
-                <div className="grid grid-cols-3 gap-2">
-                    {photos.map((photo, idx) => {
-                        const isProfilePic = currentAvatarUrl && photo === currentAvatarUrl;
-                        return (
-                            <div key={idx} className={`relative aspect-square rounded-2xl overflow-hidden group ${isProfilePic ? 'ring-[2.5px] ring-primary ring-offset-2' : ''}`}>
-                                <img src={photo} alt="" className="w-full h-full object-cover" />
-                                {/* Current profile pic badge */}
-                                {isProfilePic && (
-                                    <div className="absolute top-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full shadow-lg"
-                                        style={{ background: 'linear-gradient(135deg, #FF5A5F, #FF2A6D)' }}>
-                                        <Star size={8} className="text-white fill-white" />
-                                        <span className="text-[7px] font-extrabold text-white uppercase tracking-wide">Profile</span>
-                                    </div>
-                                )}
-                                {/* Delete button */}
-                                <button onClick={() => removePhoto(idx)}
-                                    className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-danger text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <X size={12} />
-                                </button>
-                                {/* Set as Profile Pic overlay */}
-                                {!isProfilePic && (
-                                    <button onClick={() => setProfilePhoto(idx)}
-                                        className="absolute bottom-0 left-0 right-0 py-1.5 flex items-center justify-center gap-1 text-[9px] font-bold text-white uppercase tracking-wide opacity-0 group-hover:opacity-100 transition-all"
-                                        style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.3))' }}>
-                                        <Camera size={10} /> Set as Profile Pic
-                                    </button>
-                                )}
-                            </div>
-                        );
-                    })}
-                    {photos.length < 6 && (
-                        <button onClick={() => fileInputRef.current?.click()}
-                            className="aspect-square rounded-2xl flex flex-col items-center justify-center gap-1 transition-colors"
-                            style={{ background: 'var(--color-surface)', border: '2px dashed var(--color-border)' }}>
-                            <Plus size={24} className="text-primary" />
-                            <span className="text-[10px] text-text-muted font-medium">Add Photo</span>
+    const saveEdit = async () => {
+        if (!editField || editValue === undefined || editBusy) return;
+        const value = String(editValue || '').trim();
+        if (['display_name', 'bio', 'age', 'location', 'phone_number'].includes(editField) && !value) {
+            setEditStatus('This field is required.');
+            return;
+        }
+        if (editField === 'display_name' && (value.length < 2 || value.includes('@') || /^\d+$/.test(value))) {
+            setEditStatus('Add your real first name or public name.');
+            return;
+        }
+        if (editField === 'age') {
+            const ageValue = Number(value);
+            if (!Number.isInteger(ageValue) || ageValue < 18 || ageValue > 80) {
+                setEditStatus('Age must be between 18 and 80.');
+                return;
+            }
+        }
+        if (editField === 'phone_number' && value.replace(/\D/g, '').length < 7) {
+            setEditStatus('Add a valid phone number.');
+            return;
+        }
+        if (editField === 'bio' && value.length < 12) {
+            setEditStatus('Write at least 12 characters so members know you are real.');
+            return;
+        }
+        setEditBusy(true);
+        setEditStatus('Saving...');
+        try {
+            await updateProfile({ [editField]: value });
+            setEditStatus('Saved.');
+            setEditField(null);
+        } catch (error) {
+            setEditStatus(error.message || 'Profile change could not be saved.');
+        } finally {
+            setEditBusy(false);
+        }
+    };
+
+    const handleSignOut = async () => {
+        if (signingOut) return;
+        setSigningOut(true);
+        await signOut();
+        window.location.replace('/auth/login?signed_out=1');
+    };
+    const handleDeleteAccount = async () => {
+        if (deleteBusy) return;
+        setDeleteBusy(true);
+        setDeleteStatus('Deleting your account from the database...');
+        try {
+            await deleteAccount();
+            window.location.href = '/auth/login?deleted=1';
+        } catch (error) {
+            setDeleteStatus(error.message || 'Account could not be deleted. Please try again.');
+            setDeleteBusy(false);
+        }
+    };
+
+    return (
+        <div className="px-4 py-4 pb-28 space-y-4">
+            {/* ===== PROFILE HEADER ===== */}
+            <div className="rounded-2xl p-5 text-center space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                <div className="relative inline-block">
+                    <UserAvatar name={displayName} src={profile?.avatar_url} size={80} />
+                </div>
+                <div>
+                    <h2 className="text-xl font-black text-text-primary flex items-center justify-center gap-1.5">
+                        {displayName}
+                        {effectiveVerificationStatus === 'verified' && <VerifiedBadge size={18} />}
+                    </h2>
+                    {isLoggedIn && <p className="text-xs text-text-muted">@{username} - {profile?.location || 'Location not set'}</p>}
+                    {guest && <p className="text-xs text-primary font-medium">Guest Mode</p>}
+                    {/* Preference badge */}
+                    {isLoggedIn && preference && (
+                        <button
+                            onClick={() => setShowPreferencePicker(true)}
+                            className="mt-1 inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold text-primary"
+                            style={{ background: 'rgba(124,58,237,0.08)' }}
+                        >
+                            {PREFERENCE_LABELS[preference] || preference} {profile?.preference_locked ? '(locked)' : <Edit3 size={10} />}
                         </button>
                     )}
                 </div>
-                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-                <p className="text-xs text-text-muted text-center">Max 6 photos. Tap any photo to set it as your profile picture.</p>
-            </div>
-        );
-    };
 
-    // ---- Verification ----
-    const renderVerification = () => (
-        <div className="space-y-4">
-            <div className="rounded-2xl p-5 text-center space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                {verificationStatus === 'verified' ? (
-                    <>
-                        <div className="w-16 h-16 mx-auto rounded-full bg-success/10 flex items-center justify-center">
-                            <ShieldCheck size={32} className="text-success" />
+                {/* Stats */}
+                <div className="grid grid-cols-4 gap-2 pt-2">
+                    {[
+                        { value: likes.length, label: 'Likes' },
+                        { value: matches.length, label: 'Matches' },
+                        { value: saved.length, label: 'Saved' },
+                        { value: unreadMessages > 0 ? `${unreadMessages}/${messages.length}` : messages.length, label: 'Messages' },
+                    ].map(s => (
+                        <div key={s.label} className="text-center rounded-xl p-2" style={{ background: 'var(--color-surface)' }}>
+                            <p className="text-lg font-black text-primary">{s.value}</p>
+                            <p className="text-[10px] text-text-muted font-medium">{s.label}</p>
                         </div>
-                        <h3 className="text-lg font-bold text-success">Profile Verified</h3>
-                        <p className="text-sm text-text-secondary">Your identity has been confirmed. Other users can see your blue verification badge.</p>
-                        <div className="flex justify-center gap-2 flex-wrap">
-                            <VerifiedBadge size={28} verified={true} />
-                            {subscription && subscription.plan && subscription.plan !== 'free' && (
-                                <VerifiedBadge size={28} badgeText={subscription.plan} />
-                            )}
-                            {user.customBadge && user.customBadge.toLowerCase() !== 'verified' && user.customBadge.toLowerCase() !== subscription?.plan?.toLowerCase() && (
-                                <VerifiedBadge size={28} badgeText={user.customBadge} />
-                            )}
-                        </div>
-                    </>
-                ) : verificationStatus === 'pending_review' ? (
-                    <>
-                        <div className="w-16 h-16 mx-auto rounded-full bg-gold/10 flex items-center justify-center">
-                            <Shield size={32} className="text-gold" />
-                        </div>
-                        <h3 className="text-lg font-bold text-gold">Under Review</h3>
-                        <p className="text-sm text-text-secondary">Your verification submission is being reviewed by our team. This usually takes 24-48 hours.</p>
-                        <div className="w-full bg-surface rounded-full h-2 overflow-hidden">
-                            <div className="h-full bg-gold rounded-full animate-pulse" style={{ width: '60%' }} />
-                        </div>
-                        <p className="text-xs text-text-muted">You will be notified once your verification is approved.</p>
-                    </>
-                ) : verificationStatus === 'processing' ? (
-                    <>
-                        <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center animate-pulse">
-                            <Shield size={32} className="text-primary" />
-                        </div>
-                        <h3 className="text-lg font-bold text-primary">Processing...</h3>
-                        <p className="text-sm text-text-secondary">Analyzing your documents. Please wait.</p>
-                        <div className="flex justify-center gap-1.5 py-2">
-                            {[0, 1, 2].map(i => (
-                                <div key={i} className="w-2.5 h-2.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
-                            ))}
-                        </div>
-                    </>
-                ) : (
-                    <>
-                        <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
-                            <ShieldCheck size={32} className="text-primary" />
-                        </div>
-                        <h3 className="text-lg font-bold text-text-primary">Get Verified</h3>
-                        <p className="text-sm text-text-secondary leading-relaxed">
-                            Earn a verified badge by uploading a selfie <strong>and</strong> a valid ID/passport. Our team will review your submission.
-                        </p>
-
-                        {/* Verification Steps */}
-                        <div className="text-left rounded-xl p-3.5 space-y-2" style={{ background: 'var(--color-surface)' }}>
-                            <p className="text-xs font-bold text-text-primary flex items-center gap-1.5">
-                                <Shield size={12} className="text-primary" /> Requirements
-                            </p>
-                            <ul className="text-[11px] text-text-secondary space-y-1.5 list-none">
-                                <li className="flex items-start gap-1.5">
-                                    <Check size={10} className={`mt-0.5 shrink-0 ${(user.avatar_url || user.photos?.length > 0) ? 'text-success' : 'text-text-muted'}`} />
-                                    <span>Profile photo uploaded</span>
-                                </li>
-                                <li className="flex items-start gap-1.5">
-                                    <Check size={10} className={`mt-0.5 shrink-0 ${selfieData ? 'text-success' : 'text-text-muted'}`} />
-                                    <span>Clear selfie showing your face</span>
-                                </li>
-                                <li className="flex items-start gap-1.5">
-                                    <Check size={10} className={`mt-0.5 shrink-0 ${idDocData ? 'text-success' : 'text-text-muted'}`} />
-                                    <span>Valid ID or passport photo</span>
-                                </li>
-                            </ul>
-                        </div>
-
-                        {!(user.avatar_url || user.photos?.length > 0) && (
-                            <div className="flex items-center gap-2 p-3 rounded-xl bg-gold/10">
-                                <AlertCircle size={16} className="text-gold shrink-0" />
-                                <span className="text-xs text-gold font-medium">Upload a profile picture first (My Photos)</span>
-                            </div>
-                        )}
-                        {verificationStatus === 'failed' && (
-                            <div className="flex items-start gap-2 p-3 rounded-xl bg-danger/10">
-                                <ShieldAlert size={16} className="text-danger shrink-0 mt-0.5" />
-                                <span className="text-xs text-danger font-medium">Verification denied. Please try again with a valid selfie and ID/passport.</span>
-                            </div>
-                        )}
-
-                        {/* Step 1: Selfie */}
-                        <div className="text-left space-y-2">
-                            <p className="text-xs font-bold text-text-primary">Step 1: Upload Selfie</p>
-                            {selfieData ? (
-                                <div className="flex items-center gap-3 p-2 rounded-xl" style={{ background: 'var(--color-surface)' }}>
-                                    <img src={selfieData} alt="selfie" className="w-12 h-12 rounded-lg object-cover" />
-                                    <span className="text-xs text-success font-medium flex-1">Selfie uploaded</span>
-                                    <button onClick={() => setSelfieData(null)} className="text-danger"><X size={14} /></button>
-                                </div>
-                            ) : (
-                                <button
-                                    onClick={() => selfieInputRef.current?.click()}
-                                    disabled={!(user.avatar_url || user.photos?.length > 0)}
-                                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium text-primary disabled:opacity-40 transition-all"
-                                    style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }}
-                                >
-                                    <Camera size={16} /> Take or Upload Selfie
-                                </button>
-                            )}
-                        </div>
-
-                        {/* Step 2: ID Document */}
-                        <div className="text-left space-y-2">
-                            <p className="text-xs font-bold text-text-primary">Step 2: Upload ID / Passport</p>
-                            {idDocData ? (
-                                <div className="flex items-center gap-3 p-2 rounded-xl" style={{ background: 'var(--color-surface)' }}>
-                                    <img src={idDocData} alt="ID" className="w-12 h-12 rounded-lg object-cover" />
-                                    <span className="text-xs text-success font-medium flex-1">ID document uploaded</span>
-                                    <button onClick={() => setIdDocData(null)} className="text-danger"><X size={14} /></button>
-                                </div>
-                            ) : (
-                                <button
-                                    onClick={() => idDocInputRef.current?.click()}
-                                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium text-primary transition-all"
-                                    style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }}
-                                >
-                                    <CreditCard size={16} /> Upload ID or Passport Photo
-                                </button>
-                            )}
-                        </div>
-
-                        {/* Submit */}
-                        <button
-                            onClick={handleSubmitVerification}
-                            disabled={!selfieData || !idDocData}
-                            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-white gradient-primary disabled:opacity-40 transition-all"
-                        >
-                            <ShieldCheck size={18} /> Submit for Verification
-                        </button>
-
-                        <input ref={selfieInputRef} type="file" accept="image/*" capture="user" className="hidden" onChange={handleSelfieUpload} />
-                        <input ref={idDocInputRef} type="file" accept="image/*" className="hidden" onChange={handleIdDocUpload} />
-                        <p className="text-[10px] text-text-muted">Your documents are reviewed by our team and are never shared with other users.</p>
-                    </>
-                )}
-            </div>
-        </div>
-    );
-
-    // ---- Messages ----
-    const renderMessages = () => {
-        const convs = conversations || [];
-        return (
-            <div className="space-y-3">
-                {convs.length === 0 ? (
-                    <div className="text-center py-12 px-6 space-y-4 rounded-3xl border border-border" style={{ background: 'var(--color-bg-card)' }}>
-                        <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
-                            <MessageSquare size={24} className="text-primary" />
-                        </div>
-                        <div className="space-y-1">
-                            <p className="text-sm font-bold text-text-primary">No messages yet</p>
-                            <p className="text-xs text-text-secondary">Start a conversation from a member's profile or matches tab.</p>
-                        </div>
-                    </div>
-                ) : (
-                    convs.map(conv => (
-                        <div
-                            key={conv.id}
-                            onClick={() => router.push(`/chat/${encodeURIComponent(conv.id)}`)}
-                            className={`rounded-2xl p-4 transition-all cursor-pointer border ${
-                                conv.unreadCount > 0 
-                                    ? 'card-shadow border-primary/20 bg-primary/5 ring-1 ring-primary/5' 
-                                    : 'border-border bg-bg-card'
-                            }`}
-                            style={{ 
-                                background: 'var(--color-bg-card)',
-                                borderColor: conv.unreadCount > 0 ? 'var(--color-primary)' : 'var(--color-border)'
-                            }}
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className="relative shrink-0">
-                                    <div className="w-11 h-11 rounded-2xl overflow-hidden bg-surface flex items-center justify-center border border-border">
-                                        {conv.matchImage ? (
-                                            <img src={conv.matchImage} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                        ) : (
-                                            <UserAvatar name={conv.matchName} size={44} />
-                                        )}
-                                    </div>
-                                    {conv.unreadCount > 0 && (
-                                        <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-primary border-2 border-bg" />
-                                    )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between mb-0.5">
-                                        <span className={`text-xs text-text-primary truncate ${conv.unreadCount > 0 ? 'font-black' : 'font-bold'}`}>
-                                            {conv.matchName || 'Unknown'}
-                                        </span>
-                                        <span className="text-[10px] text-text-muted">
-                                            {formatTime(conv.lastMessageAt)}
-                                        </span>
-                                    </div>
-                                    <p className={`text-xs truncate ${conv.unreadCount > 0 ? 'text-text-primary font-medium' : 'text-text-secondary'}`}>
-                                        {conv.lastMessage || 'Start a conversation…'}
-                                    </p>
-                                </div>
-                                <div className="shrink-0 pl-2" onClick={(e) => e.stopPropagation()}>
-                                    <button
-                                        onClick={async () => {
-                                            if (confirm('Delete this entire chat conversation? This action cannot be undone.')) {
-                                                await deleteConversation(conv.id);
-                                            }
-                                        }}
-                                        className="p-2 rounded-xl bg-danger/10 hover:bg-danger/25 text-danger transition-colors"
-                                        title="Delete conversation"
-                                    >
-                                        <Trash2 size={14} />
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    ))
-                )}
-            </div>
-        );
-    };
-
-    // ---- Notifications ----
-    const renderNotifications = () => {
-        const msgs = (messages || []).filter(m => !m.profileId);
-        return (
-            <div className="space-y-3">
-                {msgs.length > 0 && msgs.some(m => !m.read) && (
-                    <button onClick={markMessagesRead} className="text-xs text-primary font-medium hover:underline">Mark all read</button>
-                )}
-                {msgs.length === 0 ? (
-                    <div className="text-center py-12 px-6 space-y-4 rounded-3xl border border-border" style={{ background: 'var(--color-bg-card)' }}>
-                        <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
-                            <Bell size={24} className="text-primary" />
-                        </div>
-                        <div className="space-y-1">
-                            <p className="text-sm font-bold text-text-primary">No notifications yet</p>
-                            <p className="text-xs text-text-secondary">Updates on matches, verifications, and approvals will appear here.</p>
-                        </div>
-                    </div>
-                ) : (
-                    msgs.map(msg => (
-                        <div
-                            key={msg.id}
-                            onClick={() => handleMessageClick(msg)}
-                            className={`rounded-2xl p-4 transition-all cursor-pointer ${
-                                msg.read 
-                                    ? 'bg-opacity-50 opacity-90' 
-                                    : 'card-shadow border-primary/20 bg-primary/5 ring-1 ring-primary/5'
-                            }`}
-                            style={{ 
-                                background: 'var(--color-bg-card)', 
-                                border: msg.read ? 'var(--card-border)' : '1px solid var(--color-primary)' 
-                            }}
-                        >
-                            <div className="flex items-start gap-3">
-                                <div className="w-10 h-10 rounded-full overflow-hidden bg-surface shrink-0 flex items-center justify-center">
-                                    {msg.senderImage ? (
-                                        <img src={msg.senderImage} alt="" className="w-full h-full object-cover" />
-                                    ) : msg.type === 'gs_support' ? (
-                                        <ShieldCheck size={18} className="text-primary" />
-                                    ) : msg.type === 'verification' ? (
-                                        <ShieldCheck size={18} className="text-success" />
-                                    ) : (
-                                        <User size={18} className="text-text-muted" />
-                                    )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-0.5">
-                                        <span className="text-xs font-bold text-text-primary">{msg.sender}</span>
-                                        {!msg.read && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 animate-pulse" />}
-                                        <span className="text-[10px] text-text-muted ml-auto">{formatTime(msg.timestamp)}</span>
-                                    </div>
-                                    <h4 className="text-sm font-semibold text-text-primary mb-0.5">{msg.title}</h4>
-                                    <p className="text-xs text-text-secondary leading-relaxed line-clamp-2">
-                                        {msg.body}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    ))
-                )}
-            </div>
-        );
-    };
-
-    // ---- Saved Profiles ----
-    const renderSaved = () => (
-        <div className="space-y-3">
-            {(saved || []).length === 0 ? (
-                <div className="text-center py-10 space-y-3">
-                    <div className="w-14 h-14 rounded-full bg-surface flex items-center justify-center mx-auto">
-                        <Bookmark size={28} className="text-text-muted" />
-                    </div>
-                    <p className="text-sm text-text-muted">No saved profiles yet</p>
+                    ))}
                 </div>
-            ) : (
-                saved.map(p => (
-                    <Link key={p.wpId} href={`/discover/${p.wpId}`}
-                        className="flex items-center gap-3 p-3 rounded-2xl transition-colors hover:bg-surface/50"
-                        style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                        <div className="w-12 h-12 rounded-full overflow-hidden bg-surface shrink-0">
-                            {p.imageUrl ? <img src={p.imageUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <UserAvatar name={p.name} size={48} />}
+            </div>
+
+            {isLoggedIn && profilePhotoMissing && (
+                <div className="rounded-2xl p-4 space-y-3" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.20)' }}>
+                    <div className="flex items-start gap-3">
+                        <div className="w-11 h-11 rounded-2xl bg-danger/10 text-danger flex items-center justify-center shrink-0"><Camera size={21} /></div>
+                        <div className="min-w-0">
+                            <p className="text-sm font-black text-danger">Profile photo required</p>
+                            <p className="text-xs text-text-secondary leading-relaxed">Your account stays off the Members page until you upload a clear profile picture. This protects real members and keeps the site clean.</p>
                         </div>
-                        <div className="flex-1 min-w-0">
-                            <h4 className="text-sm font-bold text-text-primary truncate">{p.name || 'Sugar Mummy'}</h4>
-                            <p className="text-xs text-text-muted">{p.location || 'Kenya'}</p>
-                        </div>
-                        <ChevronRight size={18} className="text-text-muted" />
-                    </Link>
-                ))
+                    </div>
+                    <button disabled={photoBusy} onClick={() => fileInputRef.current?.click()} className="w-full rounded-2xl py-3 text-sm font-black text-white bg-danger flex items-center justify-center gap-2 disabled:opacity-60"><Camera size={16} /> {photoBusy ? 'Saving Photo...' : 'Upload Profile Photo'}</button>
+                    {photoStatus && <p className="text-xs font-bold text-danger">{photoStatus}</p>}
+                </div>
             )}
-        </div>
-    );
 
-    // ---- My Statuses ----
-    const [expandedReports, setExpandedReports] = useState({});
-    const [statusesLoaded, setStatusesLoaded] = useState(false);
-
-    // Fetch statuses and reports when section is opened
-    useEffect(() => {
-        if (activeSection === 'statuses' && user?.id) {
-            // Always fetch fresh statuses when opening this section
-            fetchStatuses().then(freshStatuses => {
-                setStatusesLoaded(true);
-                // Load reports for user's statuses
-                (freshStatuses || []).filter(s => s.user_id === user.id).forEach(s => {
-                    getStatusReport(s.id).then(report => {
-                        setStatusReports(prev => ({ ...prev, [s.id]: report }));
-                    });
-                });
-            });
-        }
-    }, [activeSection, user?.id]);
-
-    const renderStatuses = () => {
-        const myStatuses = (memberStatuses || []).filter(s => s.user_id === user?.id);
-
-        const handleDelete = async (statusId) => {
-            await deleteStatus(statusId);
-            // Refetch to update the list
-            await fetchStatuses();
-        };
-
-        const toggleReport = (id) => {
-            setExpandedReports(prev => ({ ...prev, [id]: !prev[id] }));
-        };
-
-        const timeLeft = (expiresAt) => {
-            if (!expiresAt) return '';
-            const diff = (new Date(expiresAt).getTime() - Date.now()) / 1000;
-            if (diff <= 0) return 'Expired';
-            if (diff < 3600) return `${Math.floor(diff / 60)}m left`;
-            return `${Math.floor(diff / 3600)}h left`;
-        };
-
-        return (
-            <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <p className="text-xs text-text-muted">{myStatuses.length} active {myStatuses.length === 1 ? 'status' : 'statuses'}</p>
-                    <button onClick={() => router.push('/members')}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white shadow-md active:scale-95 transition-all"
-                        style={{ background: 'linear-gradient(135deg, #FF5A5F, #FF2A6D)', boxShadow: '0 4px 12px rgba(255,90,95,0.3)' }}>
-                        <Flame size={12} /> New Status
-                    </button>
-                </div>
-
-                {myStatuses.length === 0 ? (
-                    <div className="text-center py-12 space-y-3">
-                        <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto" style={{ background: 'linear-gradient(135deg, rgba(255,90,95,0.1), rgba(255,42,109,0.1))' }}>
-                            <Flame size={28} style={{ color: '#FF5A5F' }} />
+            {isLoggedIn && (
+                <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                    <div className="flex items-center justify-between gap-3">
+                        <div>
+                            <h3 className="text-sm font-black text-text-primary">Account Center</h3>
+                            <p className="text-xs text-text-muted">Manage your profile, membership, privacy, messages, saves, support, and verification.</p>
                         </div>
-                        <p className="text-sm font-bold text-text-primary">No active statuses</p>
-                        <p className="text-xs text-text-muted">Share what&apos;s on your mind with other members</p>
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-black text-primary bg-primary/10">{packageLabel}</span>
                     </div>
-                ) : (
-                    myStatuses.map(status => {
-                        const report = statusReports[status.id];
-                        const isOpen = !!expandedReports[status.id];
-                        return (
-                            <div key={status.id} className="rounded-2xl overflow-hidden shadow-sm" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                                {/* Status preview */}
-                                <div className="relative h-28 flex items-center justify-center px-8"
-                                    style={{ background: status.media_type === 'image' && status.media_url ? '#000' : (status.background_color || '#FF5A5F') }}>
-                                    {status.media_type === 'image' && status.media_url && (
-                                        <img src={status.media_url} alt="" className="absolute inset-0 w-full h-full object-cover opacity-50" />
-                                    )}
-                                    <p className="text-base font-bold text-white text-center relative z-10 line-clamp-2 drop-shadow-md">
-                                        {status.content || 'Photo Status'}
-                                    </p>
-                                    <div className="absolute top-2.5 right-2.5 flex items-center gap-1 px-2 py-1 rounded-full z-10"
-                                        style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
-                                        <Clock size={10} className="text-white/70" />
-                                        <span className="text-[9px] font-bold text-white/80">{timeLeft(status.expires_at)}</span>
-                                    </div>
-                                </div>
+                    <div className="grid grid-cols-4 gap-2">
+                        {[
+                            { label: 'Edit', icon: UserCog, href: '#profile-info' },
+                            { label: 'Photos', icon: ImageIcon, href: '#photos' },
+                            { label: 'Messages', icon: MessageCircle, href: '/messages', count: unreadMessages },
+                            { label: 'Alerts', icon: Bell, href: '/alerts', count: unreadMessages },
+                            { label: 'Saved', icon: Bookmark, href: '#saved' },
+                            { label: 'Pro', icon: Gem, href: '/packages' },
+                            { label: 'Verify', icon: ShieldCheck, href: '#verification' },
+                            { label: 'Privacy', icon: Lock, href: '#privacy' },
+                            { label: 'Status', icon: Eye, href: '#status' },
+                            { label: 'Prefs', icon: SlidersHorizontal, action: () => setShowPreferencePicker(true) },
+                            { label: 'Phone', icon: Phone, href: '#profile-info' },
+                            { label: 'Support', icon: Headphones, href: '#support' },
+                            { label: 'Wallet', icon: Wallet, href: '/wallet' },
+                        ].map((item) => {
+                            const Icon = item.icon;
+                            const content = (
+                                <>
+                                    <span className="relative mx-auto w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+                                        <Icon size={18} />
+                                        {item.count > 0 && <span className="absolute -right-1 -top-1 min-w-4 h-4 rounded-full bg-secondary text-white text-[9px] leading-4 px-1">{item.count > 99 ? '99+' : item.count}</span>}
+                                    </span>
+                                    <span className="text-[10px] font-black text-text-secondary">{item.label}</span>
+                                </>
+                            );
+                            if (item.action) return <button key={item.label} type="button" onClick={item.action} className="rounded-2xl p-2 space-y-1.5 text-center" style={{ background: 'var(--color-surface)' }}>{content}</button>;
+                            return <Link key={item.label} href={item.href} className="rounded-2xl p-2 space-y-1.5 text-center" style={{ background: 'var(--color-surface)' }}>{content}</Link>;
+                        })}
+                    </div>
+                </div>
+            )}
 
-                                {/* Stats cards */}
-                                <div className="flex gap-2 px-3 -mt-4 relative z-10">
-                                    <div className="flex-1 flex items-center gap-2 py-2.5 px-3 rounded-xl shadow-sm"
-                                        style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}>
-                                        <Eye size={15} style={{ color: '#6366F1' }} />
-                                        <div>
-                                            <p className="text-sm font-extrabold text-text-primary">{status.view_count || 0}</p>
-                                            <p className="text-[9px] text-text-muted">Views</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex-1 flex items-center gap-2 py-2.5 px-3 rounded-xl shadow-sm"
-                                        style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}>
-                                        <Heart size={15} style={{ color: '#EC4899' }} />
-                                        <div>
-                                            <p className="text-sm font-extrabold text-text-primary">{report?.reactionCount ?? 0}</p>
-                                            <p className="text-[9px] text-text-muted">Reactions</p>
-                                        </div>
-                                    </div>
-                                </div>
+            {isLoggedIn && <StoriesStrip title="My 24 Hour Stories" />}
+            {isLoggedIn && <AccountActivityPanel />}
 
-                                {/* Action buttons */}
-                                <div className="flex items-center gap-2 px-3 py-3 relative z-20">
-                                    <button onClick={() => toggleReport(status.id)}
-                                        className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm"
-                                        style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1))', color: '#6366F1', border: '1px solid rgba(99,102,241,0.2)' }}>
-                                        <BarChart3 size={14} />
-                                        {isOpen ? 'Hide Report' : 'View Report'}
-                                    </button>
-                                    <button onClick={() => handleDelete(status.id)}
-                                        className="flex items-center justify-center gap-1.5 py-3 px-5 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm"
-                                        style={{ background: 'rgba(239,68,68,0.08)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
-                                        <Trash2 size={14} />
-                                        Delete
-                                    </button>
-                                </div>
+            {isLoggedIn && (
+                <section id="status" className="grid grid-cols-3 gap-2">
+                    <StatusTile icon={Eye} label="Public Status" value={accountStatus} tone={profileComplete && settings.isPublic ? 'success' : 'gold'} />
+                    <StatusTile icon={ShieldCheck} label="Verification" value={verificationLabel} tone={effectiveVerificationStatus === 'verified' ? 'success' : 'gold'} />
+                    <StatusTile icon={PackageCheck} label="Membership" value={packageLabel} tone={packageApproved ? 'success' : 'primary'} />
+                </section>
+            )}
 
-                                {/* Expanded report */}
-                                {isOpen && report && (
-                                    <div className="border-t px-4 py-4 space-y-4" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
-                                        <div>
-                                            <div className="flex items-center gap-2 mb-2.5">
-                                                <Eye size={13} style={{ color: '#6366F1' }} />
-                                                <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Viewers ({report.viewCount})</p>
-                                            </div>
-                                            {(report.views || []).length === 0 ? (
-                                                <p className="text-xs text-text-muted pl-5">No views yet</p>
-                                            ) : (
-                                                <div className="space-y-2 max-h-44 overflow-y-auto pl-5">
-                                                    {report.views.map((v, i) => (
-                                                        <div key={i} className="flex items-center gap-2.5">
-                                                            <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 ring-1 ring-border">
-                                                                {v.viewer?.avatar_url ? (
-                                                                    <img src={v.viewer.avatar_url} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                                                ) : (
-                                                                    <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-text-muted" style={{ background: 'var(--color-bg-card)' }}>
-                                                                        {(v.viewer?.display_name || 'U')[0]}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                            <span className="text-xs text-text-primary font-semibold">{v.viewer?.display_name || 'User'}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-2 mb-2.5">
-                                                <Heart size={13} style={{ color: '#EC4899' }} />
-                                                <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Reactions ({report.reactionCount})</p>
-                                            </div>
-                                            {(report.reactions || []).length === 0 ? (
-                                                <p className="text-xs text-text-muted pl-5">No reactions yet</p>
-                                            ) : (
-                                                <div className="space-y-2 max-h-44 overflow-y-auto pl-5">
-                                                    {report.reactions.map((r, i) => (
-                                                        <div key={i} className="flex items-center gap-2.5">
-                                                            <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 ring-1 ring-border">
-                                                                {r.user?.avatar_url ? (
-                                                                    <img src={r.user.avatar_url} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                                                ) : (
-                                                                    <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-text-muted" style={{ background: 'var(--color-bg-card)' }}>
-                                                                        {(r.user?.display_name || 'U')[0]}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                            <span className="text-xs text-text-primary font-semibold flex-1">{r.user?.display_name || 'User'}</span>
-                                                            <span className="text-base">{r.reaction === 'love' ? '❤️' : r.reaction === 'fire' ? '🔥' : r.reaction === 'laugh' ? '😂' : r.reaction === 'sad' ? '😢' : '👍'}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
+            {isLoggedIn && !profileComplete && (
+                <div className="rounded-2xl p-4 space-y-2" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.22)' }}>
+                    <p className="text-sm font-black text-amber-700">Complete your profile to unlock the app</p>
+                    <p className="text-xs text-text-secondary">Add: {missingFields.join(', ')}. Your profile is listed in Members after the required details are saved.</p>
+                </div>
+            )}
+
+            {isLoggedIn && (
+                <div id="package-access" className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                    <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5"><PackageCheck size={16} className="text-primary" /> Package Access</h3>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="rounded-xl p-3 bg-primary/10"><p className="text-[10px] text-text-muted">Tier</p><p className="text-sm font-black text-primary">{currentTier.toUpperCase()}</p></div>
+                        <div className="rounded-xl p-3 bg-secondary/10"><p className="text-[10px] text-text-muted">Basic</p><p className="text-sm font-black text-secondary">{canUseBasic ? 'ON' : 'OFF'}</p></div>
+                        <div className="rounded-xl p-3 bg-amber-100"><p className="text-[10px] text-text-muted">Numbers</p><p className="text-sm font-black text-gold">{canRevealPhone ? 'ON' : 'LOCKED'}</p></div>
+                    </div>
+                    <Link href="/packages" className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-black text-white gradient-primary"><Gem size={16} /> Manage Packages</Link>
+                </div>
+            )}
+
+            {/* ===== PHOTOS (always-visible delete button) ===== */}
+            {isLoggedIn && (
+                <div id="photos" className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                    <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
+                        <Camera size={16} className="text-primary" /> My Photos
+                    </h3>
+                    <div className="grid grid-cols-3 gap-2">
+                        {userPhotos.map((photo, i) => (
+                            <div key={i} className="relative aspect-square rounded-xl overflow-hidden">
+                                <img src={photo} alt="" className="w-full h-full object-cover" />
+                                <button
+                                    disabled={photoBusy}
+                                    onClick={async () => {
+                                        setPhotoBusy(true);
+                                        setPhotoStatus('Updating photos...');
+                                        try {
+                                            await removePhoto(i);
+                                            setPhotoStatus('Photo list updated.');
+                                        } catch (error) {
+                                            setPhotoStatus(error.message || 'Photo could not be removed.');
+                                        } finally {
+                                            setPhotoBusy(false);
+                                        }
+                                    }}
+                                    className="absolute top-1 right-1 w-7 h-7 rounded-full bg-black/70 flex items-center justify-center"
+                                >
+                                    <X size={14} className="text-white" />
+                                </button>
+                                {i === 0 && (
+                                    <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded-md bg-primary/80 text-[8px] font-bold text-white">
+                                        MAIN
+                                    </span>
                                 )}
                             </div>
-                        );
-                    })
+                        ))}
+                        {userPhotos.length < 6 && (
+                            <button
+                                disabled={photoBusy}
+                                onClick={() => fileInputRef.current?.click()}
+                                className="aspect-square rounded-xl flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-60"
+                                style={{ background: 'var(--color-surface)', border: '2px dashed rgba(124,58,237,0.2)' }}
+                            >
+                                <Plus size={20} className="text-primary" />
+                                <span className="text-[10px] text-text-muted font-medium">{photoBusy ? 'Saving' : 'Add'}</span>
+                            </button>
+                        )}
+                    </div>
+                    {photoStatus && <p className="text-xs font-bold text-primary bg-primary/10 rounded-xl p-2">{photoStatus}</p>}
+                    <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                </div>
+            )}
+
+            {isLoggedIn && effectiveVerificationStatus === 'verified' && (
+                <div className="rounded-2xl p-4 flex items-center gap-3" style={{ background: 'rgba(5,150,105,0.1)', border: '1px solid rgba(5,150,105,0.22)' }}>
+                    <ShieldCheck size={24} className="text-success" />
+                    <div>
+                        <p className="text-sm font-black text-success">Verification Approved</p>
+                        <p className="text-xs text-text-muted">Your blue badge was manually approved by admin.</p>
+                    </div>
+                </div>
+            )}
+            {/* ===== MANUAL VERIFICATION ===== */}
+            {isLoggedIn && effectiveVerificationStatus !== 'verified' && (
+                <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                    <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
+                        <Shield size={16} className="text-primary" /> Manual Verification
+                    </h3>
+                    {effectiveVerificationStatus === 'pending_admin' ? (
+                        <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(124,58,237,0.08)' }}>
+                            <Clock size={24} className="text-primary" />
+                            <div className="flex-1">
+                                <p className="text-sm font-bold text-primary">Waiting for Admin Review</p>
+                                <p className="text-xs text-text-muted">Admin will approve or reject this request in the control panel.</p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <p className="text-xs text-text-muted leading-relaxed">
+                                Submit a clear selfie, your ID or passport, and your phone number. Admin approval is required before the verified badge and premium package unlocks appear.
+                            </p>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button onClick={() => selfieInputRef.current?.click()} className="rounded-xl py-3 px-3 text-xs font-bold bg-primary/10 text-primary flex items-center justify-center gap-2">
+                                    <Camera size={16} /> {verificationForm.selfieDataUrl ? 'Selfie Added' : 'Add Selfie'}
+                                </button>
+                                <button onClick={() => documentInputRef.current?.click()} className="rounded-xl py-3 px-3 text-xs font-bold bg-secondary/10 text-secondary flex items-center justify-center gap-2">
+                                    <Shield size={16} /> {verificationForm.documentDataUrl ? 'Document Added' : 'Add ID/Passport'}
+                                </button>
+                            </div>
+                            <select value={verificationForm.documentType} onChange={(e) => setVerificationForm((current) => ({ ...current, documentType: e.target.value }))} className="w-full rounded-xl py-3 px-3 text-sm" style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }}>
+                                <option value="id">National ID</option>
+                                <option value="passport">Passport</option>
+                            </select>
+                            <input value={verificationForm.phone} onChange={(e) => setVerificationForm((current) => ({ ...current, phone: e.target.value }))} placeholder="Phone number for verification" className="w-full rounded-xl py-3 px-3 text-sm" style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }} />
+                            <button onClick={submitVerification} className="w-full py-3 rounded-xl font-semibold text-white gradient-primary flex items-center justify-center gap-2">
+                                <Send size={18} /> Submit Verification Request
+                            </button>
+                            {effectiveVerificationStatus === 'failed' && <p className="text-xs text-danger font-medium text-center">Selfie, ID/passport, and phone number are required.</p>}
+                        </div>
+                    )}
+                    <input ref={selfieInputRef} type="file" accept="image/*" capture="user" className="hidden" onChange={handleSelfieCapture} />
+                    <input ref={documentInputRef} type="file" accept="image/*" className="hidden" onChange={handleDocumentCapture} />
+                </div>
+            )}
+            {/* ===== PROFILE INFO (editable) ===== */}
+            {isLoggedIn && (
+                <div id="profile-info" className="rounded-2xl overflow-hidden" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                    <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(124,58,237,0.08)' }}>
+                        <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
+                            <Edit3 size={16} className="text-primary" /> Profile Info
+                        </h3>
+                    </div>
+                    {[
+                        { key: 'display_name', label: 'Name', value: profile?.display_name },
+                        { key: 'bio', label: 'Bio', value: profile?.bio },
+                        { key: 'age', label: 'Age', value: profile?.age },
+                        { key: 'location', label: 'Location', value: profile?.location },
+                        { key: 'phone_number', label: 'Phone Number', value: profile?.phone_number || profile?.phone },
+                        { key: 'wants', label: 'What I want', value: profile?.wants },
+                        { key: 'needed_qualities', label: 'Needed qualities', value: profile?.needed_qualities },
+                        { key: 'age_range_preference', label: 'Preferred age range', value: profile?.age_range_preference },
+                        { key: 'looking_for', label: 'Looking for', value: profile?.looking_for },
+                    ].map((field) => (
+                        <div key={field.key}
+                            className="flex items-center justify-between px-4 py-3 cursor-pointer transition-colors hover:bg-primary/5"
+                            style={{ borderBottom: '1px solid rgba(0,0,0,0.04)' }}
+                            onClick={() => startEdit(field.key, field.value)}
+                        >
+                            <div>
+                                <p className="text-xs text-text-muted font-medium">{field.label}</p>
+                                <p className="text-sm text-text-primary font-medium">{field.value || 'Add...'}</p>
+                            </div>
+                            <ChevronRight size={16} className="text-text-muted" />
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* ===== MESSAGES ===== */}
+            {isLoggedIn && messages.length > 0 && (
+                <div id="messages" className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                    <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
+                        <MessageCircle size={16} className="text-primary" /> Messages ({messages.length})
+                    </h3>
+                    {messages.slice(0, 5).map((msg, i) => (
+                        <div key={msg.id || i} className="flex items-start gap-3 py-2" style={{ borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
+                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                                <Mail size={14} className="text-primary" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-text-primary truncate">{msg.title}</p>
+                                <p className="text-[10px] text-text-muted line-clamp-2 mt-0.5">{msg.body}</p>
+                            </div>
+                        </div>
+                    ))}
+                    <Link href="/alerts" className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black bg-primary/10 text-primary">Open Full Inbox</Link>
+                </div>
+            )}
+
+            {isLoggedIn && (
+                <div id="saved" className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                    <div className="flex items-center justify-between gap-3">
+                        <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5"><Bookmark size={16} className="text-primary" /> Saved Profiles & Posts</h3>
+                        <Link href="/matches" className="text-xs font-black text-primary">Open</Link>
+                    </div>
+                    {saved.length === 0 ? (
+                        <p className="text-xs text-text-muted">Profiles and featured posts you save will appear here.</p>
+                    ) : (
+                        <div className="grid grid-cols-3 gap-2">
+                            {saved.slice(0, 6).map((item) => (
+                                <Link key={item.wpId || item.id} href={String(item.wpId || '').startsWith('member:') ? `/members/${String(item.wpId).slice(7)}` : (item.id ? `/members/${item.id}` : '/matches')} className="space-y-1">
+                                    <div className="aspect-square rounded-xl overflow-hidden bg-primary/10">
+                                        {item.imageUrl || item.avatarUrl ? <img src={item.imageUrl || item.avatarUrl} alt="" className="w-full h-full object-cover" /> : <UserAvatar name={item.name || 'Saved'} size={52} />}
+                                    </div>
+                                    <p className="text-[10px] font-bold text-text-secondary truncate">{item.name || 'Saved'}</p>
+                                </Link>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+
+            {/* ===== SETTINGS ===== */}
+            {isLoggedIn && (
+                <div id="privacy" className="rounded-2xl overflow-hidden" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                    <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(124,58,237,0.08)' }}>
+                        <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
+                            <Settings size={16} className="text-primary" /> Settings
+                        </h3>
+                    </div>
+
+                    {[
+                        { key: 'notifications', label: 'Push Notifications', desc: 'Installed app alerts and badge counts' },
+                        { key: 'darkMode', label: 'Dark Mode', desc: 'Switch your account display theme' },
+                        { key: 'showOnline', label: 'Show Online Status', desc: 'Let members see when you are active' },
+                        { key: 'showAge', label: 'Show Age', desc: 'Show or hide your age on public profile' },
+                        { key: 'isPublic', label: 'Public Profile', desc: profileComplete ? 'Allow your profile to appear in Members' : 'Complete required fields to appear in Members' },
+                        { key: 'emailNotifications', label: 'Email Updates', desc: 'Receive admin updates by email' },
+                        { key: 'liveLocation', label: 'Live Location Matching', desc: 'Use location for better suggestions' },
+                    ].map((setting) => (
+                        <div key={setting.key}
+                            className="flex items-center justify-between px-4 py-3"
+                            style={{ borderBottom: '1px solid rgba(0,0,0,0.04)' }}
+                        >
+                            <div className="flex items-center gap-2">
+                                <div>
+                                    <span className="text-sm font-bold text-text-primary block">{setting.label}</span>
+                                    <span className="text-[10px] text-text-muted block">{setting.desc}</span>
+                                </div>
+                                {setting.key === 'liveLocation' && settings.liveLocation && liveLocationData?.city && (
+                                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-success/10 text-success">
+                                        <MapPin size={10} /> {liveLocationData.city}
+                                    </span>
+                                )}
+                            </div>
+                            <button
+                                type="button"
+                                aria-label={`${setting.label}: ${settings[setting.key] ? 'On' : 'Off'}`}
+                                onClick={() => updateSettings({ [setting.key]: !settings[setting.key] })}
+                                className={`w-10 h-6 rounded-full transition-all duration-300 ${settings[setting.key] ? 'bg-primary' : 'bg-gray-300'}`}
+                            >
+                                <div className={`w-4 h-4 bg-white rounded-full shadow transition-all duration-300 ${settings[setting.key] ? 'translate-x-5' : 'translate-x-1'}`} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* ===== SUPPORT & HELP ===== */}
+            <div id="support" className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5"><Headphones size={16} className="text-primary" /> Support & Help</h3>
+                <select value={supportForm.service} onChange={(e) => setSupportForm({ ...supportForm, service: e.target.value })} className="w-full rounded-xl py-3 px-3 text-sm" style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }}>
+                    <option value="payment_issue">Payment issue</option>
+                    <option value="package_unlock">Package unlock approval</option>
+                    <option value="refund">Refund or cancellation</option>
+                    <option value="verification">Verification help</option>
+                    <option value="safety_report">Report scam or fake profile</option>
+                    <option value="account_profile">Account or profile help</option>
+                    <option value="direct_connection">Direct connection service</option>
+                    <option value="general">General support</option>
+                </select>
+                <input value={supportForm.subject} onChange={(e) => setSupportForm({ ...supportForm, subject: e.target.value })} placeholder="Subject" className="w-full rounded-xl py-3 px-3 text-sm" style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }} />
+                <textarea value={supportForm.message} onChange={(e) => setSupportForm({ ...supportForm, message: e.target.value })} placeholder="Tell support what you need" rows={3} className="w-full rounded-xl py-3 px-3 text-sm resize-none" style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }} />
+                <button onClick={submitSupportTicket} className="w-full py-3 rounded-xl font-bold text-white gradient-primary flex items-center justify-center gap-2"><Send size={16} /> Submit Ticket</button>
+                {supportStatus && <p className="text-xs font-bold text-primary bg-primary/10 rounded-xl p-3">{supportStatus}</p>}
+                <a href="https://t.me/GSADMINMARYGAGENCY" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-bold text-primary"><ExternalLink size={15} /> Telegram Admin Support</a>
+            </div>
+            {/* ===== SIGN OUT / DELETE ===== */}
+            <div className="space-y-2">
+                {isLoggedIn && (
+                    <button onClick={handleSignOut} disabled={signingOut}
+                        className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-text-primary transition-colors hover:bg-gray-100"
+                        style={{ border: '1px solid rgba(0,0,0,0.1)' }}
+                    >
+                        <LogOut size={18} /> {signingOut ? 'Signing Out...' : 'Sign Out'}
+                    </button>
+                )}
+                {isLoggedIn && (
+                    <button onClick={() => setShowDeleteConfirm(true)}
+                        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-medium text-danger/60 transition-colors hover:text-danger hover:bg-danger/5"
+                    >
+                        <Trash size={16} /> Delete Account
+                    </button>
                 )}
             </div>
-        );
-    };
 
-    // ---- Settings ----
-    const renderSettings = () => (
-        <div className="space-y-4">
-            <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                <ToggleRow icon={Shield} label="Public Profile" checked={settings.isPublic} onChange={v => updateSettings({ isPublic: v })} />
-                <ToggleRow icon={Users} label="Visible on Members" checked={user?.show_on_members !== false} onChange={v => updateProfile({ show_on_members: v })} />
-                <ToggleRow icon={MapPin} label="Share Location" checked={settings.locationEnabled} onChange={v => updateSettings({ locationEnabled: v })} />
-                <ToggleRow icon={Bell} label="Push Notifications" checked={settings.notifications} onChange={v => updateSettings({ notifications: v })} />
-                <ToggleRow icon={Mail} label="Email Notifications" checked={settings.emailNotifications} onChange={v => updateSettings({ emailNotifications: v })} />
-            </div>
-
-            <button onClick={() => { signOut(); router.push('/auth/login'); }}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-text-secondary transition-colors" style={{ background: 'var(--color-surface)' }}>
-                <LogOut size={18} /> Sign Out
-            </button>
-            <button onClick={() => { if (confirm('Delete your account? All data will be lost.')) { deleteAccount(); router.push('/'); } }}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-danger transition-colors" style={{ background: 'rgba(220,38,38,0.08)' }}>
-                <Trash2 size={18} /> Delete Account
-            </button>
-        </div>
-    );
-
-    // ---- Contact ----
-    const renderContact = () => {
-        const helpMsg = encodeURIComponent('Hi, I need help from the app');
-        return (
-            <div className="space-y-3">
-                <ContactRow icon={<TelegramIcon size={20} className="text-white" />} label="Telegram" sub="@GSADMINMARYGAGENCY — Recommended" href={`https://t.me/GSADMINMARYGAGENCY?text=${helpMsg}`} color="#26A5E4" />
-                <ContactRow icon={<Phone size={20} className="text-white" />} label="Phone Call" sub="+254 738 871 048" href="tel:+254738871048" color="#2ECC71" />
-                <ContactRow icon={<MessageCircle size={20} className="text-white" />} label="SMS" sub="+254 738 871 048" href={`sms:+254738871048?body=${helpMsg}`} color="#34B7F1" />
-                <ContactRow icon={<Mail size={20} className="text-white" />} label="Email" sub="genuinesugarmummies@gmail.com" href={`mailto:genuinesugarmummies@gmail.com?subject=Help&body=${helpMsg}`} color="#9333EA" />
-            </div>
-        );
-    };
-
-    // ---- Help ----
-    const renderHelp = () => (
-        <div className="space-y-3">
-            <FaqItem q="How do I connect with a sugar mummy?" a="Browse profiles on Discover, like/comment on the ones you're interested in, then tap 'Request Connection' to contact our admin Mary G on Telegram for facilitation." />
-            <FaqItem q="Are the profiles real?" a="All profiles are imported from genuinesugarmummies.co.ke — a real website with active posts and real user comments." />
-            <FaqItem q="How does verification work?" a="Go to Account → Verify Profile and upload a clear selfie. If your selfie matches your profile picture, you'll receive a blue verification badge." />
-            <FaqItem q="How do comments work?" a="Comments you post are sent to the website for admin moderation. Once approved, they appear publicly on the profile page." />
-            <FaqItem q="How do I get a match?" a="Like profiles, and the algorithm will match you with sugar mummies based on compatibility, activity, and location." />
-            <FaqItem q="Is my data private?" a="Your profile data is securely stored with Supabase (encrypted at rest). We never share your personal information with third parties." />
-        </div>
-    );
-
-    return (
-        <div className="px-4 pt-4 pb-24">
-            <AnimatePresence mode="wait">
-                {activeSection ? (
-                    <motion.div key="section" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
-                        {/* Section header */}
-                        <div className="flex items-center gap-3 mb-5">
-                            <button onClick={() => setActiveSection(null)} className="p-2 rounded-xl" style={{ background: 'var(--color-surface)' }}>
-                                <ChevronLeft size={20} className="text-text-primary" />
-                            </button>
-                            <h2 className="text-lg font-bold text-text-primary">
-                                {MENU_ITEMS.find(m => m.key === activeSection)?.label || 'Back'}
-                            </h2>
-                        </div>
-                        {renderSection()}
-                    </motion.div>
-                ) : (
-                    <motion.div key="home" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.2 }}>
-                        {/* Profile Card */}
-                        <div className="flex flex-col items-center py-6 space-y-3">
-                            <div className="relative">
-                                <div className="w-24 h-24 rounded-full overflow-hidden ring-4 ring-primary/20" style={{ background: 'var(--color-surface)' }}>
-                                    {user.avatar_url ? (
-                                        <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
-                                    ) : (
-                                        <UserAvatar name={user.display_name} size={96} />
-                                    )}
-                                </div>
+            {/* ===== EDIT MODAL ===== */}
+            <AnimatePresence>
+                {editField && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-6"
+                        onClick={() => setEditField(null)}
+                    >
+                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+                            className="w-full max-w-sm rounded-2xl p-5 space-y-4"
+                            style={{ background: 'var(--color-bg-card)' }}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <h3 className="text-lg font-bold text-text-primary capitalize">Edit {editField.replace('_', ' ')}</h3>
+                            {editField === 'bio' ? (
+                                <textarea value={editValue} onChange={(e) => setEditValue(e.target.value)} rows={4}
+                                    className="w-full rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+                                    style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }} autoFocus
+                                />
+                            ) : (
+                                <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                                    className="w-full rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                    style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }} autoFocus
+                                />
+                            )}
+                            {editStatus && <p className={`text-xs font-bold rounded-xl p-3 ${editStatus === 'Saved.' ? 'text-success bg-success/10' : 'text-danger bg-danger/10'}`}>{editStatus}</p>}
+                            <div className="flex gap-3">
+                                <button disabled={editBusy} onClick={() => setEditField(null)} className="flex-1 py-3 rounded-xl font-medium text-text-secondary disabled:opacity-60" style={{ border: 'var(--card-border)' }}>Cancel</button>
+                                <button disabled={editBusy} onClick={saveEdit} className="flex-1 py-3 rounded-xl font-bold text-white gradient-primary disabled:opacity-60">{editBusy ? 'Saving...' : 'Save'}</button>
                             </div>
-                            <div className="text-center">
-                                <h1 className="text-xl font-bold text-text-primary flex items-center gap-2 justify-center flex-wrap">
-                                    {user.display_name || 'User'}
-                                    {verificationStatus === 'verified' && <VerifiedBadge size={18} verified={true} />}
-                                    {subscription && subscription.plan && subscription.plan !== 'free' && (
-                                        <VerifiedBadge size={18} badgeText={subscription.plan} />
-                                    )}
-                                    {user.customBadge && user.customBadge.toLowerCase() !== 'verified' && user.customBadge.toLowerCase() !== subscription?.plan?.toLowerCase() && (
-                                        <VerifiedBadge size={18} badgeText={user.customBadge} />
-                                    )}
-                                </h1>
-                                <p className="text-sm text-text-muted">{user.email}</p>
-                            </div>
-
-                            {/* Quick stats */}
-                            <div className="flex items-center gap-6 mt-2">
-                                <StatBadge icon={Heart} label="Likes" value={likes?.length || 0} />
-                                <StatBadge icon={Star} label="Matches" value={matches?.length || 0} />
-                                <StatBadge icon={Bookmark} label="Saved" value={saved?.length || 0} />
-                            </div>
-                        </div>
-
-                        {/* Menu */}
-                        <div className="rounded-2xl overflow-hidden mt-2" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                            {MENU_ITEMS.map((item, idx) => {
-                                const Icon = item.icon;
-                                const itemBadgeCount = item.key === 'messages' ? unreadConversations : item.key === 'notifications' ? unreadNotifications : 0;
-                                const showBadge = itemBadgeCount > 0;
-                                return (
-                                    <button
-                                        key={item.key}
-                                        onClick={() => item.link ? router.push(item.link) : setActiveSection(item.key)}
-                                        className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-surface/50"
-                                        style={idx < MENU_ITEMS.length - 1 ? { borderBottom: '1px solid rgba(0,0,0,0.06)' } : {}}
-                                    >
-                                        <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-primary/10">
-                                            <Icon size={18} className="text-primary" />
-                                        </div>
-                                        <span className="flex-1 text-sm font-medium text-text-primary">{item.label}</span>
-                                        {showBadge && (
-                                            <span className="text-[10px] font-bold text-white bg-primary rounded-full w-5 h-5 flex items-center justify-center">
-                                                {itemBadgeCount > 9 ? '9+' : itemBadgeCount}
-                                            </span>
-                                        )}
-                                        <ChevronRight size={18} className="text-text-muted" />
-                                    </button>
-                                );
-                            })}
-                        </div>
-
-                        {/* Version */}
-                        <p className="text-center text-[10px] text-text-muted mt-6">
-                            Genuine Sugarmummies App · v4.0.0
-                        </p>
+                        </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            {/* Message Detail Modal */}
+            {/* ===== PREFERENCE PICKER MODAL ===== */}
             <AnimatePresence>
-                {selectedMessage && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-                        onClick={() => setSelectedMessage(null)}
+                {showPreferencePicker && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm"
+                        onClick={() => setShowPreferencePicker(false)}
                     >
                         <motion.div
-                            initial={{ scale: 0.95, y: 20 }}
-                            animate={{ scale: 1, y: 0 }}
-                            exit={{ scale: 0.95, y: 20 }}
-                            transition={{ type: 'spring', duration: 0.4 }}
-                            className="w-full max-w-sm rounded-3xl p-6 shadow-2xl border border-border bg-bg-card relative"
+                            initial={{ y: 200 }} animate={{ y: 0 }} exit={{ y: 200 }}
+                            className="w-full max-w-md rounded-t-3xl p-5 space-y-3"
+                            style={{ background: 'var(--color-bg-card)' }}
                             onClick={(e) => e.stopPropagation()}
                         >
-                            {/* Close button */}
-                            <button
-                                onClick={() => setSelectedMessage(null)}
-                                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-surface transition-colors"
+                            <h3 className="text-lg font-bold text-text-primary text-center">Your Preference</h3>
+                            {profile?.preference_locked && (
+                                <div className="rounded-2xl p-3 text-xs leading-relaxed text-primary bg-primary/10">
+                                    Your account type is locked after registration so members see the right matches. Contact support if this was selected by mistake.
+                                </div>
+                            )}
+                            {Object.entries(PREFERENCE_LABELS).map(([key, label]) => (
+                                <button key={key}
+                                    onClick={() => {
+                                        if (!profile?.preference_locked) updatePreference(key);
+                                        setShowPreferencePicker(false);
+                                    }}
+                                    className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl transition-all"
+                                    style={{
+                                        background: preference === key ? 'rgba(124,58,237,0.08)' : 'transparent',
+                                        border: `2px solid ${preference === key ? '#7C3AED' : 'rgba(0,0,0,0.06)'}`,
+                                    }}
+                                >
+                                    <span className="text-sm font-semibold text-text-primary">{label}</span>
+                                    {preference === key && <div className="w-4 h-4 rounded-full bg-primary" />}
+                                </button>
+                            ))}
+                            <button onClick={() => setShowPreferencePicker(false)}
+                                className="w-full py-3 text-sm font-medium text-text-muted"
                             >
-                                <X size={18} className="text-text-secondary" />
+                                Cancel
                             </button>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
-                            {/* Sender Info Header */}
-                            <div className="flex items-center gap-3 pb-4 mb-4 border-b border-border">
-                                <div className="w-12 h-12 rounded-full overflow-hidden bg-surface shrink-0 flex items-center justify-center border border-border">
-                                    {selectedMessage.senderImage ? (
-                                        <img src={selectedMessage.senderImage} alt="" className="w-full h-full object-cover" />
-                                    ) : ['GS Support', 'GS Verification', 'GS Admin', 'GS support', 'GS verification'].includes(selectedMessage.sender) ? (
-                                        <ShieldCheck size={24} className="text-primary" />
-                                    ) : (
-                                        <User size={24} className="text-text-muted" />
-                                    )}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                        <h3 className="text-sm font-bold text-text-primary truncate">{selectedMessage.sender}</h3>
-                                        {['GS Support', 'GS Verification', 'GS Admin', 'GS support', 'GS verification'].includes(selectedMessage.sender) && (
-                                            <VerifiedBadge size={14} verified={true} badgeText="Admin" />
-                                        )}
-                                    </div>
-                                    <p className="text-[10px] text-text-muted mt-0.5">{formatTime(selectedMessage.timestamp)}</p>
-                                </div>
+            {/* ===== DELETE CONFIRMATION ===== */}
+            <AnimatePresence>
+                {showDeleteConfirm && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-6"
+                        onClick={() => setShowDeleteConfirm(false)}
+                    >
+                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+                            className="w-full max-w-sm rounded-2xl p-6 space-y-4 text-center"
+                            style={{ background: 'var(--color-bg-card)' }}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="w-14 h-14 mx-auto rounded-full bg-danger/10 flex items-center justify-center">
+                                <AlertTriangle size={28} className="text-danger" />
                             </div>
-
-                            {/* Message Content */}
-                            <div className="space-y-4">
-                                <div className="space-y-1">
-                                    <h4 className="text-base font-black text-text-primary">{selectedMessage.title}</h4>
-                                    <div className="rounded-2xl p-4 text-sm leading-relaxed text-text-primary bg-bg-secondary border border-border">
-                                        {selectedMessage.body}
-                                    </div>
-                                </div>
-
-                                {selectedMessage.profileId && (
-                                    <Link
-                                        href={`/discover/${selectedMessage.profileId}`}
-                                        onClick={() => setSelectedMessage(null)}
-                                        className="w-full py-2.5 rounded-xl font-semibold text-center text-xs text-white gradient-primary flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
-                                    >
-                                        <User size={14} /> View Member Profile
-                                    </Link>
-                                )}
-
-                                {/* Action Buttons */}
-                                <div className="flex gap-2.5 pt-2">
-                                    <button
-                                        onClick={async () => {
-                                            if (confirm('Delete this message? This action is permanent.')) {
-                                                await deleteMessage(selectedMessage.id);
-                                                setSelectedMessage(null);
-                                            }
-                                        }}
-                                        className="flex-1 py-3 rounded-2xl font-semibold text-danger flex items-center justify-center gap-1.5 text-xs border border-danger/10 hover:bg-danger/5 active:scale-95 transition-all"
-                                    >
-                                        <Trash2 size={15} /> Delete Message
-                                    </button>
-                                    <button
-                                        onClick={() => setSelectedMessage(null)}
-                                        className="flex-1 py-3 rounded-2xl font-semibold text-text-secondary flex items-center justify-center text-xs active:scale-95 transition-all"
-                                        style={{ background: 'var(--color-surface)' }}
-                                    >
-                                        Close
-                                    </button>
-                                </div>
+                            <h3 className="text-lg font-bold text-text-primary">Delete Account?</h3>
+                            <p className="text-sm text-text-muted">This will permanently delete your profile, likes, matches, and all saved data.</p>
+                            {deleteStatus && <p className="text-xs font-bold text-danger bg-danger/10 rounded-xl p-3">{deleteStatus}</p>}
+                            <div className="flex gap-3">
+                                <button disabled={deleteBusy} onClick={() => setShowDeleteConfirm(false)} className="flex-1 py-3 rounded-xl font-medium text-text-secondary disabled:opacity-60" style={{ border: 'var(--card-border)' }}>Cancel</button>
+                                <button disabled={deleteBusy} onClick={handleDeleteAccount} className="flex-1 py-3 rounded-xl font-bold text-white bg-danger disabled:opacity-60">{deleteBusy ? 'Deleting...' : 'Delete'}</button>
                             </div>
                         </motion.div>
                     </motion.div>
@@ -1140,95 +779,21 @@ export default function ProfilePage() {
     );
 }
 
-
-
-function InputField({ label, value, onChange, multiline, placeholder }) {
-    const shared = "w-full rounded-xl p-3 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm";
-    const style = { background: 'var(--color-bg-input)', border: 'var(--card-border)' };
+function StatusTile({ icon: Icon, label, value, tone = 'primary' }) {
+    const colors = {
+        primary: 'text-primary bg-primary/10',
+        success: 'text-success bg-success/10',
+        gold: 'text-gold bg-amber-100',
+    };
     return (
-        <div>
-            <label className="text-xs text-text-muted font-medium mb-1 block">{label}</label>
-            {multiline ? (
-                <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={3} className={shared} style={style} />
-            ) : (
-                <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={shared} style={style} />
-            )}
-        </div>
-    );
-}
-
-function InfoRow({ icon: Icon, label, value }) {
-    return (
-        <div className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-            <div className="flex items-center gap-2">
-                <Icon size={14} className="text-text-muted" />
-                <span className="text-xs text-text-muted">{label}</span>
+        <div className="rounded-2xl p-3 min-h-[96px] flex flex-col justify-between" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+            <div className={`w-9 h-9 rounded-2xl flex items-center justify-center ${colors[tone] || colors.primary}`}>
+                <Icon size={17} />
             </div>
-            <span className="text-sm font-medium text-text-primary truncate max-w-[200px]">{value}</span>
-        </div>
-    );
-}
-
-function ToggleRow({ icon: Icon, label, checked, onChange }) {
-    return (
-        <div className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-            <div className="flex items-center gap-3">
-                <Icon size={18} className="text-text-muted" />
-                <span className="text-sm font-medium text-text-primary">{label}</span>
+            <div>
+                <p className="text-[10px] font-bold text-text-muted">{label}</p>
+                <p className="text-xs font-black text-text-primary leading-tight">{value}</p>
             </div>
-            <button onClick={() => onChange(!checked)}
-                className={`w-11 h-6 rounded-full transition-colors relative ${checked ? 'bg-primary' : 'bg-surface-light'}`}>
-                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${checked ? 'left-[22px]' : 'left-0.5'}`} />
-            </button>
         </div>
     );
-}
-
-function StatBadge({ icon: Icon, label, value }) {
-    return (
-        <div className="flex flex-col items-center gap-0.5">
-            <span className="text-lg font-bold text-text-primary">{value}</span>
-            <span className="text-[10px] text-text-muted flex items-center gap-1"><Icon size={10} /> {label}</span>
-        </div>
-    );
-}
-
-function ContactRow({ icon, label, sub, href, color }) {
-    return (
-        <a href={href} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-3 p-3 rounded-2xl transition-all hover:scale-[1.01] active:scale-[0.99]"
-            style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: color }}>
-                {icon}
-            </div>
-            <div className="flex-1 min-w-0">
-                <h4 className="text-sm font-bold text-text-primary">{label}</h4>
-                <p className="text-xs text-text-muted truncate">{sub}</p>
-            </div>
-            <ChevronRight size={18} className="text-text-muted" />
-        </a>
-    );
-}
-
-function FaqItem({ q, a }) {
-    const [open, setOpen] = useState(false);
-    return (
-        <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-            <button onClick={() => setOpen(!open)} className="w-full flex items-center gap-3 px-4 py-3.5 text-left">
-                <HelpCircle size={16} className="text-primary shrink-0" />
-                <span className="flex-1 text-sm font-medium text-text-primary">{q}</span>
-                <ChevronRight size={16} className={`text-text-muted transition-transform ${open ? 'rotate-90' : ''}`} />
-            </button>
-            {open && <p className="px-4 pb-3.5 text-xs text-text-secondary leading-relaxed">{a}</p>}
-        </div>
-    );
-}
-
-function formatTime(iso) {
-    if (!iso) return '';
-    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-    if (diff < 60) return 'now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-    return `${Math.floor(diff / 86400)}d`;
 }

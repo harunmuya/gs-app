@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const LOCATION_STORAGE_KEY = 'gsm_location';
+const LOCATION_STORAGE_KEY = 'gscom_location';
 
 function getStoredLocation() {
     if (typeof window === 'undefined') return null;
@@ -24,7 +24,6 @@ export function useGeolocation() {
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(false);
 
-    // Load saved location from localStorage on mount
     useEffect(() => {
         const saved = getStoredLocation();
         if (saved) {

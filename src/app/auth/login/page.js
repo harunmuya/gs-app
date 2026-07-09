@@ -1,763 +1,539 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
+import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-    Crown, ArrowRight, ArrowLeft, User, Mail, Heart, Lock, Eye, EyeOff,
-    UserPlus, LogIn, MapPin, Target, Search, Calendar, Send
-} from 'lucide-react';
+import { Mail, User, ArrowRight, Heart, Gem, Users, LogIn, UserPlus, LockKeyhole, KeyRound, ShieldCheck, Camera, AtSign, Calendar, MapPin, Phone, FileText, Check } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import Logo from '@/components/Logo';
+import { labelFromCoordinates } from '@/lib/geo';
 
-const KENYAN_CITIES = [
-    { name: 'Nairobi', lat: -1.2921, lng: 36.8219 },
-    { name: 'Mombasa', lat: -4.0435, lng: 39.6682 },
-    { name: 'Kisumu', lat: -0.1022, lng: 34.7617 },
-    { name: 'Nakuru', lat: -0.3031, lng: 36.0800 },
-    { name: 'Eldoret', lat: 0.5143, lng: 35.2698 },
-    { name: 'Ruiru', lat: -1.1489, lng: 36.9606 },
-    { name: 'Kikuyu', lat: -1.2543, lng: 36.6817 },
-    { name: 'Thika', lat: -1.0396, lng: 37.0900 },
-    { name: 'Naivasha', lat: -0.7172, lng: 36.4310 },
-    { name: 'Kakamega', lat: 0.2827, lng: 34.7519 },
-    { name: 'Kisii', lat: -0.6817, lng: 34.7667 },
-    { name: 'Kitale', lat: 1.0187, lng: 35.0020 },
-    { name: 'Athi River', lat: -1.4500, lng: 36.9833 },
-    { name: 'Mlolongo', lat: -1.3912, lng: 36.9389 },
-    { name: 'Garissa', lat: -0.4532, lng: 39.6461 },
-    { name: 'Malindi', lat: -3.2138, lng: 40.1169 },
-    { name: 'Ngong', lat: -1.3607, lng: 36.6583 },
-    { name: 'Rongai', lat: -1.3964, lng: 36.7586 },
-    { name: 'Karen', lat: -1.3197, lng: 36.7116 },
-    { name: 'Westlands', lat: -1.2636, lng: 36.8036 },
-    { name: 'Kilimani', lat: -1.2903, lng: 36.7847 },
-    { name: 'Langata', lat: -1.3557, lng: 36.7462 },
-    { name: 'South B', lat: -1.3122, lng: 36.8433 },
-    { name: 'South C', lat: -1.3200, lng: 36.8300 },
-    { name: 'Roysambu', lat: -1.2189, lng: 36.8894 },
-    { name: 'Kasarani', lat: -1.2200, lng: 36.9000 },
-    { name: 'Embakasi', lat: -1.3200, lng: 36.9000 },
-    { name: 'Juja', lat: -1.1004, lng: 37.0131 },
-    { name: 'Kiambu', lat: -1.1714, lng: 36.8356 },
-    { name: 'Nyeri', lat: -0.4197, lng: 36.9511 },
-    { name: 'Machakos', lat: -1.5177, lng: 37.2634 },
-    { name: 'Meru', lat: 0.0480, lng: 37.6559 },
-    { name: 'Nanyuki', lat: 0.0067, lng: 37.0722 },
-    { name: 'Diani', lat: -4.3164, lng: 39.5764 },
-    { name: 'Kilifi', lat: -3.6305, lng: 39.8499 },
-    { name: 'Voi', lat: -3.3945, lng: 38.5630 },
-    { name: 'Kericho', lat: -0.3677, lng: 35.2827 },
-    { name: 'Homabay', lat: -0.5273, lng: 34.4571 },
-    { name: 'Migori', lat: -1.0634, lng: 34.4731 },
-    { name: 'Bomet', lat: -0.7813, lng: 35.3416 },
-    { name: 'Webuye', lat: 0.6078, lng: 34.7697 },
-    { name: 'Wajir', lat: 1.7471, lng: 40.0659 },
-    { name: 'Limuru', lat: -1.1083, lng: 36.6417 },
-    { name: 'Lodwar', lat: 3.1191, lng: 35.5968 },
-    { name: 'Mandera', lat: 3.9366, lng: 41.8569 },
-    { name: 'Narok', lat: -1.0784, lng: 35.8601 },
-    { name: 'Isiolo', lat: 0.3544, lng: 37.5822 },
-    { name: 'Marsabit', lat: 2.3284, lng: 37.9902 },
-    { name: 'Lamu', lat: -2.2686, lng: 40.9020 },
-    { name: 'Watamu', lat: -3.3523, lng: 40.0169 },
-    { name: 'Bamburi', lat: -4.0102, lng: 39.7188 },
-    { name: 'Nyali', lat: -4.0298, lng: 39.7111 },
+const PREFERENCES = [
+    { value: 'sugar_mummy_looking_for_toyboy', label: 'I am a Sugar Mummy', desc: 'Looking for a sugar guy / toyboy', icon: Heart, color: '#E11D48' },
+    { value: 'sugar_daddy_looking_for_mistress', label: 'I am a Sugar Daddy', desc: 'Looking for an adult mistress', icon: Gem, color: '#0EA5E9' },
+    { value: 'mistress_looking_for_sugar_daddy', label: 'I am a Mistress', desc: 'Looking for a sugar daddy', icon: Users, color: '#0F766E' },
+    { value: 'toyboy_looking_for_sugar_mummy', label: 'I am a Sugar Guy / Toyboy', desc: 'Looking for a sugar mummy', icon: Heart, color: '#F59E0B' },
 ];
 
-function findNearestCity(lat, lng) {
-    let nearest = 'Nairobi';
-    let minDist = Infinity;
-    for (const city of KENYAN_CITIES) {
-        const d = Math.sqrt(Math.pow(lat - city.lat, 2) + Math.pow(lng - city.lng, 2));
-        if (d < minDist) { minDist = d; nearest = city.name; }
-    }
-    return nearest;
+const LEGAL_LINKS = [
+    { href: '/terms', label: 'Terms & Conditions' },
+    { href: '/privacy', label: 'Privacy' },
+    { href: '/safety', label: 'Safety' },
+    { href: '/community-guidelines', label: 'Rules' },
+    { href: '/contact', label: 'Contact' },
+];
+
+function isComplete(account) {
+    return Boolean((account?.avatar_url || account?.photos?.[0]) && account?.bio && account?.age && account?.location && (account?.phone_number || account?.phone));
 }
 
-function LoginPageInner() {
-    const { signIn, signUp } = useAuth();
-    const router = useRouter();
-    const searchParams = useSearchParams();
+function hardRedirect(path) {
+    if (typeof window === 'undefined') return;
+    window.location.assign(path);
+    window.setTimeout(() => { window.location.href = path; }, 250);
+}
 
-    // Mode: login | register | forgot | email_sent
-    const [mode, setMode] = useState('login');
-    // Registration step: 1=credentials, 2=gender, 3=role, 4=age+location
-    const [regStep, setRegStep] = useState(1);
+function looksLikeEmail(value) {
+    return /@/.test(String(value || ''));
+}
 
-    // Step 1 fields
+function makeUsername(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 20);
+}
+
+function cleanPhone(value) {
+    return String(value || '').replace(/[^\d+]/g, '').slice(0, 18);
+}
+
+export default function LoginPage() {
+    const { user, signIn, signInExisting, requestPasswordReset, resetPassword } = useAuth();
+    const photoInputRef = useRef(null);
+    const [mode, setMode] = useState('signin');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [resetCode, setResetCode] = useState('');
     const [displayName, setDisplayName] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
-
-    // Step 2-4 fields
-    const [gender, setGender] = useState('');
-    const [lookingFor, setLookingFor] = useState('');
+    const [username, setUsername] = useState('');
+    const [usernameTouched, setUsernameTouched] = useState(false);
+    const [profilePhoto, setProfilePhoto] = useState('');
     const [age, setAge] = useState('');
     const [location, setLocation] = useState('');
-    const [interests, setInterests] = useState('');
-    const [hobbies, setHobbies] = useState('');
-    const [detectingLocation, setDetectingLocation] = useState(false);
-    const [isPublic, setIsPublic] = useState(true);
-
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
+    const [phone, setPhone] = useState('');
+    const [bio, setBio] = useState('');
+    const [selectedPreference, setSelectedPreference] = useState('sugar_mummy_looking_for_toyboy');
+    const [step, setStep] = useState(1);
+    const [resetSent, setResetSent] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [notice, setNotice] = useState('');
+    const [agreedTerms, setAgreedTerms] = useState(false);
+    const [detectedGeo, setDetectedGeo] = useState(null);
+    const [geoBusy, setGeoBusy] = useState(false);
+    const [geoAsked, setGeoAsked] = useState(false);
 
-    const [newPassword, setNewPassword] = useState('');
-    const [confirmNewPassword, setConfirmNewPassword] = useState('');
-    const [resetOtp, setResetOtp] = useState('');
-
-    const isRegister = mode === 'register';
-
-    // Check for OAuth error or recovery mode in URL params
     useEffect(() => {
-        const errorParam = searchParams?.get('error');
-        if (errorParam) {
-            setError(decodeURIComponent(errorParam));
-        }
-        const recoveryParam = searchParams?.get('recovery');
-        if (recoveryParam === 'true') {
-            setMode('reset_password');
-        }
-        if (searchParams?.get('reset') === 'otp') {
-            const resetEmail = searchParams?.get('email');
-            if (resetEmail) setEmail(resetEmail);
-            setMode('reset_password');
-        }
-    }, [searchParams]);
+        try {
+            const savedEmail = JSON.parse(localStorage.getItem('gscom_login_email') || 'null');
+            if (savedEmail && !email) setEmail(savedEmail);
+            if (new URLSearchParams(window.location.search).get('signed_out') === '1') {
+                setNotice('You have been signed out.');
+            }
+            if (new URLSearchParams(window.location.search).get('deleted') === '1') {
+                setNotice('Your account has been deleted from the database.');
+            }
+        } catch {}
+    }, []);
 
-    // Auto-detect location
-    const detectLocation = () => {
-        if (!navigator.geolocation) { return; }
-        setDetectingLocation(true);
-        setError('');
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                const city = findNearestCity(pos.coords.latitude, pos.coords.longitude);
-                setLocation(city);
-                setDetectingLocation(false);
-            },
-            () => {
-                setLocation('Nairobi');
-                setDetectingLocation(false);
-            },
-            { enableHighAccuracy: true, timeout: 10000 }
-        );
-    };
-
-    // Auto-set lookingFor based on gender
     useEffect(() => {
-        if (gender === 'male') setLookingFor('sugar_mummy');
-        else if (gender === 'female') setLookingFor('sugar_daddy');
-    }, [gender]);
+        if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('signed_out') === '1') return;
+        if (user) hardRedirect(isComplete(user) ? '/discover' : '/profile?complete=1');
+    }, [user]);
 
+    useEffect(() => {
+        if (usernameTouched) return;
+        setUsername(makeUsername(displayName));
+    }, [displayName, usernameTouched]);
 
+    function validEmail(value) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+    }
 
+    function validPassword(value) {
+        return String(value || '').length >= 6;
+    }
 
-    // Handle step 1 submission
-    const handleStep1 = (e) => {
-        e.preventDefault();
-        setError('');
-        setSuccess('');
-        if (!email.trim()) { setError('Please enter your email'); return; }
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Please enter a valid email'); return; }
-        if (!password || password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    function validName(value) {
+        const text = String(value || '').trim();
+        return text.length >= 2 && !looksLikeEmail(text) && /[a-zA-Z]/.test(text) && !/^\d+$/.test(text);
+    }
 
-        if (isRegister) {
-            if (password !== confirmPassword) { setError('Passwords do not match'); return; }
-            if (!displayName.trim() || displayName.trim().length < 2) { setError('Please enter your full name (at least 2 characters)'); return; }
-            setRegStep(2);
-        } else {
-            handleLogin();
+    function validUsername(value) {
+        return /^[a-z0-9_]{3,20}$/.test(String(value || '').trim());
+    }
+
+    function validAge(value) {
+        const number = Number(value);
+        return Number.isInteger(number) && number >= 18 && number <= 80;
+    }
+
+    function validateProfileStep() {
+        if (!profilePhoto) return 'Upload one clear profile photo.';
+        if (!validName(displayName)) return 'Add your real first name or public name.';
+        if (!validUsername(username)) return 'Username must be 3-20 letters, numbers, or underscores.';
+        if (!validAge(age)) return 'Age must be between 18 and 80.';
+        if (location.trim().length < 2) return 'Add your city or area.';
+        if (cleanPhone(phone).replace(/\D/g, '').length < 7) return 'Add a valid phone number.';
+        if (bio.trim().length < 12) return 'Write a short bio so members know you are real.';
+        return '';
+    }
+
+    function validateCurrentSignupStep(targetStep = step) {
+        if (targetStep === 1) {
+            if (!validEmail(email.trim())) return 'Please enter a valid email.';
+            if (!validPassword(password)) return 'Create a password with at least 6 characters.';
         }
-    };
+        if (targetStep === 2 && !profilePhoto) return 'Upload one clear real profile photo.';
+        if (targetStep === 3) {
+            if (!validName(displayName)) return 'Add your real first name or public name.';
+            if (!validUsername(username)) return 'Username must be 3-20 letters, numbers, or underscores.';
+        }
+        if (targetStep === 4) {
+            if (!validAge(age)) return 'Age must be between 18 and 80.';
+            if (cleanPhone(phone).replace(/\D/g, '').length < 7) return 'Add a valid phone number.';
+        }
+        if (targetStep === 5) {
+            if (location.trim().length < 2) return 'Add your city or area.';
+            if (bio.trim().length < 12) return 'Write a short bio so members know you are real.';
+        }
+        if (targetStep === 6 && !selectedPreference) return 'Choose the type of member you are.';
+        return '';
+    }
 
-    const handleLogin = async () => {
+    function goToNextSignupStep(event) {
+        event?.preventDefault?.();
+        setError('');
+        setNotice('');
+        const message = validateCurrentSignupStep(step);
+        if (message) { setError(message); return; }
+        setStep((current) => Math.min(6, current + 1));
+    }
+
+    function handleProfilePhoto(event) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+            setError('Choose a real image for your profile photo.');
+            event.target.value = '';
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const img = new Image();
+            img.onload = () => {
+                if (img.width < 180 || img.height < 180) {
+                    setError('Upload a clear real photo, at least 180 by 180 pixels.');
+                    return;
+                }
+                const canvas = document.createElement('canvas');
+                const max = 720;
+                let width = img.width;
+                let height = img.height;
+                if (width > max || height > max) {
+                    if (width > height) {
+                        height = Math.round(height * max / width);
+                        width = max;
+                    } else {
+                        width = Math.round(width * max / height);
+                        height = max;
+                    }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                const sampleCanvas = document.createElement('canvas');
+                sampleCanvas.width = 80;
+                sampleCanvas.height = 80;
+                const sampleContext = sampleCanvas.getContext('2d');
+                sampleContext.drawImage(img, 0, 0, 80, 80);
+                const pixels = sampleContext.getImageData(0, 0, 80, 80).data;
+                const buckets = new Set();
+                for (let i = 0; i < pixels.length; i += 64) {
+                    buckets.add(`${pixels[i] >> 5}-${pixels[i + 1] >> 5}-${pixels[i + 2] >> 5}`);
+                }
+                if (buckets.size < 16) {
+                    setError('That image looks blank or fake. Upload a clear real profile photo.');
+                    return;
+                }
+                setProfilePhoto(canvas.toDataURL('image/webp', 0.82));
+                setError('');
+                setStep(3);
+            };
+            img.onerror = () => setError('Could not read that photo. Try another image.');
+            img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+        event.target.value = '';
+    }
+
+    async function handleExistingSubmit(event) {
+        event.preventDefault();
+        setError('');
+        setNotice('');
+        if (!validEmail(email.trim())) { setError('Please enter a valid email.'); return; }
+        if (!validPassword(password)) { setError('Enter your password, at least 6 characters.'); return; }
         setLoading(true);
         try {
-            await signIn(email, password);
-            router.push('/discover');
+            const account = await signInExisting(email.trim(), password);
+            hardRedirect(isComplete(account) ? '/discover' : '/profile?complete=1');
         } catch (err) {
-            const msg = err.message || '';
-            if (msg.includes('Email not confirmed') || msg.includes('email_not_confirmed')) {
-                setError('Please verify your email first. Check your inbox for a confirmation link.');
-            } else if (msg.includes('Invalid login credentials') || msg.includes('invalid_credentials')) {
-                setError('Incorrect email or password. Please try again.');
-            } else {
-                setError(msg || 'Sign in failed. Please try again.');
+            setError(err.message || 'Could not sign in.');
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    function handleCreateEmail(event) {
+        event.preventDefault();
+        setError('');
+        setNotice('');
+        const message = validateCurrentSignupStep(1);
+        if (message) { setError(message); return; }
+        setStep(2);
+    }
+
+    async function detectSignupLocation({ quiet = false } = {}) {
+        if (!navigator.geolocation) {
+            if (!quiet) setError('Location is not supported on this device. Type your city or area manually.');
+            return;
+        }
+        if (geoBusy) return;
+        setGeoBusy(true);
+        if (!quiet) {
+            setError('');
+            setNotice('Allow location permission so we can fill your real city or estate.');
+        }
+        navigator.geolocation.getCurrentPosition((position) => {
+            const next = {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+                accuracy: position.coords.accuracy,
+                geo_updated_at: new Date().toISOString(),
+            };
+            const label = labelFromCoordinates(next.latitude, next.longitude);
+            setDetectedGeo(next);
+            if (label) setLocation((current) => current?.trim() ? current : label);
+            setNotice(label ? `Location detected: ${label}.` : 'Location detected.');
+            setGeoBusy(false);
+        }, (err) => {
+            if (!quiet) {
+                if (err?.code === err.PERMISSION_DENIED) setError('Location permission was denied. Allow Location or type your city/estate manually.');
+                else setError('Could not detect location. Type your city or estate manually.');
             }
+            setGeoBusy(false);
+        }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 5 * 60 * 1000 });
+    }
+
+    useEffect(() => {
+        if (mode !== 'signup' || step !== 5 || geoAsked || location.trim()) return;
+        setGeoAsked(true);
+        detectSignupLocation({ quiet: true });
+    }, [mode, step, geoAsked, location]);
+
+    function handleProfileSubmit(event) {
+        event.preventDefault();
+        setError('');
+        setNotice('');
+        const message = validateCurrentSignupStep(step);
+        if (message) { setError(message); return; }
+        setStep((current) => Math.min(6, current + 1));
+    }
+
+    async function handleCreateAccount() {
+        const message = validateProfileStep();
+        if (message) { setStep(2); setError(message); return; }
+        setLoading(true);
+        setError('');
+        setNotice('');
+        try {
+            await Promise.resolve(signIn(email.trim(), password, displayName.trim(), selectedPreference, {
+                username: username.trim(),
+                avatar_url: profilePhoto,
+                photos: [profilePhoto],
+                age: age.trim(),
+                location: location.trim(),
+                phone: cleanPhone(phone),
+                phone_number: cleanPhone(phone),
+                bio: bio.trim(),
+                latitude: detectedGeo?.latitude,
+                longitude: detectedGeo?.longitude,
+                geo_updated_at: detectedGeo?.geo_updated_at,
+                city: location.trim(),
+            }));
+            hardRedirect('/profile');
+        } catch (err) {
+            setError(err.message || 'Something went wrong. Please try again.');
+        } finally {
             setLoading(false);
         }
-    };
+    }
 
-    // Handle forgot password
-    const handleForgotPassword = async (e) => {
-        e.preventDefault();
+    async function handleSendReset(event) {
+        event.preventDefault();
         setError('');
-        setSuccess('');
-        if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-            setError('Please enter a valid email address');
-            return;
-        }
+        setNotice('');
+        if (!validEmail(email.trim())) { setError('Enter the email on your account.'); return; }
         setLoading(true);
         try {
-            const res = await fetch('/api/auth/password-reset/request', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email }),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Failed to send reset code');
-            setMode('reset_password');
-            setSuccess('A 6-digit reset code has been sent to your email.');
-            setLoading(false);
+            await requestPasswordReset(email.trim());
+            setResetSent(true);
+            setNotice('Reset code sent to your email.');
         } catch (err) {
-            setError(err.message || 'Failed to send reset code. Please try again.');
+            setError(err.message || 'Could not send reset code.');
+        } finally {
             setLoading(false);
         }
-    };
+    }
 
-    // Handle password change (from recovery email link)
-    const handleChangePassword = async (e) => {
-        e.preventDefault();
+    async function handleResetPassword(event) {
+        event.preventDefault();
         setError('');
-        setSuccess('');
-        if (!newPassword || newPassword.length < 6) {
-            setError('New password must be at least 6 characters');
-            return;
-        }
-        if (!/^\d{6}$/.test(resetOtp.trim())) {
-            setError('Enter the 6-digit code sent to your email');
-            return;
-        }
-        if (newPassword !== confirmNewPassword) {
-            setError('Passwords do not match');
-            return;
-        }
+        setNotice('');
+        if (!/^\d{6}$/.test(resetCode.trim())) { setError('Enter the 6-digit reset code.'); return; }
+        if (!validPassword(newPassword)) { setError('New password must be at least 6 characters.'); return; }
         setLoading(true);
         try {
-            const res = await fetch('/api/auth/password-reset/verify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, code: resetOtp, password: newPassword }),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Failed to reset password');
-            setSuccess('Password changed successfully! You can now sign in.');
-            setLoading(false);
-            setTimeout(() => {
-                setMode('login');
-                setResetOtp('');
-                setNewPassword('');
-                setConfirmNewPassword('');
-                setSuccess('');
-            }, 2000);
+            const account = await resetPassword(email.trim(), resetCode.trim(), newPassword);
+            hardRedirect(isComplete(account) ? '/discover' : '/profile?complete=1');
         } catch (err) {
-            setError(err.message || 'Failed to change password.');
+            setError(err.message || 'Could not reset password.');
+        } finally {
             setLoading(false);
         }
-    };
+    }
 
-    // Handle step 2: gender
-    const handleGenderSelect = (g) => {
-        setGender(g);
+    function switchMode(nextMode) {
+        setMode(nextMode);
+        setStep(1);
+        setResetSent(false);
         setError('');
-        setTimeout(() => setRegStep(3), 300);
-    };
-
-    // Handle step 3: role/lookingFor
-    const handleRoleSelect = (role) => {
-        setLookingFor(role);
-        setError('');
-        setTimeout(() => {
-            setRegStep(4);
-            detectLocation();
-        }, 300);
-    };
-
-    // Handle step 4: complete registration
-    const handleCompleteRegistration = async () => {
-        setError('');
-        const ageNum = parseInt(age);
-        if (!ageNum || ageNum < 18 || ageNum > 80) {
-            setError('Please enter a valid age (18–80)');
-            return;
-        }
-        if (!location.trim()) {
-            setError('Please select or detect your location');
-            return;
-        }
-
-        setLoading(true);
-        try {
-            await signUp(email, password, displayName, {
-                gender,
-                lookingFor,
-                age: ageNum,
-                location,
-                interests: interests.split(',').map(i => i.trim()).filter(Boolean),
-                hobbies: hobbies.split(',').map(h => h.trim()).filter(Boolean),
-                isPublic,
-            });
-
-            // Check if user session was immediately established (email confirmation disabled)
-            const { data: sessionData } = await supabase.auth.getSession();
-            if (sessionData?.session) {
-                router.replace('/discover');
-            } else {
-                // Show email verification notice
-                setMode('email_sent');
-            }
-        } catch (err) {
-            const msg = err.message || '';
-            if (msg.includes('User already registered') || msg.includes('already registered')) {
-                setError('An account with this email already exists. Try signing in instead.');
-            } else {
-                setError(msg || 'Registration failed. Please try again.');
-            }
-            setLoading(false);
-        }
-    };
-
-    const goBack = () => {
-        setError('');
-        setSuccess('');
-        if (mode === 'forgot') {
-            setMode('login');
-        } else if (isRegister && regStep > 1) {
-            setRegStep(regStep - 1);
-        } else if (mode === 'register') {
-            setMode('login');
-            setRegStep(1);
-        } else {
-            setMode('login');
-            setRegStep(1);
-        }
-    };
-
-    // Password strength indicator
-    const getPasswordStrength = (pwd) => {
-        if (!pwd) return { level: 0, label: '', color: '' };
-        let score = 0;
-        if (pwd.length >= 6) score++;
-        if (pwd.length >= 8) score++;
-        if (/[A-Z]/.test(pwd)) score++;
-        if (/[0-9]/.test(pwd)) score++;
-        if (/[^A-Za-z0-9]/.test(pwd)) score++;
-        if (score <= 1) return { level: 1, label: 'Weak', color: 'bg-danger' };
-        if (score <= 3) return { level: 2, label: 'Fair', color: 'bg-gold' };
-        return { level: 3, label: 'Strong', color: 'bg-success' };
-    };
-
-    const pwdStrength = isRegister ? getPasswordStrength(password) : null;
+        setNotice('');
+    }
 
     return (
-        <div className="min-h-dvh flex flex-col bg-bg overflow-hidden relative">
-            {/* Background */}
-            <div className="fixed inset-0 pointer-events-none">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full blur-[120px] opacity-25" style={{ background: 'var(--color-primary)' }} />
-                <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full blur-[100px] opacity-15" style={{ background: 'var(--color-gold)' }} />
-                <div className="absolute top-1/3 left-0 w-[300px] h-[300px] rounded-full blur-[80px] opacity-10" style={{ background: 'var(--color-primary)' }} />
-            </div>
+        <div className="min-h-dvh flex flex-col" style={{ background: '#ffffff' }}>
+            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center pt-10 pb-4 px-6">
+                <div className="relative">
+                    <div className="absolute inset-0 rounded-full blur-2xl opacity-20" style={{ background: 'var(--gradient-primary)' }} />
+                    <Logo size={76} className="relative" />
+                </div>
+            </motion.div>
 
-            <div className="relative flex-1 flex flex-col items-center justify-center px-6 py-8">
-                {/* Back button */}
-                {(mode === 'forgot' || mode === 'reset_password' || mode === 'register' || (isRegister && regStep > 1)) && mode !== 'email_sent' && (
-                    <button onClick={goBack} className="absolute top-6 left-6 p-2 rounded-full bg-bg-card/80 backdrop-blur-sm shadow-sm z-10 border border-border">
-                        <ArrowLeft size={20} className="text-text-primary" />
-                    </button>
-                )}
+            <div className="flex-1 px-5 max-w-md mx-auto w-full pb-8">
+                <div className="flex gap-1.5 mb-5 rounded-2xl p-1" style={{ background: 'rgba(155,44,94,0.04)', border: '1px solid rgba(155,44,94,0.1)' }}>
+                    <button type="button" onClick={() => switchMode('signin')} className={`flex-1 rounded-xl py-3 text-xs font-black flex items-center justify-center gap-1.5 transition-all ${mode === 'signin' ? 'gradient-primary text-white' : 'text-text-muted'}`} style={mode === 'signin' ? { boxShadow: '0 4px 16px rgba(155,44,94,0.3)' } : {}}><LogIn size={14} /> Login</button>
+                    <button type="button" onClick={() => switchMode('signup')} className={`flex-1 rounded-xl py-3 text-xs font-black flex items-center justify-center gap-1.5 transition-all ${mode === 'signup' ? 'gradient-primary text-white' : 'text-text-muted'}`} style={mode === 'signup' ? { boxShadow: '0 4px 16px rgba(155,44,94,0.3)' } : {}}><UserPlus size={14} /> Sign Up</button>
+                    <button type="button" onClick={() => switchMode('forgot')} className={`flex-1 rounded-xl py-3 text-xs font-black flex items-center justify-center gap-1.5 transition-all ${mode === 'forgot' ? 'gradient-primary text-white' : 'text-text-muted'}`} style={mode === 'forgot' ? { boxShadow: '0 4px 16px rgba(155,44,94,0.3)' } : {}}><KeyRound size={14} /> Reset</button>
+                </div>
 
-                {/* ========== EMAIL SENT SUCCESS ========== */}
-                {mode === 'email_sent' && (
-                    <motion.div
-                        initial={{ scale: 0.9, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        className="w-full max-w-sm text-center space-y-5"
-                    >
-                        <div className="w-20 h-20 rounded-full bg-success/15 border border-success/30 flex items-center justify-center mx-auto">
-                            <Send size={32} className="text-success" />
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-black text-text-primary mb-2">Check Your Email!</h2>
-                            <p className="text-sm text-text-secondary leading-relaxed">
-                                We sent a verification link to <strong className="text-text-primary">{email}</strong>.
-                                Click the link in your email to activate your account, then sign in below.
-                            </p>
-                        </div>
-                        <div className="p-4 rounded-2xl bg-surface border border-border text-xs text-text-secondary space-y-1">
-                            <p>✓ Check your inbox and spam/junk folder</p>
-                            <p>✓ The link expires in 24 hours</p>
-                            <p>✓ After clicking, sign in with your email and password</p>
-                        </div>
-                        <button
-                            onClick={() => { setMode('login'); setRegStep(1); setError(''); setSuccess(''); }}
-                            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 transition-all active:scale-[0.98] text-sm"
-                        >
-                            <LogIn size={18} /> Go to Sign In
+                {notice && <p className="mb-4 rounded-2xl p-3 text-sm text-center font-bold" style={{ background: 'rgba(5,150,105,0.08)', color: '#059669', border: '1px solid rgba(5,150,105,0.15)' }}>{notice}</p>}
+                {error && <p className="mb-4 rounded-2xl p-3 text-sm text-center font-bold" style={{ background: 'rgba(220,38,38,0.08)', color: '#DC2626', border: '1px solid rgba(220,38,38,0.15)' }}>{error}</p>}
+
+                {mode === 'signin' && (
+                    <form onSubmit={handleExistingSubmit} className="space-y-3.5">
+                        <LightField icon={Mail} value={email} onChange={(value) => { setEmail(value); setError(''); }} placeholder="Email address" type="email" autoFocus />
+                        <LightField icon={LockKeyhole} value={password} onChange={(value) => { setPassword(value); setError(''); }} placeholder="Password" type="password" />
+                        <label className="flex items-start gap-3 py-2 cursor-pointer">
+                            <input type="checkbox" checked={agreedTerms} onChange={(e) => setAgreedTerms(e.target.checked)} className="mt-0.5 w-4 h-4 rounded accent-[#9B2C5E]" />
+                            <span className="text-xs text-text-muted leading-relaxed">I confirm I am 18+ and agree to the <Link href="/terms" className="text-primary underline">Terms</Link>, <Link href="/privacy" className="text-primary underline">Privacy</Link>, and <Link href="/community-guidelines" className="text-primary underline">Community Rules</Link></span>
+                        </label>
+                        <button disabled={loading || !agreedTerms} className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-black text-white text-base disabled:opacity-40 transition-all active:scale-[0.98]" style={{ background: 'var(--gradient-primary)', boxShadow: '0 4px 20px rgba(155,44,94,0.35)' }}>
+                            {loading ? <Spinner /> : <>Login <ArrowRight size={20} /></>}
                         </button>
-                    </motion.div>
+                        <button type="button" onClick={() => switchMode('forgot')} className="w-full py-2 text-xs font-bold text-text-muted">Forgot password?</button>
+                    </form>
                 )}
 
-                {/* Logo — shown on all non-email-sent modes */}
-                {mode !== 'email_sent' && (
-                    <motion.div
-                        initial={{ y: -30, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ duration: 0.6 }}
-                        className="flex flex-col items-center mb-6"
-                    >
-                        <div className="mb-3">
-                            <img src="/gs-logo.png?v=7" alt="GS" className="w-16 h-16 object-contain" />
+                {mode === 'forgot' && (
+                    <form onSubmit={resetSent ? handleResetPassword : handleSendReset} className="space-y-3.5">
+                        <LightField icon={Mail} value={email} onChange={(value) => { setEmail(value); setError(''); }} placeholder="Email on your account" type="email" autoFocus />
+                        {resetSent && <LightField icon={ShieldCheck} value={resetCode} onChange={(value) => { setResetCode(value.replace(/\D/g, '').slice(0, 6)); setError(''); }} placeholder="6-digit reset code" inputMode="numeric" />}
+                        {resetSent && <LightField icon={LockKeyhole} value={newPassword} onChange={(value) => { setNewPassword(value); setError(''); }} placeholder="New password" type="password" />}
+                        <button disabled={loading} className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-black text-white text-base disabled:opacity-40 transition-all active:scale-[0.98]" style={{ background: 'var(--gradient-primary)', boxShadow: '0 4px 20px rgba(155,44,94,0.35)' }}>
+                            {loading ? <Spinner /> : resetSent ? <>Reset Password <ArrowRight size={20} /></> : <>Send Reset Code <ArrowRight size={20} /></>}
+                        </button>
+                        {resetSent && <button type="button" onClick={handleSendReset} className="w-full py-2 text-xs font-bold text-text-muted">Send a new code</button>}
+                    </form>
+                )}
+
+                {mode === 'signup' && (
+                    <>
+                        <div className="mb-4 rounded-2xl p-3" style={{ background: 'rgba(155,44,94,0.04)', border: '1px solid rgba(155,44,94,0.1)' }}>
+                            <div className="flex items-center justify-between text-[11px] font-black text-text-muted">
+                                <span>Step {step} of 6</span>
+                                <span>{Math.round((step / 6) * 100)}%</span>
+                            </div>
+                            <div className="mt-2 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(155,44,94,0.08)' }}>
+                                <div className="h-full rounded-full gradient-primary transition-all" style={{ width: `${Math.min(100, (step / 6) * 100)}%` }} />
+                            </div>
                         </div>
-
-                        <h1 className="text-lg font-extrabold text-gradient mb-0.5 text-center">
-                            {mode === 'forgot' ? 'Reset Password' :
-                             mode === 'reset_password' ? 'Set New Password' :
-                             isRegister ? (regStep === 1 ? 'Create Account' : regStep === 2 ? 'About You' : regStep === 3 ? 'What Are You Looking For?' : 'Almost Done!') :
-                             'Welcome Back'}
-                        </h1>
-
-                        {isRegister && regStep > 1 && (
-                            <div className="flex items-center gap-1.5 mt-2">
-                                {[1, 2, 3, 4].map(s => (
-                                    <div key={s} className={`h-1.5 rounded-full transition-all ${s <= regStep ? 'w-6 gradient-primary' : 'w-4 bg-border'}`} />
-                                ))}
-                            </div>
-                        )}
-
-                        {mode === 'login' && (
-                            <p className="text-xs flex items-center gap-1.5 text-center mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-                                <Crown size={12} style={{ color: 'var(--color-gold)' }} className="shrink-0" />
-                                Kenya&apos;s #1 dating app for real connections
-                            </p>
-                        )}
-                    </motion.div>
+                        <AnimatePresence mode="wait">
+                            {step === 1 ? (
+                                <motion.form key="create1" onSubmit={handleCreateEmail} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3.5">
+                                    <LightField icon={Mail} value={email} onChange={(value) => { setEmail(value); setError(''); }} placeholder="Your real email address" type="email" autoFocus />
+                                    <LightField icon={LockKeyhole} value={password} onChange={(value) => { setPassword(value); setError(''); }} placeholder="Create password (6+ chars)" type="password" />
+                                    <button className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-black text-white text-base transition-all active:scale-[0.98]" style={{ background: 'var(--gradient-primary)', boxShadow: '0 4px 20px rgba(155,44,94,0.35)' }}>Continue <ArrowRight size={20} /></button>
+                                </motion.form>
+                            ) : step === 2 ? (
+                                <motion.form key="create2" onSubmit={goToNextSignupStep} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3.5">
+                                    <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handleProfilePhoto} />
+                                    <button type="button" onClick={() => photoInputRef.current?.click()} className="w-full rounded-2xl p-4 flex items-center gap-4 text-left transition-all active:scale-[0.98]" style={{ background: 'var(--color-surface)', border: profilePhoto ? '2px solid rgba(155,44,94,0.4)' : '2px dashed rgba(155,44,94,0.2)' }}>
+                                        <div className="w-24 h-24 rounded-2xl overflow-hidden flex items-center justify-center shrink-0" style={{ background: 'rgba(155,44,94,0.08)' }}>
+                                            {profilePhoto ? <img src={profilePhoto} alt="" className="w-full h-full object-cover" /> : <Camera size={30} className="text-primary" />}
+                                        </div>
+                                        <div>
+                                            <p className="font-black text-text-primary">{profilePhoto ? 'Photo added ✓' : 'Add a real profile photo'}</p>
+                                            <p className="text-xs text-text-muted mt-1">Clear face photos help real members trust your account.</p>
+                                        </div>
+                                    </button>
+                                    <button className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-black text-white text-base transition-all active:scale-[0.98]" style={{ background: 'var(--gradient-primary)', boxShadow: '0 4px 20px rgba(155,44,94,0.35)' }}>Continue <ArrowRight size={20} /></button>
+                                    <button type="button" onClick={() => setStep(1)} className="w-full py-3 text-sm font-medium text-text-muted">← Back</button>
+                                </motion.form>
+                            ) : step === 3 ? (
+                                <motion.form key="create3" onSubmit={handleProfileSubmit} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3.5">
+                                    <LightField icon={User} value={displayName} onChange={(value) => { setDisplayName(value); setError(''); }} placeholder="Real first name or public name" autoFocus />
+                                    <LightField icon={AtSign} value={username} onChange={(value) => { setUsernameTouched(true); setUsername(makeUsername(value)); setError(''); }} placeholder="Username" />
+                                    <button className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-black text-white text-base transition-all active:scale-[0.98]" style={{ background: 'var(--gradient-primary)', boxShadow: '0 4px 20px rgba(155,44,94,0.35)' }}>Continue <ArrowRight size={20} /></button>
+                                    <button type="button" onClick={() => setStep(2)} className="w-full py-3 text-sm font-medium text-text-muted">← Back</button>
+                                </motion.form>
+                            ) : step === 4 ? (
+                                <motion.form key="create4" onSubmit={handleProfileSubmit} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3.5">
+                                    <LightField icon={Calendar} value={age} onChange={(value) => { setAge(value.replace(/\D/g, '').slice(0, 2)); setError(''); }} placeholder="Age (18+)" inputMode="numeric" autoFocus />
+                                    <LightField icon={Phone} value={phone} onChange={(value) => { setPhone(cleanPhone(value)); setError(''); }} placeholder="Phone number" type="tel" />
+                                    <button className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-black text-white text-base transition-all active:scale-[0.98]" style={{ background: 'var(--gradient-primary)', boxShadow: '0 4px 20px rgba(155,44,94,0.35)' }}>Continue <ArrowRight size={20} /></button>
+                                    <button type="button" onClick={() => setStep(3)} className="w-full py-3 text-sm font-medium text-text-muted">← Back</button>
+                                </motion.form>
+                            ) : step === 5 ? (
+                                <motion.form key="create5" onSubmit={handleProfileSubmit} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3.5">
+                                    <LightField icon={MapPin} value={location} onChange={(value) => { setLocation(value); setError(''); }} placeholder="City or area" autoFocus />
+                                    <button type="button" onClick={() => detectSignupLocation()} disabled={geoBusy} className="w-full rounded-2xl px-4 py-3 text-sm font-black text-primary bg-primary/10 flex items-center justify-center gap-2 disabled:opacity-60">
+                                        <MapPin size={16} /> {geoBusy ? 'Detecting location...' : detectedGeo ? 'Update detected location' : 'Detect my real location'}
+                                    </button>
+                                    <LightTextAreaField icon={FileText} value={bio} onChange={(value) => { setBio(value.slice(0, 240)); setError(''); }} placeholder="Short bio: who you are and what you want" />
+                                    <button className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-black text-white text-base transition-all active:scale-[0.98]" style={{ background: 'var(--gradient-primary)', boxShadow: '0 4px 20px rgba(155,44,94,0.35)' }}>Continue <ArrowRight size={20} /></button>
+                                    <button type="button" onClick={() => setStep(4)} className="w-full py-3 text-sm font-medium text-text-muted">← Back</button>
+                                </motion.form>
+                            ) : (
+                                <motion.div key="create6" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3.5">
+                                    <p className="text-sm font-bold text-text-muted text-center">Choose what describes you</p>
+                                    <div className="space-y-2.5">
+                                        {PREFERENCES.map((pref) => {
+                                            const Icon = pref.icon;
+                                            const selected = selectedPreference === pref.value;
+                                            return (
+                                                <button type="button" key={pref.value} onClick={() => setSelectedPreference(pref.value)} className="w-full flex items-center gap-3 p-3.5 rounded-2xl transition-all active:scale-[0.98]" style={{ background: selected ? `${pref.color}10` : 'var(--color-surface)', border: `2px solid ${selected ? pref.color : 'rgba(155,44,94,0.08)'}` }}>
+                                                    <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${pref.color}15` }}><Icon size={22} style={{ color: pref.color }} /></div>
+                                                    <div className="flex-1 text-left"><p className="font-bold text-text-primary text-sm">{pref.label}</p><p className="text-xs text-text-muted">{pref.desc}</p></div>
+                                                    <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0" style={{ borderColor: selected ? pref.color : 'rgba(155,44,94,0.2)', background: selected ? pref.color : 'transparent' }}>{selected && <Check size={12} className="text-white" />}</div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <label className="flex items-start gap-3 py-2 cursor-pointer">
+                                        <input type="checkbox" checked={agreedTerms} onChange={(e) => setAgreedTerms(e.target.checked)} className="mt-0.5 w-4 h-4 rounded accent-[#9B2C5E]" />
+                                        <span className="text-xs text-text-muted leading-relaxed">I am 18+ and agree to the <Link href="/terms" className="text-primary underline">Terms</Link>, <Link href="/privacy" className="text-primary underline">Privacy</Link>, <Link href="/safety" className="text-primary underline">Safety</Link>, and <Link href="/community-guidelines" className="text-primary underline">Community Rules</Link></span>
+                                    </label>
+                                    <button type="button" onClick={handleCreateAccount} disabled={loading || !agreedTerms} className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-black text-white text-base disabled:opacity-40 transition-all active:scale-[0.98]" style={{ background: 'var(--gradient-primary)', boxShadow: '0 4px 20px rgba(155,44,94,0.35)' }}>{loading ? <Spinner /> : <>Create Account <ArrowRight size={20} /></>}</button>
+                                    <button type="button" onClick={() => setStep(5)} className="w-full py-3 text-sm font-medium text-text-muted">← Back</button>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </>
                 )}
 
-                <AnimatePresence mode="wait">
-                    {/* ========== FORGOT PASSWORD ========== */}
-                    {mode === 'forgot' && (
-                        <motion.div key="forgot" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }} transition={{ duration: 0.3 }} className="w-full max-w-sm">
-                            <form onSubmit={handleForgotPassword} className="space-y-3">
-                                <p className="text-sm text-text-secondary text-center mb-4">
-                                    Enter your email address and we&apos;ll send a 6-digit reset code.
-                                </p>
-                                <div className="relative">
-                                    <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
-                                    <input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required
-                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
-                                </div>
-                                <button type="submit" disabled={loading}
-                                    className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 transition-all active:scale-[0.98] disabled:opacity-60 text-sm">
-                                    <Mail size={18} />
-                                    {loading ? 'Sending...' : 'Send Reset Code'}
-                                </button>
-                            </form>
-                        </motion.div>
-                    )}
-
-                    {/* ========== SET NEW PASSWORD (from recovery link) ========== */}
-                    {mode === 'reset_password' && (
-                        <motion.div key="reset_pw" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }} transition={{ duration: 0.3 }} className="w-full max-w-sm">
-                            <form onSubmit={handleChangePassword} className="space-y-3">
-                                <p className="text-sm text-text-secondary text-center mb-4">
-                                    Enter the 6-digit code from your email and choose a new password.
-                                </p>
-                                <div className="relative">
-                                    <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
-                                    <input
-                                        type="email"
-                                        placeholder="Email address"
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                        required
-                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm"
-                                    />
-                                </div>
-                                <div className="relative">
-                                    <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
-                                    <input
-                                        type="text"
-                                        inputMode="numeric"
-                                        pattern="[0-9]{6}"
-                                        maxLength={6}
-                                        placeholder="6-digit reset code"
-                                        value={resetOtp}
-                                        onChange={(e) => setResetOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                                        required
-                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm tracking-[0.35em] font-black"
-                                    />
-                                </div>
-                                <div className="relative">
-                                    <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
-                                    <input type={showPassword ? 'text' : 'password'} placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required
-                                        className="w-full py-3.5 pl-12 pr-12 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
-                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted">
-                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                    </button>
-                                </div>
-                                <div className="relative">
-                                    <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
-                                    <input type={showPassword ? 'text' : 'password'} placeholder="Confirm new password" value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} required
-                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
-                                </div>
-                                <button type="submit" disabled={loading}
-                                    className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 transition-all active:scale-[0.98] disabled:opacity-60 text-sm">
-                                    <Lock size={18} />
-                                    {loading ? 'Updating...' : 'Set New Password'}
-                                </button>
-                            </form>
-                        </motion.div>
-                    )}
-
-                    {/* ========== STEP 1: Login / Credentials ========== */}
-                    {(mode === 'login' || (isRegister && regStep === 1)) && (
-                        <motion.div key="step1" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }} transition={{ duration: 0.3 }} className="w-full max-w-sm">
-
-
-
-                            {/* Toggle Login/Register */}
-                            <div className="mb-4">
-                                <div className="flex rounded-2xl p-1 bg-surface">
-                                    <button type="button" onClick={() => { setMode('login'); setRegStep(1); setError(''); setSuccess(''); }}
-                                        className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${mode === 'login' ? 'bg-bg-card text-text-primary shadow-sm' : 'text-text-muted'}`}>
-                                        <LogIn size={14} /> Sign In
-                                    </button>
-                                    <button type="button" onClick={() => { setMode('register'); setRegStep(1); setError(''); setSuccess(''); }}
-                                        className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${mode === 'register' ? 'bg-bg-card text-text-primary shadow-sm' : 'text-text-muted'}`}>
-                                        <UserPlus size={14} /> Register
-                                    </button>
-                                </div>
-                            </div>
-
-                            <form onSubmit={handleStep1} className="space-y-3">
-                                {/* Name (register) */}
-                                <AnimatePresence mode="wait">
-                                    {isRegister && (
-                                        <motion.div key="name" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="relative overflow-hidden">
-                                            <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted z-10" />
-                                            <input type="text" placeholder="Your full name" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
-                                                className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-
-                                {/* Email */}
-                                <div className="relative">
-                                    <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
-                                    <input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required
-                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
-                                </div>
-
-                                {/* Password */}
-                                <div className="relative">
-                                    <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
-                                    <input type={showPassword ? 'text' : 'password'} placeholder="Password (min 6 characters)" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6}
-                                        className="w-full py-3.5 pl-12 pr-12 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
-                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted">
-                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                    </button>
-                                </div>
-
-                                {/* Password strength (register only) */}
-                                {isRegister && password && (
-                                    <div className="flex items-center gap-2 px-1">
-                                        <div className="flex-1 flex gap-1">
-                                            {[1, 2, 3].map(i => (
-                                                <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i <= pwdStrength.level ? pwdStrength.color : 'bg-border'}`} />
-                                            ))}
-                                        </div>
-                                        <span className={`text-[10px] font-medium ${pwdStrength.level === 1 ? 'text-danger' : pwdStrength.level === 2 ? 'text-gold' : 'text-success'}`}>
-                                            {pwdStrength.label}
-                                        </span>
-                                    </div>
-                                )}
-
-                                {/* Confirm password (register) */}
-                                <AnimatePresence mode="wait">
-                                    {isRegister && (
-                                        <motion.div key="confirm" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="relative overflow-hidden">
-                                            <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted z-10" />
-                                            <input type={showPassword ? 'text' : 'password'} placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-                                                className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all border border-border text-sm" />
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-
-                                {/* Submit */}
-                                <button type="submit" disabled={loading}
-                                    className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 transition-all active:scale-[0.98] disabled:opacity-60 text-sm">
-                                    {isRegister ? <UserPlus size={18} /> : <Heart size={18} fill="currentColor" />}
-                                    {loading ? (isRegister ? 'Creating...' : 'Signing In...') : (isRegister ? 'Continue' : 'Sign In & Find Matches')}
-                                    <ArrowRight size={16} />
-                                </button>
-
-                                {!isRegister && (
-                                    <p className="text-center">
-                                        <button type="button" onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }} className="text-xs text-primary font-medium hover:underline">
-                                            Forgot your password?
-                                        </button>
-                                    </p>
-                                )}
-
-                                <p className="text-center text-[10px] text-text-muted mt-3 px-4 leading-relaxed">
-                                    By continuing, you agree to our{' '}
-                                    <a href="https://genuinesugarmummies.co.ke/terms-of-service/" className="underline hover:text-primary">Terms of Service</a> and{' '}
-                                    <a href="https://genuinesugarmummies.co.ke/privacy-policy/" className="underline hover:text-primary">Privacy Policy</a>
-                                </p>
-                            </form>
-                        </motion.div>
-                    )}
-
-                    {/* ========== STEP 2: Gender Selection ========== */}
-                    {isRegister && regStep === 2 && (
-                        <motion.div key="step2" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }} transition={{ duration: 0.3 }} className="w-full max-w-sm space-y-4">
-                            <p className="text-sm text-text-secondary text-center mb-4">Select your gender to help us find the best matches for you</p>
-                            <div className="grid grid-cols-2 gap-4">
-                                {[
-                                    { value: 'male', label: 'Male', desc: 'I am a man' },
-                                    { value: 'female', label: 'Female', desc: 'I am a woman' },
-                                ].map(opt => (
-                                    <motion.button
-                                        key={opt.value}
-                                        whileTap={{ scale: 0.95 }}
-                                        onClick={() => handleGenderSelect(opt.value)}
-                                        className={`flex flex-col items-center gap-3 p-6 rounded-3xl border-2 transition-all ${gender === opt.value
-                                            ? 'border-primary bg-primary/5 shadow-lg shadow-primary/10'
-                                            : 'border-border bg-bg-card hover:border-primary/30'
-                                            }`}
-                                    >
-                                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm shrink-0 ${opt.value === 'male' ? 'bg-blue-500/10 text-blue-500' : 'bg-pink-500/10 text-pink-500'}`}>
-                                            <User size={32} />
-                                        </div>
-                                        <span className="font-bold text-text-primary text-sm">{opt.label}</span>
-                                        <span className="text-xs text-text-muted">{opt.desc}</span>
-                                    </motion.button>
-                                ))}
-                            </div>
-                        </motion.div>
-                    )}
-
-                    {/* ========== STEP 3: Role / Looking For ========== */}
-                    {isRegister && regStep === 3 && (
-                        <motion.div key="step3" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }} transition={{ duration: 0.3 }} className="w-full max-w-sm space-y-4">
-                            <p className="text-sm text-text-secondary text-center mb-4">What type of connection are you looking for?</p>
-                            <div className="space-y-3">
-                                {[
-                                    { value: 'sugar_mummy', label: 'Sugar Mummy', desc: 'I want to connect with a Sugar Mummy', color: 'from-pink-500 to-orange-500' },
-                                    { value: 'sugar_daddy', label: 'Sugar Daddy', desc: 'I want to connect with a Sugar Daddy', color: 'from-blue-500 to-purple-500' },
-                                ].map(opt => (
-                                    <motion.button
-                                        key={opt.value}
-                                        whileTap={{ scale: 0.97 }}
-                                        onClick={() => handleRoleSelect(opt.value)}
-                                        className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 transition-all text-left ${lookingFor === opt.value
-                                            ? 'border-primary bg-primary/5 shadow-lg'
-                                            : 'border-border bg-bg-card hover:border-primary/30'
-                                            }`}
-                                    >
-                                        <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${opt.color} flex items-center justify-center text-white shadow-md shrink-0`}>
-                                            <Heart size={24} fill="currentColor" />
-                                        </div>
-                                        <div className="flex-1">
-                                            <span className="font-bold text-text-primary text-sm block">{opt.label}</span>
-                                            <span className="text-xs text-text-muted">{opt.desc}</span>
-                                        </div>
-                                        <Search size={16} className="text-text-muted shrink-0" />
-                                    </motion.button>
-                                ))}
-                            </div>
-                        </motion.div>
-                    )}
-
-                    {/* ========== STEP 4: Age + Location ========== */}
-                    {isRegister && regStep === 4 && (
-                        <motion.div key="step4" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }} transition={{ duration: 0.3 }} className="w-full max-w-sm space-y-4">
-                            <p className="text-sm text-text-secondary text-center mb-2">Just a few more details to complete your profile</p>
-
-                            {/* Age */}
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-text-primary pl-1">Your Age</label>
-                                <input
-                                    type="number" min="18" max="80" placeholder="e.g. 25"
-                                    value={age} onChange={(e) => setAge(e.target.value)}
-                                    className="w-full py-3.5 px-4 rounded-2xl bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm"
-                                />
-                            </div>
-
-                            {/* Location */}
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-text-primary pl-1">Your Location</label>
-                                <div className="relative">
-                                    <MapPin size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
-                                    <select
-                                        value={location} onChange={(e) => setLocation(e.target.value)}
-                                        className="w-full py-3.5 pl-12 pr-4 rounded-2xl bg-bg-input text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm appearance-none"
-                                    >
-                                        <option value="">Select location...</option>
-                                        {KENYAN_CITIES.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                                    </select>
-                                </div>
-                                <button
-                                    type="button" onClick={detectLocation} disabled={detectingLocation}
-                                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-medium text-primary bg-primary/5 hover:bg-primary/10 transition-colors"
-                                >
-                                    <Target size={14} className={detectingLocation ? 'animate-spin' : ''} />
-                                    {detectingLocation ? 'Detecting location...' : 'Auto-detect my location'}
-                                </button>
-                            </div>
-
-
-
-                            {/* Complete button */}
-                            <button
-                                onClick={handleCompleteRegistration} disabled={loading}
-                                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-white gradient-primary shadow-lg shadow-primary/20 transition-all active:scale-[0.98] disabled:opacity-60 text-sm"
-                            >
-                                <Heart size={18} fill="currentColor" />
-                                {loading ? 'Creating Account...' : 'Create My Account'}
-                                <ArrowRight size={16} />
-                            </button>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-
-                {/* Error / Success messages */}
-                <AnimatePresence>
-                    {error && (
-                        <motion.p initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                            className="mt-3 text-xs text-center text-white bg-danger/90 rounded-xl py-2.5 px-4 shadow-lg max-w-sm w-full">
-                            {error}
-                        </motion.p>
-                    )}
-                    {success && (
-                        <motion.p initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                            className="mt-3 text-xs text-center text-white bg-success/90 rounded-xl py-2.5 px-4 shadow-lg max-w-sm w-full">
-                            {success}
-                        </motion.p>
-                    )}
-                </AnimatePresence>
+                <div className="mt-8 space-y-3 text-center">
+                    <div className="flex justify-center gap-2 text-[10px] font-black">
+                        <span className="rounded-full px-3 py-1.5 bg-success/10 text-success">18+ only</span>
+                        <span className="rounded-full px-3 py-1.5 bg-primary/10 text-primary">Manual verification</span>
+                        <span className="rounded-full px-3 py-1.5 bg-danger/10 text-danger">Report abuse</span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-text-muted">
+                        By logging in or creating an account, you agree to our terms and safety rules. Verification badges are manually approved by admin.
+                    </p>
+                    <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] font-bold">
+                        {LEGAL_LINKS.map((item) => (
+                            <Link key={item.href} href={item.href} className="text-primary hover:underline">
+                                {item.label}
+                            </Link>
+                        ))}
+                    </div>
+                </div>
             </div>
         </div>
     );
 }
 
-export default function LoginPage() {
+function LightField({ icon: Icon, value, onChange, placeholder, type = 'text', autoFocus = false, inputMode, autoComplete }) {
+    const fallbackAutoComplete = type === 'password'
+        ? (placeholder.toLowerCase().includes('create') || placeholder.toLowerCase().includes('new') ? 'new-password' : 'current-password')
+        : type === 'email' ? 'email' : 'off';
+    return <div className="relative"><Icon size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" /><input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} autoFocus={autoFocus} inputMode={inputMode} autoComplete={autoComplete || fallbackAutoComplete} className="w-full rounded-2xl py-4 pl-12 pr-4 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40 text-base font-medium shadow-card" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }} /></div>;
+}
+
+function LightTextAreaField({ icon: Icon, value, onChange, placeholder }) {
     return (
-        <Suspense fallback={
-            <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg, #fff)' }}>
-                <img
-                    src="/gs.png"
-                    alt="Loading"
-                    style={{ width: 56, height: 56, objectFit: 'contain', animation: 'pulseZoom 1.2s ease-in-out infinite' }}
-                />
-                <style>{`@keyframes pulseZoom{0%,100%{transform:scale(.88);opacity:.6}50%{transform:scale(1.1);opacity:1}}`}</style>
-            </div>
-        }>
-            <LoginPageInner />
-        </Suspense>
+        <div className="relative">
+            <Icon size={18} className="absolute left-4 top-5 text-text-muted" />
+            <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={4} className="w-full rounded-2xl py-4 pl-12 pr-4 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40 text-base font-medium shadow-card resize-none" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }} />
+        </div>
     );
+}
+
+function Spinner() {
+    return <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />;
 }

@@ -1,45 +1,104 @@
-// Genuine Sugarmummies Service Worker
-// Custom offline fallback configuration (safely handles offline state without caching other resources)
-
-const CACHE_NAME = 'gs-offline-v2';
+const CACHE_NAME = 'gscoke-cache-v10';
 const OFFLINE_URL = '/offline.html';
 
-// Install event: cache only the offline fallback page
+const PRECACHE_URLS = [
+    '/offline.html',
+];
+
 self.addEventListener('install', (event) => {
     event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => {
-            return cache.addAll([OFFLINE_URL]);
-        })
+        caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
     );
     self.skipWaiting();
 });
 
-// Activate event: clean up older caches
 self.addEventListener('activate', (event) => {
     event.waitUntil(
-        caches.keys().then((keys) => {
-            return Promise.all(
-                keys.map((key) => {
-                    if (key !== CACHE_NAME) {
-                        return caches.delete(key);
-                    }
-                })
-            );
-        }).then(() => self.clients.claim())
+        caches.keys().then((keys) => Promise.all(keys
+            .filter((key) => key !== CACHE_NAME)
+            .map((key) => caches.delete(key))))
     );
+    self.clients.claim();
 });
 
-// Fetch event: intercept page navigations and serve offline page if disconnected
+self.addEventListener('message', (event) => {
+    const data = event.data || {};
+    if (data.type === 'GS_BADGE_COUNT') {
+        const count = Math.max(0, Math.min(99, Number(data.count || 0)));
+        if (self.navigator?.setAppBadge) {
+            if (count > 0) self.navigator.setAppBadge(count).catch(() => {});
+            else self.navigator.clearAppBadge?.().catch(() => {});
+        }
+    }
+});
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const targetUrl = new URL(event.notification?.data?.url || '/alerts', self.location.origin).href;
+    event.waitUntil((async () => {
+        const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        for (const client of list) {
+            if ('focus' in client) {
+                await client.focus();
+                if ('navigate' in client) await client.navigate(targetUrl);
+                return;
+            }
+        }
+        if (self.clients.openWindow) await self.clients.openWindow(targetUrl);
+    })());
+});
+
+self.addEventListener('push', (event) => {
+    let payload = {};
+    try { payload = event.data ? event.data.json() : {}; } catch { payload = { title: 'GS notification', body: event.data?.text() || '' }; }
+    const title = payload.title || 'Genuine Sugar Mummies';
+    const count = Math.max(0, Math.min(99, Number(payload.count || 1)));
+    const options = {
+        body: payload.body || '',
+        icon: payload.icon || '/icons/icon-192.png',
+        badge: payload.badge || '/icons/icon-192.png',
+        image: payload.image || undefined,
+        tag: payload.tag || 'gs-push',
+        renotify: true,
+        vibrate: [160, 80, 160],
+        data: { url: payload.url || '/alerts', count, label: count > 99 ? '99+' : String(count) },
+    };
+    event.waitUntil((async () => {
+        if (self.navigator?.setAppBadge) {
+            if (count > 0) await self.navigator.setAppBadge(count).catch(() => {});
+            else await self.navigator.clearAppBadge?.().catch(() => {});
+        }
+        await self.registration.showNotification(title, options);
+    })());
+});
+
 self.addEventListener('fetch', (event) => {
-    // Only intercept page navigation requests (HTML page loads)
+    const url = new URL(event.request.url);
+
+    if (url.origin !== self.location.origin) {
+        return;
+    }
+
+    if (url.pathname.startsWith('/_next/') || url.pathname.startsWith('/api/')) {
+        event.respondWith(fetch(event.request));
+        return;
+    }
+
     if (event.request.mode === 'navigate') {
         event.respondWith(
-            fetch(event.request).catch(() => {
-                return caches.open(CACHE_NAME).then((cache) => {
-                    return cache.match(OFFLINE_URL);
-                });
-            })
+            fetch(event.request)
+                .then((response) => {
+                    if (!response || response.status >= 500) return caches.match(OFFLINE_URL);
+                    return response;
+                })
+                .catch(() => caches.match(OFFLINE_URL))
         );
+        return;
     }
-    // All other requests (bundles, images, API) bypass cache and go directly to network
+
+    event.respondWith(
+        fetch(event.request)
+            .then((response) => response)
+            .catch(() => caches.match(event.request).then((cached) => cached || new Response('Offline', { status: 503 })))
+    );
 });

@@ -1,4 +1,4 @@
-# dependencies
+﻿# dependencies
 /node_modules
 /.pnp
 .pnp.js
@@ -23,3 +23,9 @@ npm-debug.log*
 
 # vercel
 .vercel
+
+.cursor/
+/pics to be seeded/
+/android/keystores/
+
+

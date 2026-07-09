@@ -1,778 +1,465 @@
 // WordPress API — uses the custom GS App API plugin for speed
-// Plugin endpoints: /wp-json/gs-app/v1/profiles, /comments/{id}, /comment
+// Plugin endpoints: /wp-json/gs-app/v1/profiles, /comments/{id}, /comment, /subscribe
 
 const WP_BASE = process.env.NEXT_PUBLIC_WP_API_URL?.replace('/wp/v2', '') || 'https://genuinesugarmummies.co.ke/wp-json';
 const GS_API = `${WP_BASE}/gs-app/v1`;
 const WP_API = `${WP_BASE}/wp/v2`;
 
-// Convert Jetpack CDN URLs to direct WordPress URLs for WebView compatibility
-// i0.wp.com/genuinesugarmummies.co.ke/path/image.jpg?... → genuinesugarmummies.co.ke/path/image.jpg
+/**
+ * Normalize image URLs:
+ * 1. Convert Jetpack CDN (i0.wp.com, i1.wp.com, i2.wp.com) to direct WP URLs
+ * 2. Force HTTPS
+ * 3. Remove problematic query params that break mobile loading
+ */
 function normalizeImageUrl(url) {
     if (!url) return '';
     try {
-        // Clean up the URL
         let cleaned = url.trim();
-
-        // If it's a Jetpack CDN URL, keep it — it's a reliable CDN
-        // Just ensure we have good quality params
-        const jetpackMatch = cleaned.match(/https?:\/\/i\d\.wp\.com\/(.+)/);
-        if (jetpackMatch) {
-            // Keep the CDN URL but optimize params
-            const base = cleaned.split('?')[0];
-            return `${base}?w=800&quality=80&strip=info`;
+        // Force HTTPS
+        if (cleaned.startsWith('http://')) {
+            cleaned = cleaned.replace('http://', 'https://');
         }
-
-        // For direct WordPress URLs, use as-is
-        if (cleaned.includes('genuinesugarmummies.co.ke')) {
-            return cleaned;
-        }
-
+        // Jetpack CDN URLs (i0.wp.com, i1.wp.com, etc.) are the ACTUAL image servers -
+        // do NOT strip them. The direct wp-content/uploads URLs are blocked by the host.
+        // Just ensure they're clean and properly formatted.
         return cleaned;
     } catch {
         return url;
     }
 }
 
-// Kenyan cities/towns for location extraction
-const KENYAN_LOCATIONS = [
-    'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Ruiru', 'Kikuyu',
-    'Thika', 'Naivasha', 'Kakamega', 'Kisii', 'Kitale', 'Athi River', 'Mlolongo',
-    'Garissa', 'Malindi', 'Ngong', 'Rongai', 'Karen', 'Westlands', 'Kilimani',
-    'Langata', 'South B', 'South C', 'Roysambu', 'Kasarani', 'Embakasi',
-    'Juja', 'Kiambu', 'Nyeri', 'Machakos', 'Meru', 'Nanyuki', 'Diani',
-    'Kilifi', 'Voi', 'Kericho', 'Homabay', 'Migori', 'Bomet', 'Webuye',
-    'Wajir', 'Limuru', 'Lodwar', 'Mandera', 'Narok', 'Isiolo', 'Marsabit',
-    'Lamu', 'Watamu', 'Bamburi', 'Nyali',
-    'Lavington', 'Eastleigh', 'Parklands', 'Muthaiga', 'Runda', 'Gigiri',
-    'Syokimau', 'Kangundo', 'Ngoingwa', 'Section 9', 'Section 8', 'Kenol',
-    'Makongeni', 'Thika Road', 'Mombasa Road', 'Ngong Road', 'Waiyaki Way',
-    'CBD', 'Industrial Area', 'Upper Hill', 'Hurlingham', 'Kileleshwa',
-    'Riverside', 'Spring Valley', 'Loresho', 'Mountain View', 'Zimmerman',
-    'Kahawa', 'Utawala', 'Donholm', 'Buruburu', 'Umoja', 'Pipeline',
-    'Fedha', 'Tassia'
-];
+function isLikelySugarMummyProfile(profile = {}) {
+    const text = `${profile.name || ''} ${profile.bio || ''} ${profile.excerpt || ''} ${profile.content || ''} ${profile.title || ''} ${profile.slug || ''} ${profile.link || ''}`.toLowerCase();
+    const name = String(profile.name || '').toLowerCase().replace(/[^a-z\s]/g, '').trim();
+    const saysMummy = /sugar\s*mumm|sugar\s*mam|sugarmum|sugar\s*lady|mature\s*woman|older\s*woman|mummy|mum\s+living|woman\s+looking|lady\s+looking/.test(text);
+    const saysSeekingMummy = /(looking|searching|seeking|find|need|want|wants|promised|get|getting|matched|connected)\s+(for\s+|with\s+)?(a\s+)?sugar\s*mum/.test(text) || /sugar\s*mum(?:my)?\s+(match|connection|connections|dating|platform)/.test(text);
+    const saysMaleProfile = /sugar\s*dadd|toy\s*boy|toyboy|sugar\s*guy|gentleman|mature\s*man|older\s*man|businessman|successful\s*man|man\s+looking|daddy\s+looking|brothers|desperate\s+men|boys\s+told|from\s+meru\s+rates|pub\s+stop|i\s+am\s+a\s+(?:man|guy|boy)|my\s+boys|for\s+men|male\s+member/.test(text);
+    const testimonialPost = /admin\s+mary\s+g/.test(text) && /(scammed|testimonial|five\s+stars|rates|thank\s+god|brothers|trusted\s+the\s+process|connected|connection\s+finally\s+happened)/.test(text);
+    const maleNames = new Set(['dennis', 'kevin', 'david', 'james', 'john', 'peter', 'paul', 'samuel', 'george', 'daniel', 'martin', 'anthony', 'robert', 'michael', 'charles', 'vincent', 'richard', 'francis', 'kenneth', 'joseph', 'edward', 'mark', 'dominic', 'cyrus', 'kingsley', 'brian', 'bryan', 'eric', 'fred', 'fredrick', 'patrick', 'collins', 'evans', 'geoffrey', 'benard', 'bernard', 'caleb', 'moses', 'isaac', 'emmanuel', 'stephen', 'steve', 'tony', 'alex', 'victor', 'trevor', 'aggrey', 'bonnie', 'chibuike', 'awis', 'kelvin', 'henry', 'wilson', 'godfrey', 'raymond', 'arthur', 'solomon', 'nicholas', 'leonard', 'bernard', 'albert', 'douglas', 'ronald', 'stanley', 'julius', 'allan', 'edwin', 'walter', 'gideon', 'morris', 'harrison', 'lawrence', 'felix', 'oscar', 'nelson', 'philip', 'andrew', 'simon']);
+    const firstName = name.split(/\s+/)[0];
+    if (!saysMummy) return false;
+    if (saysSeekingMummy || saysMaleProfile || testimonialPost || maleNames.has(firstName)) return false;
+    return true;
+}
 
-// Known Kenyan city coordinates for scoring
-const LOCATION_COORDS = {
-    'Nairobi': { latitude: -1.2921, longitude: 36.8219 },
-    'Mombasa': { latitude: -4.0435, longitude: 39.6682 },
-    'Kisumu': { latitude: -0.1022, longitude: 34.7617 },
-    'Nakuru': { latitude: -0.3031, longitude: 36.0800 },
-    'Eldoret': { latitude: 0.5143, longitude: 35.2698 },
-    'Thika': { latitude: -1.0396, longitude: 37.0900 },
-    'Malindi': { latitude: -3.2138, longitude: 40.1169 },
-    'Kitale': { latitude: 1.0187, longitude: 35.0020 },
-    'Nyeri': { latitude: -0.4197, longitude: 36.9511 },
-    'Machakos': { latitude: -1.5177, longitude: 37.2634 },
-    'Meru': { latitude: 0.0480, longitude: 37.6559 },
-    'Nanyuki': { latitude: 0.0067, longitude: 37.0722 },
-    'Naivasha': { latitude: -0.7172, longitude: 36.4310 },
-    'Kiambu': { latitude: -1.1714, longitude: 36.8356 },
-    'Ruiru': { latitude: -1.1489, longitude: 36.9606 },
-    'Ngong': { latitude: -1.3607, longitude: 36.6583 },
-    'Rongai': { latitude: -1.3964, longitude: 36.7586 },
-    'Karen': { latitude: -1.3197, longitude: 36.7116 },
-    'Westlands': { latitude: -1.2636, longitude: 36.8036 },
-    'Kilimani': { latitude: -1.2903, longitude: 36.7847 },
-    'Langata': { latitude: -1.3557, longitude: 36.7462 },
-    'Thika Road': { latitude: -1.1900, longitude: 36.9200 },
-    'Mombasa Road': { latitude: -1.3400, longitude: 36.8700 },
-    'Juja': { latitude: -1.1004, longitude: 37.0131 },
-    'Diani': { latitude: -4.3164, longitude: 39.5764 },
-    'Kilifi': { latitude: -3.6305, longitude: 39.8499 },
-    'CBD': { latitude: -1.2864, longitude: 36.8172 },
-};
+// Extract first image from HTML content  
+function extractImageFromContent(html) {
+    if (!html) return '';
+    // Try multiple image tag patterns
+    const imgMatch = html.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i);
+    if (imgMatch) return normalizeImageUrl(imgMatch[1]);
+    // Try srcset as fallback
+    const srcsetMatch = html.match(/<img[^>]+srcset=["']([^\s"']+)/i);
+    if (srcsetMatch) return normalizeImageUrl(srcsetMatch[1]);
+    return '';
+}
 
-const STOP_WORDS = new Set(['Sugar', 'Mummy', 'From', 'The', 'For', 'And', 'With', 'Wants', 'Needs', 'Looking', 'Is', 'In', 'A', 'An', 'Her', 'His', 'She', 'He', 'Who', 'That', 'This', 'Rich', 'Hot', 'Meet', 'Available', 'Seeking', 'Mature', 'Beautiful', 'Wealthy', 'Single', 'Lonely', 'Real', 'Story', 'Success', 'Appreciation', 'Thanks', 'Compliment', 'Compliments', 'Couple', 'Couples', 'Review', 'Reviews', 'Testimonial', 'Testimonials', 'Feedback', 'Experience', 'Confession']);
+// Parse profile from WordPress post data
+function parseProfile(post) {
+    let imageUrl = '';
 
-export function extractName(title) {
-    if (!title) return 'Unknown';
-    let clean = title.replace(/&#8217;/g, "'").replace(/&#8211;/g, "–").replace(/&amp;/g, '&').replace(/<[^>]+>/g, '').trim();
-    clean = clean.replace(/^(?:Meet|Hot|Rich|Beautiful|Wealthy|Mature|Available|Lonely|Single)\s+/i, '');
-
-    const sugarPattern = /^([A-Z][a-z]+(?:[\s-]+[A-Z][a-z]+)?)\s*[-–,]?\s*(?:Sugar\s*[Mm]umm|sugar\s*[Mm]umm|Sugarmumm|sugarmumm|from|a\s+sugar|is\s+|wants|needs|looking|seeking)/i;
-    const match1 = clean.match(sugarPattern);
-    if (match1) return match1[1].replace(/[-–]/g, ' ').trim();
-
-    const commaPattern = /^([A-Z][a-z]+(?:[\s-]+[A-Z][a-z]+)?)\s*[,\s]+\d/;
-    const match2 = clean.match(commaPattern);
-    if (match2) return match2[1].replace(/[-–]/g, ' ').trim();
-
-    const words = clean.split(/[\s,;–-]+/);
-    const nameWords = [];
-    for (const word of words) {
-        const w = word.replace(/[^a-zA-Z']/g, '');
-        if (!w) continue;
-        if (/^[A-Z][a-z]{1,}$/.test(w) && !STOP_WORDS.has(w)) {
-            nameWords.push(w);
-            if (nameWords.length >= 2) break;
-        } else if (nameWords.length > 0) {
-            break;
-        }
+    // 1. Featured image from _embedded (standard WP REST with _embed)
+    if (post._embedded?.['wp:featuredmedia']?.[0]?.source_url) {
+        imageUrl = normalizeImageUrl(post._embedded['wp:featuredmedia'][0].source_url);
+    }
+    // 2. Jetpack featured media URL (available on Jetpack-connected sites)
+    else if (post.jetpack_featured_media_url) {
+        imageUrl = normalizeImageUrl(post.jetpack_featured_media_url);
+    }
+    // 3. Featured image URL from custom field (GS plugin)
+    else if (post.featured_image_url) {
+        imageUrl = normalizeImageUrl(post.featured_image_url);
+    }
+    // 4. Image URL from GS plugin
+    else if (post.image_url) {
+        imageUrl = normalizeImageUrl(post.image_url);
+    }
+    // 5. OG image from Yoast SEO
+    else if (post.yoast_head_json?.og_image?.[0]?.url) {
+        imageUrl = normalizeImageUrl(post.yoast_head_json.og_image[0].url);
+    }
+    // 6. Extract from content HTML
+    else if (post.content?.rendered) {
+        imageUrl = extractImageFromContent(post.content.rendered);
+    }
+    // 7. Extract from excerpt HTML
+    else if (post.excerpt?.rendered) {
+        imageUrl = extractImageFromContent(post.excerpt.rendered);
     }
 
-    if (nameWords.length > 0) return nameWords.join(' ');
-    return clean.split(/\s+/).slice(0, 2).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-}
+    // Parse text content
+    const titleText = post.title?.rendered
+        ? post.title.rendered.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#8217;/g, "'").replace(/&#8211;/g, '-').replace(/&nbsp;/g, ' ')
+        : 'Sugar Mummy';
+    const excerptText = post.excerpt?.rendered
+        ? post.excerpt.rendered.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#8217;/g, "'").replace(/&#8211;/g, '-').replace(/&nbsp;/g, ' ').replace(/&hellip;/g, '...').trim()
+        : '';
+    const contentHtml = post.content?.rendered || '';
 
-export function extractLocation(content, title) {
-    const searchText = `${title || ''} ${content || ''}`;
-    for (const loc of KENYAN_LOCATIONS) {
-        const regex = new RegExp(`\\b${loc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-        if (regex.test(searchText)) return loc;
-    }
-    const inPattern = /\bin\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/;
-    const match = searchText.match(inPattern);
-    if (match) return match[1];
-    return 'Kenya';
-}
+    // Extract location
+    const locationMatch = titleText.match(/(?:in|from|based in|located in|living in)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/i)
+        || excerptText.match(/(?:in|from|based in|located in|living in)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/i);
+    const location = locationMatch ? locationMatch[1] : '';
 
-export function getLocationCoords(locationName) {
-    if (!locationName) return LOCATION_COORDS['Nairobi'];
-    if (LOCATION_COORDS[locationName]) return LOCATION_COORDS[locationName];
-    const lower = locationName.toLowerCase();
-    for (const [key, coords] of Object.entries(LOCATION_COORDS)) {
-        if (lower.includes(key.toLowerCase()) || key.toLowerCase().includes(lower)) return coords;
-    }
-    return LOCATION_COORDS['Nairobi'];
-}
+    // Extract age
+    const ageMatch = titleText.match(/(\d{2})\s*(?:years|yrs|year)/i)
+        || titleText.match(/age[d]?\s*(\d{2})/i)
+        || excerptText.match(/(\d{2})\s*(?:years|yrs|year)/i);
+    const age = ageMatch ? parseInt(ageMatch[1]) : null;
 
-export function extractAge(content) {
-    if (!content) return null;
-    const patterns = [
-        /(\d{2})\s*(?:yr|year|years|yrs)\s*(?:old)?/i,
-        /(?:age|aged)\s*[:=]?\s*(\d{2})/i,
-        /(?:I'?m|am)\s+(\d{2})/i,
-        /(\d{2})\s*[-–]\s*year/i,
-    ];
-    for (const pattern of patterns) {
-        const match = content.match(pattern);
-        if (match) {
-            const age = parseInt(match[1]);
-            if (age >= 18 && age <= 80) return age;
-        }
-    }
-    return null;
-}
-
-export function extractBio(excerpt, content) {
-    let text = excerpt || content || '';
-    text = text.replace(/<[^>]+>/g, '');
-    text = text.replace(/&nbsp;/g, ' ').replace(/&#8217;/g, "'").replace(/&#8211;/g, '–').replace(/&amp;/g, '&').replace(/&hellip;/g, '...');
-    text = text.replace(/continue\s+reading.*$/i, '').trim();
-    if (text.length > 160) text = text.substring(0, 157) + '...';
-    return text || 'Looking for a genuine connection. Tap to learn more.';
-}
-
-function cleanProfileText(html) {
-    return (html || '')
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&#8217;/g, "'")
-        .replace(/&#8211;/g, '-')
-        .replace(/&amp;/g, '&')
-        .replace(/&hellip;/g, '...')
-        .replace(/\+?\d[\d\s().-]{7,}\d/g, '[Verified Contact]')
-        .replace(/continue\s+reading.*$/i, '')
-        .replace(/\s+/g, ' ')
+    // Extract name
+    let name = titleText;
+    name = name
+        .replace(/sugar\s*mumm(?:y|ies)/gi, '')
+        .replace(/looking\s+for\s+.*/gi, '')
+        .replace(/\s+in\s+[A-Z].*/i, '')
+        .replace(/\s+from\s+[A-Z].*/i, '')
+        .replace(/\s+aged?\s+\d+.*/i, '')
+        .replace(/\d{2}\s*(?:years|yrs).*/i, '')
+        .replace(/needs?\s+.*/gi, '')
+        .replace(/wants?\s+.*/gi, '')
+        .replace(/[–—-]\s*.*/g, '')
         .trim();
-}
+    if (!name || name.length < 2) name = titleText.split(/[–—-]/)[0].trim();
+    if (!name || name.length < 2) name = 'Sugar Mummy';
 
-function shortProfileSentence(text, max = 170) {
-    const cleaned = cleanProfileText(text)
-        .replace(/\b(?:whatsapp|telegram|t\.me|escrow)\b[^.?!]*/gi, '')
-        .replace(/admin\s+mary\s+g[^.?!]*/gi, '')
-        .trim();
-    if (!cleaned) return '';
-    const sentences = cleaned
-        .split(/(?<=[.!?])\s+/)
-        .map(s => s.trim())
-        .filter(s => s.length > 20 && !/whatsapp|telegram|t\.me|escrow|admin mary g/i.test(s));
-    const best = sentences[0] || cleaned;
-    return best.length > max ? `${best.slice(0, max - 3).trim()}...` : best;
-}
+    const postDate = new Date(post.date || post.date_gmt);
+    const now = new Date();
+    const daysSincePost = Math.max(0, Math.floor((now - postDate) / (1000 * 60 * 60 * 24)));
 
-export function buildProfileSummary({ title, content, excerpt, details }) {
-    const cleanPiece = (value) => String(value || '')
-        .replace(/\u2013|\u2014|â|â€“/g, '-')
-        .replace(/\s+/g, ' ')
-        .trim();
-    const pieces = [];
-    if (details?.partnerType) pieces.push(`Looking for ${cleanPiece(details.partnerType)}`);
-    if (details?.partnerAge) pieces.push(`Preferred age ${cleanPiece(details.partnerAge)}`);
-    if (details?.relationshipType) pieces.push(cleanPiece(details.relationshipType));
-    if (Array.isArray(details?.qualities) && details.qualities.length) {
-        pieces.push(`Values ${details.qualities.slice(0, 3).map(cleanPiece).join(', ')}`);
-    }
-
-    const structured = pieces.filter(Boolean).join('. ');
-    if (structured) return `${structured}.`;
-
-    return shortProfileSentence(excerpt || content || title) || 'Looking for a genuine connection.';
-}
-
-// Common Kenyan female names for name-based gender detection
-const FEMALE_NAMES = new Set([
-    'amina', 'aisha', 'wanjiku', 'wambui', 'njeri', 'nyambura', 'wangari', 'muthoni', 'wairimu',
-    'akinyi', 'adhiambo', 'atieno', 'anyango', 'awino', 'akoth', 'odhiambo',
-    'mercy', 'grace', 'faith', 'hope', 'joy', 'charity', 'prudence', 'patience',
-    'nancy', 'lucy', 'jane', 'mary', 'sarah', 'esther', 'ruth', 'naomi', 'martha',
-    'anne', 'betty', 'carol', 'diana', 'elizabeth', 'gladys', 'hannah', 'irene',
-    'joyce', 'lilian', 'margaret', 'millicent', 'monica', 'pauline', 'rose', 'salome',
-    'susan', 'tabitha', 'veronica', 'winnie', 'agnes', 'alice', 'beatrice',
-    'cynthia', 'dorothy', 'emily', 'florence', 'hellen', 'janet', 'josephine',
-    'linet', 'lydia', 'nelly', 'purity', 'risper', 'sharon', 'sylvia', 'vivian',
-    'chebet', 'chepkoech', 'jepkosgei', 'jepchirchir', 'cherono', 'chepkemoi',
-    'mumbi', 'nyokabi', 'wacera', 'gathoni', 'waithera', 'wairagu',
-    'fatma', 'halima', 'zainab', 'khadija', 'mariam', 'rehema', 'mwanaisha',
-    'agnes', 'assumpta', 'consolata', 'damaris', 'everlyne', 'felistus',
-]);
-
-// Common Kenyan male names
-const MALE_NAMES = new Set([
-    'john', 'james', 'peter', 'david', 'samuel', 'daniel', 'joseph', 'michael', 'paul',
-    'brian', 'kevin', 'dennis', 'patrick', 'martin', 'george', 'alex', 'simon', 'stephen',
-    'william', 'robert', 'thomas', 'richard', 'charles', 'mark', 'anthony', 'andrew',
-    'eric', 'felix', 'francis', 'gerald', 'henry', 'isaac', 'jackson', 'kennedy',
-    'lawrence', 'moses', 'nicholas', 'oliver', 'raphael', 'timothy', 'vincent',
-    'wycliffe', 'otieno', 'omondi', 'ochieng', 'kipchoge', 'kipruto', 'koech',
-    'kiprop', 'kibet', 'langat', 'kiptoo', 'ruto', 'cheruiyot', 'bett',
-    'kamau', 'mwangi', 'njoroge', 'kariuki', 'gitau', 'kimani', 'njenga',
-    'mutua', 'musyoka', 'mwenda', 'muriithi', 'maina', 'ndung', 'karanja',
-    'omar', 'hassan', 'ali', 'mohamed', 'ibrahim', 'yusuf', 'abdullahi',
-    'evans', 'kelvin', 'fredrick', 'geoffrey', 'ronald', 'allan', 'collins',
-    'emmanuel', 'godwin', 'harrison', 'japheth', 'lenny', 'nelson', 'oscar',
-]);
-
-// Detect if name is male
-function isNameMale(name) {
-    if (!name) return false;
-    const first = name.trim().split(/\s+/)[0].toLowerCase();
-    if (MALE_NAMES.has(first)) return true;
-    if (FEMALE_NAMES.has(first)) return false;
-    return false; // unknown
-}
-
-function isNameFemale(name) {
-    if (!name) return false;
-    const first = name.trim().split(/\s+/)[0].toLowerCase();
-    return FEMALE_NAMES.has(first);
-}
-
-// Detect if post is a testimonial/review or couple/combination
-export function isTestimonialPost(title, content, name = '') {
-    const text = `${title || ''} ${content || ''} ${name || ''}`.toLowerCase();
-    // Testimonial/Success story/Appreciation/Couple keywords
-    const testimonialKeywords = [
-        'testimoni', 'review', 'feedback', 'experience', 'confession',
-        'success story', 'real story', 'appreciation', 'thanks', 'thanking',
-        'compliment', 'couple', 'sugarboy and', 'sugarboy &', 'sugar boy',
-        'sugar boy and', 'sugarboy and sugarmum', 'sugar boy and sugarmummy',
-        'appreciation from', 'thanks to', 'thank you', 'appreciation message',
-        'success match', 'we met', 'our story'
-    ];
-    return testimonialKeywords.some(keyword => text.includes(keyword)) ||
-        /\b(real\s+story|success\s+story|appreciation|thanks|compliment|couple|sugarboy|sugar\s+boy)\b/i.test(name.toLowerCase());
-}
-
-// Detect profile type from title + content + name
-export function detectProfileType(title, content, profileName) {
-    // STEP 1: Check TITLE only (most reliable)
-    const titleLower = (title || '').toLowerCase();
-
-    // Title explicitly says sugar daddy
-    if (/sugar\s*dadd/i.test(titleLower) && !/sugar\s*mumm/i.test(titleLower)) {
-        return 'sugar_daddy';
-    }
-    // Title explicitly says sugar mummy
-    if (/sugar\s*mumm/i.test(titleLower)) {
-        return 'sugar_mummy';
-    }
-    // Title says daddy without mummy
-    if (/\bdaddy\b/i.test(titleLower) && !/\bmumm/i.test(titleLower)) {
-        return 'sugar_daddy';
-    }
-    // Title says mummy
-    if (/\bmumm/i.test(titleLower) || /\bmama\b/i.test(titleLower)) {
-        return 'sugar_mummy';
-    }
-
-    // STEP 2: Name-based detection fallback
-    if (profileName) {
-        if (isNameMale(profileName)) return 'sugar_daddy';
-        if (isNameFemale(profileName)) return 'sugar_mummy';
-    }
-
-    // STEP 3: Default — this is genuinesugarmummies.co.ke
-    return 'sugar_mummy';
-}
-export function extractProfileDetails(title, contentHtml) {
-    let cleanText = (contentHtml || '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&#8217;/g, "'")
-        .replace(/&#8211;/g, '–')
-        .replace(/&amp;/g, '&')
-        .replace(/&hellip;/g, '...')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    const cleanTitle = (title || '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&#8217;/g, "'")
-        .replace(/&#8211;/g, '–')
-        .replace(/&amp;/g, '&')
-        .replace(/&hellip;/g, '...')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    // 1. Extract partner age range
-    let partnerAge = null;
-    const ageMatch = cleanText.match(/between\s+(\d{2})\s*(?:and|to)\s*(\d{2})/i);
-    if (ageMatch) {
-        partnerAge = `${ageMatch[1]} – ${ageMatch[2]} years`;
-    } else {
-        const altAgeMatch = cleanText.match(/(\d{2})\s*[-–]\s*(\d{2})\s*(?:years|yrs)?\s*old/i);
-        if (altAgeMatch) {
-            partnerAge = `${altAgeMatch[1]} – ${altAgeMatch[2]} years`;
-        }
-    }
-
-    // 2. Extract partner type from TITLE first (highly accurate)
-    let partnerType = null;
-    const titleMatch = cleanTitle.match(/(?:seeking|looking for|searching for|needs)\s+(?:a\s+)?(.*?)(?:\s+for\s+a\s+|\s+in\s+|\s+to\s+|\s+from\s+|\s+after\s+|\.|$)/i);
-    if (titleMatch) {
-        partnerType = titleMatch[1].trim();
-    }
-
-    // If title match failed or is too generic, fallback to content
-    if (!partnerType || partnerType.toLowerCase().length < 3 || partnerType.toLowerCase().includes('friend') || partnerType.toLowerCase().includes('wrong')) {
-        const partnerMatch = cleanText.match(/(?:looking for|meet|seeking|want|find)\s+(?:a\s+)?([a-z\s,-]{3,60})\s+between/i);
-        if (partnerMatch) {
-            partnerType = partnerMatch[1].trim();
-        } else {
-            const fallbackPartnerMatch = cleanText.match(/(?:looking for|seeking|want|meet)\s+(?:a\s+)?([a-z\s,-]{3,40})\b/i);
-            if (fallbackPartnerMatch) {
-                partnerType = fallbackPartnerMatch[1].trim();
-            }
-        }
-    }
-
-    // Clean up partnerType common verbs/adverbs
-    if (partnerType) {
-        partnerType = partnerType
-            .replace(/^(?:simple|genuine|loving|understanding|young|mature|real)\s+(?:man|gentleman|guy|woman|lady|girl|partner)\s+who\s+is\s+/i, '')
-            .replace(/^(?:to\s+meet|to\s+find|to\s+have)\s+/i, '')
-            .replace(/\s+who\s+(?:is|loves|knows|wants)\s+.*$/i, '')
-            .trim();
-        // Capitalize first letter of each word
-        partnerType = partnerType.replace(/\b\w/g, c => c.toUpperCase());
-    }
-
-    // 3. Extract relationship type
-    let relationshipType = null;
-    // Strip negative sentences about relationships first
-    const cleanTextForRel = cleanText.replace(/[^.]*?(?:don't|do not|not interested in|no\s+temporary|not\s+looking\s+for)[^.]*?relationship[^.]*?\./gi, '');
-
-    // Check title first for relationship context (e.g. "for a Real Relationship")
-    const titleRelMatch = cleanTitle.match(/for\s+(?:a\s+)?([a-z\s,-]{3,40})\s+relationship/i);
-    if (titleRelMatch) {
-        relationshipType = titleRelMatch[1].trim();
-    } else {
-        const relMatch = cleanTextForRel.match(/(?:ready for|build|sincere|committed|long-term)\s+(?:a\s+)?([a-z\s,-]{3,50})\s+relationship/i);
-        if (relMatch) {
-            relationshipType = relMatch[1].trim();
-        } else {
-            const altRelMatch = cleanTextForRel.match(/([a-z\s,-]{3,40})\s+relationship/i);
-            if (altRelMatch) {
-                relationshipType = altRelMatch[1].trim();
-            }
-        }
-    }
-
-    if (relationshipType) {
-        relationshipType = relationshipType
-            .replace(/^(?:a|an|the|my|our)\s+/i, '')
-            .replace(/^(?:years\s+old\s+)?for\s+a\s+/i, '')
-            .trim();
-
-        // Split on connectors to avoid long trailing text
-        relationshipType = relationshipType.split(/\s+(?:for|with|seeking|looking|from)\s+/i)[0].trim();
-
-        // Filter out junk
-        const relLower = relationshipType.toLowerCase();
-        if (relLower.includes('kind of') || relLower.includes('what') || relLower.includes('want') || relLower.length < 3 || relLower.length > 40) {
-            relationshipType = null;
-        } else {
-            relationshipType = relationshipType.replace(/\b\w/g, c => c.toUpperCase()) + ' Relationship';
-        }
-    }
-
-    // 4. Extract qualities / interests
-    let qualities = [];
-
-    // Strip negative sentences before quality matching
-    const cleanTextForQualities = cleanText.replace(/[^.]*?(?:don't|do not|no need|not)\s+(?:need|want|care)[^.]*?\./gi, '');
-
-    // Look for "I need X, Y, and Z"
-    const qualityDirectMatch = cleanTextForQualities.match(/(?:need|value|admire|appreciate|look for|trust in)\s+([a-z\s,]{3,80})(?:\.|\s+who|\s+that|\s+is)/i);
-    if (qualityDirectMatch) {
-        qualities = qualityDirectMatch[1]
-            .split(/,|and/)
-            .map(q => q.trim());
-    }
-
-    // Add positive keywords
-    const keywords = ['loyalty', 'honesty', 'respect', 'effort', 'trust', 'understanding', 'caring', 'communication', 'faithfulness', 'patience', 'companionship'];
-    keywords.forEach(kw => {
-        if (new RegExp(`\\b${kw}\\b`, 'i').test(cleanTextForQualities)) {
-            qualities.push(kw);
-        }
-    });
-
-    // Clean qualities: filter out phrases containing verbs or pronouns
-    qualities = qualities
-        .map(q => q.replace(/\b\w/g, c => c.toUpperCase()))
-        .filter(q => {
-            const qLower = q.toLowerCase();
-            if (qLower.includes(' ') && (/\b(is|be|to|are|have|do|you|i|my|me|who|your|we|they|he|she|it|us|them|our|their|an|the|a|in|at|on|for|with|by|from|about)\b/i.test(qLower))) {
-                return false;
-            }
-            return q.length > 2 && q.length < 25;
-        });
-
-    // De-duplicate
-    qualities = [...new Set(qualities)].slice(0, 4);
-
-    return {
-        partnerAge: partnerAge || '25 – 35 years',
-        partnerType: partnerType || null,
-        relationshipType: relationshipType || null,
-        qualities: qualities.length > 0 ? qualities : ['Honesty', 'Loyalty', 'Respect']
-    };
-}
-
-// ============================================================
-// Parse profile from PLUGIN response (already simplified)
-// ============================================================
-export function parsePluginProfile(data) {
-    const title = data.title || '';
-    const excerptRaw = data.excerpt || '';
-    const contentRaw = data.content || '';
-    let imageUrl = normalizeImageUrl(data.imageUrl || '');
-
-    // Fallback: extract first image from HTML content if imageUrl is empty
-    if (!imageUrl && contentRaw) {
-        const imgMatch = contentRaw.match(/<img[^>]+src=["']([^"']+)["']/);
-        if (imgMatch) imageUrl = normalizeImageUrl(imgMatch[1]);
-    }
-
-    const name = extractName(title);
-    const location = extractLocation(contentRaw + ' ' + title, title);
-    const age = extractAge(contentRaw) || extractAge(title);
-    const bio = extractBio(excerptRaw, contentRaw);
-    const coords = getLocationCoords(location);
-
-    const postDate = data.date ? new Date(data.date) : new Date();
-    const daysSincePost = Math.max(1, Math.floor((Date.now() - postDate.getTime()) / (1000 * 60 * 60 * 24)));
-
-    const extracted = extractProfileDetails(title, contentRaw);
-    const summary = buildProfileSummary({ title, content: contentRaw, excerpt: excerptRaw, details: extracted });
-
-    return {
-        wpId: data.wpId,
-        name,
-        age,
-        location,
-        bio,
-        excerpt: summary,
-        aboutSummary: summary,
-        content: summary,
-        imageUrl,
-        wpUrl: data.link || '',
-        date: data.date || '',
-        postDate: data.date || '',
-        coords,
-        commentCount: data.commentCount || 0,
-        daysSincePost,
-        profileType: detectProfileType(title, contentRaw, name),
-        isTestimonial: isTestimonialPost(title, contentRaw, name),
-        partnerAge: extracted.partnerAge,
-        partnerType: extracted.partnerType,
-        relationshipType: extracted.relationshipType,
-        qualities: extracted.qualities,
-        // If single profile, may include inline comments
-        comments: data.comments || undefined,
-    };
-}
-
-
-// ============================================================
-// Parse profile from WP REST API (fallback)
-// ============================================================
-export function parseProfile(post) {
-    const title = post.title?.rendered || '';
-    const content = post.content?.rendered || '';
-    const excerpt = post.excerpt?.rendered || '';
-
-    let imageUrl = normalizeImageUrl(post.jetpack_featured_media_url || '');
-    if (!imageUrl && post._embedded?.['wp:featuredmedia']?.[0]) {
-        const media = post._embedded['wp:featuredmedia'][0];
-        imageUrl = normalizeImageUrl(media.source_url || media.media_details?.sizes?.large?.source_url || '');
-    }
-
-    const name = extractName(title);
-    const location = extractLocation(content, title);
-    const age = extractAge(content) || extractAge(title);
-    const bio = extractBio(excerpt, content);
-    const coords = getLocationCoords(location);
-
-    const commentCount = post.comment_count || 0;
-    const embeddedReplies = post._embedded?.replies?.[0];
-    const realCommentCount = embeddedReplies ? embeddedReplies.length : commentCount;
-
-    const excerptText = excerpt.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&#8217;/g, "'").replace(/&hellip;/g, '...').replace(/continue\s+reading.*$/i, '').trim();
-
-    const postDate = post.date ? new Date(post.date) : new Date();
-    const daysSincePost = Math.max(1, Math.floor((Date.now() - postDate.getTime()) / (1000 * 60 * 60 * 24)));
-
-    const extracted = extractProfileDetails(title, content);
-    const summary = buildProfileSummary({ title, content, excerpt, details: extracted });
+    const coords = (post.latitude && post.longitude)
+        ? { latitude: parseFloat(post.latitude), longitude: parseFloat(post.longitude) }
+        : null;
 
     return {
         wpId: post.id,
-        name,
+        name: name.substring(0, 40),
         age,
         location,
-        bio,
-        excerpt: summary || excerptText,
-        aboutSummary: summary || excerptText,
-        content: summary || excerptText,
+        bio: excerptText.substring(0, 300),
+        excerpt: excerptText.substring(0, 200),
+        content: contentHtml,
         imageUrl,
-        wpUrl: post.link || '',
-        date: post.date || '',
-        postDate: post.date || '',
-        coords,
-        commentCount: realCommentCount,
+        link: post.link || '',
+        date: post.date,
+        commentCount: post.comment_count ?? post._embedded?.replies?.[0]?.length ?? 0,
         daysSincePost,
-        profileType: detectProfileType(title, content, name),
-        isTestimonial: isTestimonialPost(title, content, name),
-        partnerAge: extracted.partnerAge,
-        partnerType: extracted.partnerType,
-        relationshipType: extracted.relationshipType,
-        qualities: extracted.qualities,
+        coords,
+        slug: post.slug,
     };
 }
 
-
-
-// ============================================================
-// CACHING SYSTEM
-// ============================================================
-const profilePageCache = new Map();
-const SERVER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-
-// ============================================================
-// FETCH PROFILES — tries GS plugin first, falls back to WP REST
-// ============================================================
-export async function fetchProfiles(page = 1, perPage = 25) {
-    const cacheKey = `${page}-${perPage}`;
-    const cached = profilePageCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < SERVER_CACHE_TTL) {
-        return cached.data;
-    }
-
-    // ---- Try GS Plugin endpoint first ----
-    try {
-        const pluginUrl = `${GS_API}/profiles?page=${page}&per_page=${perPage}`;
-        const res = await fetch(pluginUrl, {
-            next: { revalidate: 300 },
-            headers: { 'Accept': 'application/json' },
-        });
-
-        if (res.ok) {
-            const data = await res.json();
-            const profiles = (data.profiles || []).map(parsePluginProfile);
-            const result = {
-                profiles,
-                totalPages: data.totalPages || 1,
-                totalPosts: data.totalPosts || 0,
-                page: data.page || page,
-            };
-            profilePageCache.set(cacheKey, { data: result, timestamp: Date.now() });
-            return result;
-        }
-    } catch (err) {
-        console.warn('GS Plugin profiles failed, trying WP REST:', err.message);
-    }
-
-    // ---- Fallback to WP REST API ----
-    try {
-        const wpUrl = `${WP_API}/posts?page=${page}&per_page=${perPage}&_embed&orderby=date&order=desc`;
-        const res = await fetch(wpUrl, {
-            next: { revalidate: 300 },
-            headers: { 'Accept': 'application/json' },
-        });
-
-        if (!res.ok) {
-            if (res.status === 400) return { profiles: [], totalPages: 0, totalPosts: 0, page };
-            throw new Error(`WordPress API error: ${res.status}`);
-        }
-
-        const posts = await res.json();
-        const totalPages = parseInt(res.headers.get('X-WP-TotalPages') || '1');
-        const totalPosts = parseInt(res.headers.get('X-WP-Total') || '0');
-        const profiles = posts.map(parseProfile);
-        const result = { profiles, totalPages, totalPosts, page };
-        profilePageCache.set(cacheKey, { data: result, timestamp: Date.now() });
-        return result;
-    } catch (error) {
-        console.error('Failed to fetch profiles (both methods):', error);
-        return { profiles: [], totalPages: 0, totalPosts: 0, page };
-    }
+// Strip HTML entities and tags from a string
+function cleanText(str) {
+    if (!str) return '';
+    return str
+        .replace(/<[^>]+>/g, '')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&#8217;/g, "'")
+        .replace(/&#8220;/g, '"')
+        .replace(/&#8221;/g, '"')
+        .replace(/&#8211;/g, '-')
+        .replace(/&#8230;/g, '...')
+        .replace(/&hellip;/g, '...')
+        .replace(/&nbsp;/g, ' ')
+        .trim();
 }
 
+// Extract person name from a post title (e.g. "Genevieve Sugar Mummy Mombasa" → "Genevieve")
+function extractNameFromTitle(rawTitle) {
+    const title = cleanText(rawTitle);
+    let name = title
+        .replace(/sugar\s*mumm(?:y|ies)/gi, '')
+        .replace(/looking\s+for\s+.*/gi, '')
+        .replace(/\s+in\s+[A-Z].*/i, '')
+        .replace(/\s+from\s+[A-Z].*/i, '')
+        .replace(/\s+aged?\s+\d+.*/i, '')
+        .replace(/\d{2}\s*(?:years|yrs).*/i, '')
+        .replace(/needs?\s+.*/gi, '')
+        .replace(/wants?\s+.*/gi, '')
+        .replace(/is\s+.*/gi, '')
+        .replace(/[–—-]\s*.*/g, '')
+        .trim();
+    if (!name || name.length < 2) name = title.split(/[–—-]/)[0].trim();
+    if (!name || name.length < 2) name = 'Sugar Mummy';
+    return name.substring(0, 40);
+}
 
-// ============================================================
-// FETCH SINGLE PROFILE — tries GS plugin first for inline comments
-// ============================================================
-export async function fetchSingleProfile(postId) {
-    // ---- Try GS Plugin first (includes comments inline) ----
+// ---- Fetch profiles (paginated) ----
+export async function fetchProfiles(page = 1, perPage = 25) {
     try {
-        const pluginUrl = `${GS_API}/profiles/${postId}`;
-        const res = await fetch(pluginUrl, {
-            next: { revalidate: 120 },
-            headers: { 'Accept': 'application/json' },
+        // Try custom GS API first (faster, built for this)
+        const gsRes = await fetch(`${GS_API}/profiles?page=${page}&per_page=${perPage}`, {
+            next: { revalidate: 300 },
         });
 
-        if (res.ok) {
-            const data = await res.json();
-            if (data.profiles && data.profiles.length > 0) {
-                return parsePluginProfile(data.profiles[0]);
+        if (gsRes.ok) {
+            const data = await gsRes.json();
+            if (data.profiles) {
+                const now = new Date();
+                const profiles = data.profiles.map(p => {
+                    const titleClean = cleanText(p.title || '');
+                    const excerptClean = cleanText(p.excerpt || '').substring(0, 300);
+
+                    // Extract location from title or excerpt
+                    const locationMatch =
+                        titleClean.match(/(?:in|from|based in|located in|living in)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/i) ||
+                        excerptClean.match(/(?:in|from|based in|located in|living in)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/i);
+
+                    // Extract age
+                    const ageMatch =
+                        titleClean.match(/(\d{2})\s*(?:years|yrs|year)/i) ||
+                        excerptClean.match(/(\d{2})\s*(?:years|yrs|year)/i);
+
+                    const postDate = new Date(p.date || Date.now());
+                    const daysSincePost = Math.max(0, Math.floor((now - postDate) / (1000 * 60 * 60 * 24)));
+
+                    return {
+                        wpId: p.wpId || p.id,
+                        name: extractNameFromTitle(p.title || ''),
+                        age: ageMatch ? parseInt(ageMatch[1]) : null,
+                        location: locationMatch ? locationMatch[1] : '',
+                        bio: excerptClean,
+                        excerpt: excerptClean.substring(0, 200),
+                        content: p.content || '',
+                        // Keep Jetpack CDN URLs intact — they ARE the image server
+                        imageUrl: normalizeImageUrl(p.imageUrl || p.image_url || p.featured_image_url || ''),
+                        link: p.link || '',
+                        date: p.date || '',
+                        commentCount: p.commentCount ?? p.comment_count ?? 0,
+                        daysSincePost,
+                        coords: (p.latitude && p.longitude)
+                            ? { latitude: parseFloat(p.latitude), longitude: parseFloat(p.longitude) }
+                            : null,
+                        slug: p.slug || '',
+                    };
+                }).filter(isLikelySugarMummyProfile);
+                return {
+                    profiles,
+                    // GS API returns totalPages (camelCase) — also check snake_case fallback
+                    totalPages: data.totalPages || data.total_pages || Math.ceil((data.totalPosts || data.total || profiles.length) / perPage) || 1,
+                    totalPosts: data.totalPosts || data.total || profiles.length,
+                };
+            }
+            // .com GS API returns array at root with pagination keys: { [0]: {...}, total, total_pages }
+            // We need to extract the array items and pagination separately
+            if (Array.isArray(data) || (data && typeof data === 'object' && !data.profiles)) {
+                const now = new Date();
+                const items = Array.isArray(data) ? data : (data.data || []);
+                const totalCount = data.total || items.length;
+                const totalPagesCount = data.total_pages || data.totalPages || Math.ceil(totalCount / perPage) || 1;
+
+                const profiles = items.filter(p => p && (p.id || p.wpId)).map(p => {
+                    const titleClean = cleanText(p.title || '');
+                    const excerptClean = cleanText(p.excerpt || '').substring(0, 300);
+                    const locationMatch =
+                        titleClean.match(/(?:in|from|based in|located in|living in)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/i) ||
+                        excerptClean.match(/(?:in|from|based in|located in|living in)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/i);
+                    const ageMatch =
+                        titleClean.match(/(\d{2})\s*(?:years|yrs|year)/i) ||
+                        excerptClean.match(/(\d{2})\s*(?:years|yrs|year)/i);
+                    const postDate = new Date(p.date || Date.now());
+                    const daysSincePost = Math.max(0, Math.floor((now - postDate) / (1000 * 60 * 60 * 24)));
+                    return {
+                        wpId: p.wpId || p.id,
+                        name: extractNameFromTitle(p.title || ''),
+                        age: ageMatch ? parseInt(ageMatch[1]) : null,
+                        location: locationMatch ? locationMatch[1] : '',
+                        bio: excerptClean,
+                        excerpt: excerptClean.substring(0, 200),
+                        content: p.content || '',
+                        imageUrl: normalizeImageUrl(p.imageUrl || p.image_url || p.featured_image_url || ''),
+                        link: p.link || '',
+                        date: p.date || '',
+                        commentCount: p.commentCount ?? p.comment_count ?? 0,
+                        daysSincePost,
+                        coords: (p.latitude && p.longitude) ? { latitude: parseFloat(p.latitude), longitude: parseFloat(p.longitude) } : null,
+                        slug: p.slug || '',
+                    };
+                }).filter(isLikelySugarMummyProfile);
+                return { profiles, totalPages: totalPagesCount, totalPosts: totalCount };
             }
         }
     } catch (err) {
-        console.warn('GS Plugin single profile failed:', err.message);
+        console.error('GS API failed, trying WP API:', err.message);
     }
 
-    // ---- Fallback to WP REST ----
+    // Fallback to standard WP REST API
     try {
-        const url = `${WP_API}/posts/${postId}?_embed`;
-        const res = await fetch(url, {
-            next: { revalidate: 300 },
-            headers: { 'Accept': 'application/json' },
+        const wpRes = await fetch(
+            `${WP_API}/posts?page=${page}&per_page=${perPage}&_embed&orderby=date&order=desc`,
+            { next: { revalidate: 300 } }
+        );
+
+        if (!wpRes.ok) {
+            return { profiles: [], totalPages: 0, totalPosts: 0 };
+        }
+
+        const posts = await wpRes.json();
+        const totalPages = parseInt(wpRes.headers.get('X-WP-TotalPages') || '1');
+        const totalPosts = parseInt(wpRes.headers.get('X-WP-Total') || String(posts.length));
+        const profiles = posts.map(parseProfile).filter(isLikelySugarMummyProfile);
+        return { profiles, totalPages, totalPosts };
+    } catch (err) {
+        console.error('WP API also failed:', err.message);
+        return { profiles: [], totalPages: 0, totalPosts: 0 };
+    }
+}
+
+// ---- Fetch single profile ----
+export async function fetchSingleProfile(id) {
+    try {
+        const gsRes = await fetch(`${GS_API}/profiles/${id}`, {
+            next: { revalidate: 120 },
         });
-        if (!res.ok) return null;
-        const post = await res.json();
-        return parseProfile(post);
-    } catch (error) {
-        console.error('Failed to fetch single profile:', error);
+
+        if (gsRes.ok) {
+            const data = await gsRes.json();
+            // GS API returns flat format: { id/wpId, title (string), excerpt (string), imageUrl, ... }
+            if (data.id || data.wpId) {
+                const titleClean = cleanText(data.title || '');
+                const excerptClean = cleanText(data.excerpt || '');
+                const locationMatch =
+                    titleClean.match(/(?:in|from|based in|located in|living in)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/i) ||
+                    excerptClean.match(/(?:in|from|based in|located in|living in)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/i);
+                const ageMatch =
+                    titleClean.match(/(\d{2})\s*(?:years|yrs|year)/i) ||
+                    excerptClean.match(/(\d{2})\s*(?:years|yrs|year)/i);
+                const postDate = new Date(data.date || Date.now());
+                const daysSincePost = Math.max(0, Math.floor((new Date() - postDate) / (1000 * 60 * 60 * 24)));
+                const profile = {
+                    wpId: data.wpId || data.id,
+                    name: extractNameFromTitle(data.title || ''),
+                    age: ageMatch ? parseInt(ageMatch[1]) : null,
+                    location: locationMatch ? locationMatch[1] : '',
+                    bio: excerptClean.substring(0, 300),
+                    excerpt: excerptClean.substring(0, 200),
+                    content: data.content || '',
+                    imageUrl: normalizeImageUrl(data.imageUrl || data.image_url || data.featured_image_url || ''),
+                    link: data.link || '',
+                    date: data.date || '',
+                    commentCount: data.commentCount ?? data.comment_count ?? 0,
+                    daysSincePost,
+                    coords: null,
+                    slug: data.slug || '',
+                };
+                return isLikelySugarMummyProfile(profile) ? profile : null;
+            }
+        }
+    } catch (err) {
+        console.error('GS single profile error:', err.message);
+    }
+
+    try {
+        const wpRes = await fetch(`${WP_API}/posts/${id}?_embed`, {
+            next: { revalidate: 120 },
+        });
+        if (!wpRes.ok) return null;
+        const post = await wpRes.json();
+        const profile = parseProfile(post);
+        return isLikelySugarMummyProfile(profile) ? profile : null;
+    } catch {
         return null;
     }
 }
 
-
-// ============================================================
-// FETCH COMMENTS — tries GS plugin first
-// ============================================================
+// ---- Fetch comments for a post (with avatars) ----
 export async function fetchComments(postId) {
-    // ---- Try GS Plugin ----
     try {
-        const pluginUrl = `${GS_API}/comments/${postId}`;
-        const res = await fetch(pluginUrl, {
+        const gsRes = await fetch(`${GS_API}/comments/${postId}`, {
             next: { revalidate: 60 },
-            headers: { 'Accept': 'application/json' },
         });
 
-        if (res.ok) {
-            const data = await res.json();
-            return data.comments || [];
+        if (gsRes.ok) {
+            const data = await gsRes.json();
+            if (Array.isArray(data)) {
+                return data.map(c => ({
+                    id: c.id,
+                    author_name: c.author_name || c.author || 'Anonymous',
+                    avatar_url: normalizeImageUrl(c.author_avatar_url || c.avatar_url || ''),
+                    content: c.content?.rendered || c.content || '',
+                    date: c.date || c.date_gmt,
+                }));
+            }
         }
-    } catch (err) {
-        console.warn('GS Plugin comments failed:', err.message);
-    }
+    } catch { }
 
-    // ---- Fallback to WP REST ----
+    // Fallback to WP API
     try {
-        const url = `${WP_API}/comments?post=${postId}&per_page=50`;
-        const res = await fetch(url, {
-            next: { revalidate: 60 },
-            headers: { 'Accept': 'application/json' },
-        });
-        if (!res.ok) return [];
-        const comments = await res.json();
+        const wpRes = await fetch(
+            `${WP_API}/comments?post=${postId}&per_page=50&order=desc&orderby=date`,
+            { next: { revalidate: 60 } }
+        );
+        if (!wpRes.ok) return [];
+        const comments = await wpRes.json();
+
         return comments.map(c => ({
             id: c.id,
-            author: c.author_name || 'Anonymous',
-            content: c.content?.rendered?.replace(/<[^>]+>/g, '') || '',
+            author_name: c.author_name || 'Anonymous',
+            avatar_url: normalizeImageUrl(
+                c.author_avatar_urls?.['96'] || c.author_avatar_urls?.['48'] || ''
+            ),
+            content: c.content?.rendered || '',
             date: c.date,
-            avatarUrl: c.author_avatar_urls?.['48'] || '',
         }));
     } catch {
         return [];
     }
 }
 
-
-// ============================================================
-// SUBMIT COMMENT — tries GS plugin first
-// ============================================================
+// ---- Submit a comment (requires logged-in user) ----
 export async function submitComment({ postId, authorName, authorEmail, content }) {
-    // ---- Try GS Plugin ----
+    // Try GS App plugin endpoint first
     try {
-        const pluginUrl = `${GS_API}/comment`;
-        const res = await fetch(pluginUrl, {
+        const gsRes = await fetch(`${GS_API}/comment`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 post_id: postId,
                 author_name: authorName,
                 author_email: authorEmail,
-                content: content,
+                content,
             }),
         });
 
-        if (res.ok) {
-            return await res.json();
+        if (gsRes.ok) {
+            const data = await gsRes.json();
+            return { success: true, comment_id: data.comment_id || data.id || null };
+        } else {
+            const errText = await gsRes.text().catch(() => 'unknown');
+            console.error(`[Comment Submit] GS API failed: ${gsRes.status} - ${errText}`);
         }
     } catch (err) {
-        console.warn('GS Plugin comment submit failed:', err.message);
+        console.error(`[Comment Submit] GS API error:`, err.message);
     }
 
-    // ---- Fallback to WP REST ----
+    // Fallback to standard WP comments API
     try {
-        const url = `${WP_API}/comments`;
-        const res = await fetch(url, {
+        const wpRes = await fetch(`${WP_API}/comments`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 post: parseInt(postId),
                 author_name: authorName,
                 author_email: authorEmail,
-                content: content,
+                content,
             }),
         });
 
-        if (res.ok) {
-            return { success: true, message: 'Comment submitted for moderation.' };
+        if (wpRes.ok) {
+            const data = await wpRes.json();
+            return { success: true, comment_id: data.id };
+        } else {
+            const errText = await wpRes.text().catch(() => 'unknown');
+            console.error(`[Comment Submit] WP API failed: ${wpRes.status} - ${errText}`);
         }
-    } catch { }
+    } catch (err) {
+        console.error(`[Comment Submit] WP API error:`, err.message);
+    }
 
-    return { success: true, message: 'Comment submitted for moderation.' };
-}
-
-
-export function getRandomProfileNames() {
-    return [
-        'Faith', 'Grace', 'Mercy', 'Joy', 'Hope', 'Charity', 'Rose', 'Lilian',
-        'Agnes', 'Esther', 'Margaret', 'Catherine', 'Diana', 'Susan', 'Janet',
-        'Winnie', 'Betty', 'Nancy', 'Doris', 'Alice', 'Gloria', 'Irene',
-        'Patricia', 'Christine', 'Sharon', 'Stella', 'Monica', 'Sarah',
-        'Lucy', 'Ann', 'Beatrice', 'Pauline', 'Purity', 'Vivian', 'Brenda',
-        'Josephine', 'Florence', 'Carol', 'Jane', 'Tabitha', 'Angela',
-    ];
+    // Both endpoints failed
+    console.error('[Comment Submit] All endpoints failed for post', postId);
+    return { success: false, comment_id: null, error: 'Comment submission failed. Please try again.' };
 }

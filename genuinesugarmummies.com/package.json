@@ -9,7 +9,9 @@
         "lint": "next lint"
     },
     "dependencies": {
+        "@capacitor/local-notifications": "^8.2.0",
         "@react-spring/web": "^10.0.3",
+        "@supabase/supabase-js": "^2.0.0",
         "@tailwindcss/postcss": "^4.1.18",
         "autoprefixer": "^10.4.24",
         "framer-motion": "^12.34.0",
@@ -20,5 +22,10 @@
         "react-dom": "^19.2.4",
         "react-tinder-card": "^1.6.4",
         "tailwindcss": "^4.1.18"
+    },
+    "devDependencies": {
+        "@capacitor/android": "^8.4.1",
+        "@capacitor/cli": "^8.4.1",
+        "@capacitor/core": "^8.4.1"
     }
 }

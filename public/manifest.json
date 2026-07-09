@@ -1,73 +1,31 @@
-{
+﻿{
     "name": "Genuine Sugar Mummies",
     "short_name": "GS App",
-    "description": "Kenya's leading dating app for genuine sugar mummy connections. Swipe, match, and connect with verified profiles.",
+    "description": "Genuine Sugar Mummies premium connection platform",
     "start_url": "/discover",
-    "scope": "/",
     "display": "standalone",
     "background_color": "#ffffff",
-    "theme_color": "#EA580C",
+    "theme_color": "#FF8A00",
     "orientation": "portrait",
-    "id": "/",
+    "scope": "/",
     "icons": [
         {
-            "src": "/gs-logo.png",
-            "sizes": "500x500",
+            "src": "/icons/icon-192.png",
+            "sizes": "192x192",
             "type": "image/png",
-            "purpose": "any"
+            "purpose": "any maskable"
         },
         {
-            "src": "/gs-logo.png",
-            "sizes": "500x500",
+            "src": "/icons/icon-512.png",
+            "sizes": "512x512",
             "type": "image/png",
-            "purpose": "maskable"
-        },
-        {
-            "src": "/gs-logo.svg",
-            "sizes": "any",
-            "type": "image/svg+xml",
-            "purpose": "any"
+            "purpose": "any maskable"
         }
     ],
-    "screenshots": [
-        {
-            "src": "/gs-logo.png",
-            "sizes": "500x500",
-            "type": "image/png",
-            "form_factor": "narrow",
-            "label": "Discover profiles on GS App"
-        }
-    ],
-    "shortcuts": [
-        {
-            "name": "Discover Profiles",
-            "short_name": "Discover",
-            "url": "/discover",
-            "icons": [
-                {
-                    "src": "/gs-logo.png",
-                    "sizes": "500x500"
-                }
-            ]
-        },
-        {
-            "name": "My Profile",
-            "short_name": "Profile",
-            "url": "/profile"
-        }
-    ],
-    "related_applications": [
-        {
-            "platform": "webapp",
-            "url": "https://genuinesugarmummies.co.ke/manifest.json"
-        }
-    ],
-    "prefer_related_applications": false,
     "categories": [
         "social",
-        "lifestyle",
-        "dating"
+        "lifestyle"
     ],
-    "lang": "en",
-    "dir": "ltr"
+    "screenshots": [],
+    "prefer_related_applications": false
 }

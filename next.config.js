@@ -29,6 +29,21 @@ const nextConfig = {
     ],
   },
 
+  async redirects() {
+    return [
+      {
+        source: '/seed-photos/:slug(seed-m-.*)',
+        destination: '/seed/sugar-dads/photo_10_2026-06-25_14-22-09.jpg',
+        permanent: false,
+      },
+      {
+        source: '/seed-photos/:slug*',
+        destination: '/seed/sugarmums/photo_10_2026-06-24_14-00-45.jpg',
+        permanent: false,
+      },
+    ];
+  },
+
   // Security headers
   async headers() {
     if (process.env.NODE_ENV === 'development') {
@@ -60,7 +75,7 @@ const nextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(self), microphone=(self), geolocation=(self), clipboard-read=(self), clipboard-write=(self)',
+            value: 'camera=(self), microphone=(self), geolocation=(self), clipboard-read=(self), clipboard-write=(self), display-capture=()',
           },
           {
             key: 'Content-Security-Policy',
@@ -70,7 +85,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
               "font-src 'self' https://fonts.gstatic.com",
               "img-src 'self' data: blob: https:",
-              "connect-src 'self' https://genuinesugarmummies.co.ke https://rmsvyhfpiytcffjkozje.supabase.co wss://rmsvyhfpiytcffjkozje.supabase.co https://accounts.google.com https://oauth2.googleapis.com https://t.me https://gs-ai-ten.vercel.app",
+              "connect-src 'self' https://genuinesugarmummies.co.ke https://rmsvyhfpiytcffjkozje.supabase.co wss://rmsvyhfpiytcffjkozje.supabase.co https://accounts.google.com https://oauth2.googleapis.com https://fonts.googleapis.com https://fonts.gstatic.com https://lh3.googleusercontent.com https://secure.gravatar.com https://*.wp.com https://ipapi.co https://t.me https://gs-ai-ten.vercel.app",
               "frame-src https://accounts.google.com https://gs-ai-ten.vercel.app",
               "frame-ancestors 'self'",
               "base-uri 'self'",

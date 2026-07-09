@@ -1,0 +1,21 @@
+android/.gradle
+android/build
+android/app/build
+android/capacitor-cordova-android-plugins/build
+node_modules
+.next
+.git
+*.jks
+*.keystore
+android/keystores
+scratch
+genuinesugarmummies.com
+native-shell
+GENUINE-6-300x38.png
+GENUINE-7-300x39.png
+gs.png
+gs app verified badge.png
+public/base-release.apk
+*.log
+*.md
+!README.md

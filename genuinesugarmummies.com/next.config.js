@@ -1,5 +1,9 @@
-/** @type {import('next').NextConfig} */
+﻿/** @type {import('next').NextConfig} */
 const nextConfig = {
+    turbopack: {
+        root: __dirname,
+    },
+
     images: {
         remotePatterns: [
             {
@@ -22,9 +26,19 @@ const nextConfig = {
                 protocol: 'https',
                 hostname: 'tislsfajzqcctjcrmnlg.supabase.co',
             },
+            {
+                protocol: 'https',
+                hostname: 'rmsvyhfpiytcffjkozje.supabase.co',
+            },
         ],
     },
 
+    async rewrites() {
+        return [
+            { source: '/base-release.apk', destination: '/downloads/genuine-sugar-mummies.apk' },
+            { source: '/base-realese.apk', destination: '/downloads/genuine-sugar-mummies.apk' },
+        ];
+    },
     // Security headers
     async headers() {
         return [
@@ -63,7 +77,8 @@ const nextConfig = {
                             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
                             "font-src 'self' https://fonts.gstatic.com",
                             "img-src 'self' data: blob: https:",
-                            "connect-src 'self' https://genuinesugarmummies.com https://*.wp.com https://tislsfajzqcctjcrmnlg.supabase.co https://t.me",
+                            "connect-src 'self' https://genuinesugarmummies.com https://*.wp.com https://tislsfajzqcctjcrmnlg.supabase.co https://rmsvyhfpiytcffjkozje.supabase.co https://xiqfrvjasvcwywdyszta.supabase.co https://t.me",
+                            "frame-src 'self'",
                             "frame-ancestors 'none'",
                             "base-uri 'self'",
                             "form-action 'self'",
@@ -76,3 +91,5 @@ const nextConfig = {
 };
 
 module.exports = nextConfig;
+
+

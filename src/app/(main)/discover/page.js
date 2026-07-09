@@ -1,772 +1,759 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, X, Star, MapPin, MessageCircle, RefreshCw, Sparkles, Navigation, Database, SlidersHorizontal, ChevronDown, Flame, Zap, Award, Crown, Lock } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
-import { useGeolocation } from '@/hooks/useGeolocation';
+import { AnimatePresence, motion, useMotionValue, useTransform } from 'framer-motion';
+import { Eye, Heart, HeartHandshake, LocateFixed, MapPin, MessageCircle, Phone, Radio, RefreshCw, Sparkles, X } from 'lucide-react';
 import VerifiedBadge from '@/components/VerifiedBadge';
-import UserAvatar from '@/components/UserAvatar';
+import BoostedMembersStrip from '@/components/BoostedMembersStrip';
+import StoriesStrip from '@/components/StoriesStrip';
+import { useAuth } from '@/contexts/AuthContext';
+import { fallbackProfileImageSrc, useProfileImageFallback } from '@/lib/profileImages';
+import { displayDistanceKm, distanceText as profileDistanceText } from '@/lib/geo';
 
-// ---- Ultra-fast profile cache ----
-const CACHE_KEY = 'gsm_profiles_v2';
-const CACHE_TS = 'gsm_profiles_ts';
-const TTL = 10 * 60 * 1000;
+const CACHE_KEY = 'gsk_app_discover_deck_v16';
+const CURRENT_CARD_KEY = 'gsk_app_discover_current_card_v1';
+const OLD_CACHE_KEYS = ['gscom_discover_deck_v3', 'gsk_app_discover_deck_v3', 'gsk_app_discover_deck_v4', 'gsk_app_discover_deck_v5', 'gsk_app_discover_deck_v6', 'gsk_app_discover_deck_v7', 'gsk_app_discover_deck_v8', 'gsk_app_discover_deck_v9', 'gsk_app_discover_deck_v10', 'gsk_app_discover_deck_v11', 'gsk_app_discover_deck_v12', 'gsk_app_discover_deck_v13', 'gsk_app_discover_deck_v14', 'gsk_app_discover_deck_v15'];
+const CACHE_LIMIT = 80;
+const DECK_PAGE_SIZE = 20;
+const VALID_PROFILE_LABELS = new Set(['sugar_mummy', 'sugar_daddy', 'mistress', 'toyboy']);
 
-function getCache() {
-    if (typeof window === 'undefined') return null;
-    try {
-        const ts = localStorage.getItem(CACHE_TS);
-        if (ts && Date.now() - parseInt(ts) < TTL) {
-            const d = localStorage.getItem(CACHE_KEY);
-            return d ? JSON.parse(d) : null;
-        }
-    } catch { }
+function tier(user) {
+    return String(user?.subscription_tier || user?.subscriptionTier || 'free').toLowerCase();
+}
+
+function packageAccess(user) {
+    const current = tier(user);
+    const active = current !== 'free' && !user?.package_locked;
+    return {
+        active,
+        tier: current,
+        canBrowseDetails: true,
+        canRevealPhone: active && ['silver', 'gold', 'diamond'].includes(current),
+        swipeLimit: !active || current === 'free' ? 10 : current === 'basic' ? 30 : 999999,
+        likeLimit: !active || current === 'free' ? 5 : current === 'basic' ? 10 : current === 'silver' ? 50 : 999999,
+        superLikeLimit: !active || current === 'free' ? 0 : current === 'basic' ? 5 : current === 'silver' ? 100 : 999999,
+    };
+}
+
+function formatLabel(value) {
+    if (value === 'sugar_mummy') return 'Sugar Mummy';
+    if (value === 'sugar_daddy') return 'Sugar Daddy';
+    if (value === 'mistress') return 'Mistress';
+    if (value === 'toyboy') return 'Sugar Guy / Toyboy';
+    return String(value || 'Member').split('_').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+}
+
+function compactText(member) {
+    return [member.intentSummary, member.wants, member.neededQualities, member.excerpt].filter(Boolean)[0] || member.bio || 'Looking for a genuine, respectful connection.';
+}
+
+function presenceTone(member) {
+    if (member.isOnline) return 'bg-success';
+    const seen = member.lastSeenAt ? Date.now() - new Date(member.lastSeenAt).getTime() : Infinity;
+    if (seen < 24 * 60 * 60 * 1000) return 'bg-amber-400';
+    return 'bg-gray-300';
+}
+
+function distanceKm(a, b) {
+    if (!a || !b) return null;
+    const lat1 = Number(a.latitude);
+    const lon1 = Number(a.longitude);
+    const lat2 = Number(b.latitude);
+    const lon2 = Number(b.longitude);
+    if (![lat1, lon1, lat2, lon2].every(Number.isFinite)) return null;
+    const toRad = (value) => value * Math.PI / 180;
+    const radius = 6371;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const s1 = Math.sin(dLat / 2) ** 2;
+    const s2 = Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return Math.round(radius * 2 * Math.atan2(Math.sqrt(s1 + s2), Math.sqrt(1 - s1 - s2)));
+}
+
+function locationLabelFromCoords(latitude, longitude) {
+    const places = [
+        { name: 'Nairobi', lat: -1.2921, lng: 36.8219, r: 0.3 },
+        { name: 'Mombasa', lat: -4.0435, lng: 39.6682, r: 0.22 },
+        { name: 'Kisumu', lat: -0.0917, lng: 34.7680, r: 0.18 },
+        { name: 'Nakuru', lat: -0.3031, lng: 36.0800, r: 0.18 },
+        { name: 'Eldoret', lat: 0.5143, lng: 35.2698, r: 0.18 },
+        { name: 'Thika', lat: -1.0396, lng: 37.0900, r: 0.12 },
+        { name: 'Kampala', lat: 0.3476, lng: 32.5825, r: 0.3 },
+        { name: 'Dar es Salaam', lat: -6.7924, lng: 39.2083, r: 0.3 },
+    ];
+    const match = places.find((place) => Math.sqrt((latitude - place.lat) ** 2 + (longitude - place.lng) ** 2) < place.r);
+    return match?.name || `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`;
+}
+
+function liveDuration(startedAt) {
+    const started = startedAt ? new Date(startedAt).getTime() : 0;
+    if (!started || Number.isNaN(started)) return '0:00';
+    const seconds = Math.max(0, Math.floor((Date.now() - started) / 1000));
+    const mins = Math.floor(seconds / 60);
+    return `${mins}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function userProfileLabel(user) {
+    const pref = String(user?.preference || '').toLowerCase();
+    // Check prefix FIRST — 'sugar_mummy_looking_for_toyboy' starts with 'sugar_mummy', not 'toyboy'
+    if (pref.startsWith('sugar_mummy')) return 'sugar_mummy';
+    if (pref.startsWith('sugar_daddy')) return 'sugar_daddy';
+    if (pref.startsWith('mistress')) return 'mistress';
+    if (pref.startsWith('toyboy') || pref.startsWith('sugar_guy')) return 'toyboy';
+    const label = String(user?.profile_label || user?.member_category || '').toLowerCase();
+    if (VALID_PROFILE_LABELS.has(label)) return label;
+    return 'sugar_mummy';
+}
+
+function targetLabelsForUser(user) {
+    const label = userProfileLabel(user);
+    if (label === 'sugar_mummy') return new Set(['toyboy', 'sugar_daddy']);
+    if (label === 'toyboy') return new Set(['sugar_mummy', 'mistress']);
+    if (label === 'sugar_daddy') return new Set(['sugar_mummy', 'mistress']);
+    if (label === 'mistress') return new Set(['sugar_daddy', 'toyboy']);
     return null;
 }
-function setCache(profiles) {
-    if (typeof window === 'undefined') return;
-    try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify(profiles));
-        localStorage.setItem(CACHE_TS, String(Date.now()));
-    } catch { }
+
+function targetLabelArrayForUser(user) {
+    const targets = targetLabelsForUser(user);
+    return targets ? Array.from(targets) : [];
 }
 
-// ---- Smart match scoring ----
-function matchScore(p, coords, currentUser) {
-    let s = 40;
-    // Profile completeness
-    if (p.imageUrl) s += 8;
-    if (p.age) s += 5;
-    if (p.location) s += 4;
-    if (p.bio) s += 3;
-    // Activity freshness
-    if (p.daysSincePost < 3) s += 12;
-    else if (p.daysSincePost < 7) s += 8;
-    else if (p.daysSincePost < 14) s += 5;
-    // Country match
-    if (currentUser?.country && p.country && currentUser.country === p.country) s += 15;
-    // Mutual interest match — profile type matches what user is looking for
-    if (currentUser?.lookingFor && p.profileType === currentUser.lookingFor) s += 20;
-    // Location proximity
-    if (coords && p.coords) {
-        const d = haversine(coords, p.coords);
-        if (d < 10) s += 18; else if (d < 30) s += 12; else if (d < 50) s += 8; else if (d < 100) s += 4;
+function preferenceMixForUser(user) {
+    const label = userProfileLabel(user);
+    // Toyboy: 80% Sugar Mummies, 20% Mistresses
+    if (label === 'toyboy') return { primary: 'sugar_mummy', secondary: 'mistress', pattern: ['primary', 'primary', 'primary', 'primary', 'secondary'] };
+    // Sugar Mummy: 80% Toyboys/SugarGuys, 20% Sugar Daddies
+    if (label === 'sugar_mummy') return { primary: 'toyboy', secondary: 'sugar_daddy', pattern: ['primary', 'primary', 'primary', 'primary', 'secondary'] };
+    // Sugar Daddy: 70% Mistresses, 30% Sugar Mummies
+    if (label === 'sugar_daddy') return { primary: 'mistress', secondary: 'sugar_mummy', pattern: ['primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'secondary', 'secondary', 'secondary'] };
+    // Mistress: 90% Sugar Daddies, 10% Toyboys/SugarGuys
+    if (label === 'mistress') return { primary: 'sugar_daddy', secondary: 'toyboy', pattern: ['primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'secondary'] };
+    return null;
+}
+
+function weightedPreferenceDeck(items, user) {
+    const mix = preferenceMixForUser(user);
+    if (!mix) return items;
+    const primary = [];
+    const secondary = [];
+    const rest = [];
+    items.forEach((item) => {
+        const label = effectiveMemberLabel(item);
+        if (label === mix.primary) primary.push(item);
+        else if (label === mix.secondary) secondary.push(item);
+        else rest.push(item);
+    });
+    const output = [];
+    let primaryIndex = 0;
+    let secondaryIndex = 0;
+    let cycleIndex = 0;
+    while (primaryIndex < primary.length || secondaryIndex < secondary.length) {
+        const slot = mix.pattern[cycleIndex % mix.pattern.length];
+        if ((slot === 'primary' && primaryIndex < primary.length) || secondaryIndex >= secondary.length) {
+            if (primaryIndex < primary.length) output.push(primary[primaryIndex++]);
+            else if (secondaryIndex < secondary.length) output.push(secondary[secondaryIndex++]);
+        } else if (secondaryIndex < secondary.length) {
+            output.push(secondary[secondaryIndex++]);
+        } else if (primaryIndex < primary.length) {
+            output.push(primary[primaryIndex++]);
+        }
+        cycleIndex++;
     }
-    return Math.min(99, s);
-}
-function haversine(c1, c2) {
-    const R = 6371, toR = Math.PI / 180;
-    const dLat = (c2.latitude - c1.latitude) * toR;
-    const dLon = (c2.longitude - c1.longitude) * toR;
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos(c1.latitude * toR) * Math.cos(c2.latitude * toR) * Math.sin(dLon / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return [...output, ...rest];
 }
 
-async function fetchWithTimeout(url, ms = 8000) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), ms);
-    try {
-        const res = await fetch(url, { signal: ctrl.signal });
-        clearTimeout(timer);
-        return res;
-    } catch (e) {
-        clearTimeout(timer);
-        throw e;
-    }
-}
-function memberNumericId(id) {
-    const value = String(id || '');
-    let hash = 0;
-    for (let i = 0; i < value.length; i++) hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
-    return 900000000 + (Math.abs(hash) % 90000000);
+function effectiveMemberLabel(member) {
+    const label = String(member?.profileLabel || member?.memberCategory || '').toLowerCase();
+    if (VALID_PROFILE_LABELS.has(label)) return label;
+    const looking = String(member?.lookingFor || member?.intentSummary || '').toLowerCase().replace(/[_-]+/g, ' ');
+    if (looking.includes('sugar mummy')) return 'toyboy';
+    if (looking.includes('mistress')) return 'sugar_daddy';
+    if (looking.includes('sugar daddy')) return 'mistress';
+    if (looking.includes('toyboy') || looking.includes('sugar guy')) return 'sugar_mummy';
+    return label || 'member';
 }
 
-function normalizeMemberForDiscover(member) {
-    const profileType = member.profile_type || member.profile_label || member.member_category || (member.gender === 'male' ? 'sugar_daddy' : 'sugar_mummy');
+function memberPath(member, suffix = '') {
+    if (member?.detailPath) return `${member.detailPath}${suffix}`;
+    return member?.id ? `/members/${member.id}${suffix}` : '/members';
+}
+
+function normalizeMember(member) {
+    const label = member.profileLabel || member.memberCategory || 'member';
+    const source = member.source || (member.isSeedProfile ? 'seed' : 'member');
+    const swipePrefix = source === 'member' ? 'member' : 'seed';
     return {
-        wpId: memberNumericId(member.id),
-        memberId: member.id,
-        source: 'member',
-        detailHref: `/members/${member.id}`,
-        name: member.display_name || member.name || 'Member',
-        age: member.age || null,
-        location: member.location || member.city || member.country || '',
-        country: member.country || 'Kenya',
-        bio: member.bio || member.description || '',
-        excerpt: member.bio || member.description || '',
-        imageUrl: member.avatar_url || member.avatarUrl || '',
-        profileType,
-        partnerType: member.looking_for || '',
-        interests: Array.isArray(member.interests) ? member.interests : [],
-        hobbies: Array.isArray(member.hobbies) ? member.hobbies : [],
-        subscription: { plan: member.subscription_plan || member.subscription_tier || 'free' },
-        verified: member.verification_status === 'verified' || member.verified,
-        phoneMasked: member.phone_masked || '',
-        date: member.created_at || new Date().toISOString(),
-        daysSincePost: member.created_at ? Math.max(0, Math.floor((Date.now() - new Date(member.created_at).getTime()) / 86400000)) : 0,
-        isMember: true,
+        ...member,
+        id: member.id,
+        source,
+        swipeKey: `${swipePrefix}:${member.id}`,
+        detailPath: member.detailPath || (member.id ? `/members/${member.id}` : '/members'),
+        avatarUrl: member.avatarUrl || member.photos?.[0] || '',
+        profileLabel: label,
+        sortDate: member.createdAt || member.lastSeenAt || '',
+        latitude: member.latitude || member.lat || null,
+        longitude: member.longitude || member.lng || null,
     };
 }
 
-function stableProfileRank(item) {
-    const value = String(item?.memberId || item?.wpId || item?.name || '');
+function compactCachedMember(member) {
+    return {
+        id: member.id,
+        source: member.source,
+        wpId: member.wpId,
+        swipeKey: member.swipeKey,
+        detailPath: member.detailPath,
+        name: member.name,
+        avatarUrl: member.avatarUrl,
+        bio: member.bio,
+        excerpt: member.excerpt,
+        age: member.age,
+        location: member.location,
+        country: member.country,
+        city: member.city,
+        profileLabel: member.profileLabel,
+        memberCategory: member.memberCategory,
+        lookingFor: member.lookingFor,
+        intentSummary: member.intentSummary,
+        wants: member.wants,
+        neededQualities: member.neededQualities,
+        ageRangePreference: member.ageRangePreference,
+        interests: Array.isArray(member.interests) ? member.interests.slice(0, 5) : [],
+        verified: member.verified,
+        phone: member.phone,
+        phoneMasked: member.phoneMasked,
+        phoneLocked: member.phoneLocked,
+        createdAt: member.createdAt,
+        sortDate: member.sortDate,
+        lastSeenAt: member.lastSeenAt,
+        latitude: member.latitude,
+        longitude: member.longitude,
+        randomRank: member.randomRank,
+        isOnline: member.isOnline,
+        isBoosted: member.isBoosted,
+        boostExpiresAt: member.boostExpiresAt,
+        boostScore: member.boostScore,
+    };
+}
+
+function writeDeckCache(members, user) {
+    if (typeof sessionStorage === 'undefined' || !members.length) return;
+    try {
+        const compactMembers = members.slice(0, CACHE_LIMIT).map(compactCachedMember);
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ members: compactMembers, profileLabel: userProfileLabel(user), cachedAt: Date.now() }));
+    } catch {
+        try { sessionStorage.removeItem(CACHE_KEY); } catch {}
+    }
+}
+
+function profileFitsUser(member, user) {
+    const targets = targetLabelsForUser(user);
+    if (!targets) return true;
+    const label = effectiveMemberLabel(member);
+    if (!label || label === 'member') return false;
+    return targets.has(label);
+}
+
+function matchScore(member, user) {
+    let score = 54;
+    const userLocation = String(user?.location || '').toLowerCase();
+    const memberLocation = String(member.location || member.country || '').toLowerCase();
+    if (userLocation && memberLocation && (memberLocation.includes(userLocation) || userLocation.includes(memberLocation))) score += 18;
+    if (member.verified) score += 8;
+    if (member.isBoosted) score += 22;
+    if (member.intentSummary || member.wants || member.excerpt) score += 6;
+    if (profileFitsUser(member, user)) score += 14;
+    if (member.source === 'wp') score += 3;
+    const seed = `${member.swipeKey}-${user?.email || ''}`;
     let hash = 0;
-    for (let i = 0; i < value.length; i++) hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
-    return Math.abs(hash);
+    for (let i = 0; i < seed.length; i++) hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0;
+    score += Math.abs(hash) % 9;
+    return Math.max(50, Math.min(98, score));
 }
-
-function stableMixProfiles(items) {
-    return [...items].sort((a, b) => stableProfileRank(a) - stableProfileRank(b));
-}
-
-function deterministicPhone(profile) {
-    const seed = stableProfileRank(profile);
-    const prefix = profile?.country === 'Uganda' ? '+256 7' : profile?.country === 'Tanzania' ? '+255 7' : '+254 7';
-    const n = String(seed % 100000000).padStart(8, '0');
-    return `${prefix}${n.slice(0, 1)}${n.slice(1, 3)} ${n.slice(3, 6)} ${n.slice(6, 8)}`;
-}
-
-// Kenyan locations for filter
-const KENYAN_LOCATIONS = [
-    'All', 'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Ruiru', 'Kikuyu',
-    'Thika', 'Naivasha', 'Kakamega', 'Kisii', 'Kitale', 'Athi River', 'Mlolongo',
-    'Garissa', 'Malindi', 'Ngong', 'Rongai', 'Karen', 'Westlands', 'Kilimani',
-    'Langata', 'South B', 'South C', 'Roysambu', 'Kasarani', 'Embakasi',
-    'Juja', 'Kiambu', 'Nyeri', 'Machakos', 'Meru', 'Nanyuki', 'Diani',
-    'Kilifi', 'Voi', 'Kericho', 'Homabay', 'Migori', 'Bomet', 'Webuye',
-    'Wajir', 'Limuru', 'Lodwar', 'Mandera', 'Narok', 'Isiolo', 'Marsabit',
-    'Lamu', 'Watamu', 'Bamburi', 'Nyali'
-];
 
 export default function DiscoverPage() {
-    const { user, settings, addLike, addMatch, addPass, isProfileSwiped, addSuperLike, clearSwipeHistory, blockedUsers, canUseFeature } = useAuth();
-    const { location: userLocation, requestLocation } = useGeolocation();
     const router = useRouter();
-
-    const [allProfiles, setAllProfiles] = useState([]);
+    const { user, guest, addLike, addSuperLike, addMatch, addPass, isProfileSwiped, clearSwipeHistory, addMessage, updateProfile, updateSettings } = useAuth();
+    const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [swipeDir, setSwipeDir] = useState(null);
-    const [viewedAll, setViewedAll] = useState(false);
-    const [dbTotal, setDbTotal] = useState(0);
-    const [showFilters, setShowFilters] = useState(false);
-    const [locallySwiped, setLocallySwiped] = useState(() => new Set());
-    const fetchingRef = useRef(false);
-    const swipeLockedRef = useRef(false);
-    const locationRequestedRef = useRef(false);
-    const wasDraggedRef = useRef(false);
+    const [direction, setDirection] = useState(null);
+    const [notice, setNotice] = useState('');
+    const [liveStreams, setLiveStreams] = useState([]);
+    const [geo, setGeo] = useState(null);
+    const [filter, setFilter] = useState('all');
+    const [nextPage, setNextPage] = useState(1);
+    const [hasMoreProfiles, setHasMoreProfiles] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [dismissedSwipeKeys, setDismissedSwipeKeys] = useState(() => new Set());
+    const [pinnedSwipeKey, setPinnedSwipeKey] = useState(() => {
+        if (typeof sessionStorage === 'undefined') return '';
+        try { return sessionStorage.getItem(CURRENT_CARD_KEY) || ''; } catch { return ''; }
+    });
+    const fetched = useRef(false);
+    const swiping = useRef(false);
+    const loadingPageRef = useRef(false);
+    const access = packageAccess(user);
+    const currentProfileLabel = userProfileLabel(user);
 
-    // Filters
-    const [filterLocation, setFilterLocation] = useState('All');
-    const [filterAgeMin, setFilterAgeMin] = useState(18);
-    const [filterAgeMax, setFilterAgeMax] = useState(70);
+    const x = useMotionValue(0);
+    const rotate = useTransform(x, [-200, 200], [-14, 14]);
+    const likeOpacity = useTransform(x, [0, 100], [0, 1]);
+    const nopeOpacity = useTransform(x, [-100, 0], [1, 0]);
 
-    // Touch swipe state
-    const [touchStart, setTouchStart] = useState(null);
-    const [touchDelta, setTouchDelta] = useState({ x: 0, y: 0 });
-    const [isDragging, setIsDragging] = useState(false);
-    const cardRef = useRef(null);
+    async function loadDeckPage(pageNumber = 1, { replace = false } = {}) {
+        if (loadingPageRef.current) return;
+        loadingPageRef.current = true;
+        setLoadingMore(!replace);
+        try {
+            const labels = targetLabelArrayForUser(user);
+            const requests = labels.length ? labels : ['all'];
+            const payloads = await Promise.all(requests.map(async (label) => {
+                const memberParams = new URLSearchParams({ per_page: String(DECK_PAGE_SIZE), page: String(pageNumber) });
+                if (label !== 'all') memberParams.set('label', label);
+                if (user?.id) memberParams.set('viewer_id', user.id);
+                const res = await fetch(`/api/members?${memberParams.toString()}`, { cache: 'no-store' });
+                return res.json().catch(() => ({}));
+            }));
+            const incoming = payloads.flatMap((payload) => payload.members || [])
+                .filter((member) => String(member.id) !== String(user?.id || ''))
+                .map(normalizeMember);
+            setHasMoreProfiles(incoming.length >= DECK_PAGE_SIZE);
+            setNextPage(pageNumber + 1);
+            setMembers((currentMembers) => {
+                const byKey = new Map();
+                if (!replace) currentMembers.forEach((item) => item?.swipeKey && byKey.set(item.swipeKey, item));
+                incoming.forEach((item) => {
+                    if (item.swipeKey && !byKey.has(item.swipeKey)) {
+                        let hash = 0;
+                        const seed = `${item.swipeKey}-${user?.id || user?.email || 'guest'}`;
+                        for (let i = 0; i < seed.length; i++) hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0;
+                        byKey.set(item.swipeKey, { ...item, randomRank: Math.abs(hash % 10000) / 10000 });
+                    }
+                });
+                return Array.from(byKey.values()).sort((a, b) => (a.randomRank || 0) - (b.randomRank || 0));
+            });
+            if (!incoming.length && pageNumber === 1) setNotice('Profiles are temporarily unavailable. Pulling fresh profiles again shortly.');
+        } catch {
+            setNotice('Profiles are temporarily unavailable.');
+        } finally {
+            loadingPageRef.current = false;
+            setLoading(false);
+            setLoadingMore(false);
+        }
+    }
 
-    // Preload images
-    const preloadedRef = useRef(new Set());
-    const preloadImage = useCallback((url) => {
-        if (!url || preloadedRef.current.has(url)) return;
-        preloadedRef.current.add(url);
-        const img = new Image();
-        img.src = url;
+    useEffect(() => {
+        try {
+            OLD_CACHE_KEYS.forEach((key) => sessionStorage.removeItem(key));
+            const cached = JSON.parse(sessionStorage.getItem(CACHE_KEY) || 'null');
+            if (cached?.members?.length && cached.profileLabel === currentProfileLabel) {
+                setMembers(cached.members);
+                setNextPage(Math.floor(cached.members.length / DECK_PAGE_SIZE) + 1);
+                setHasMoreProfiles(true);
+                setLoading(false);
+                fetched.current = true;
+            } else {
+                fetched.current = false;
+            }
+        } catch {}
+    }, [currentProfileLabel]);
+
+    useEffect(() => {
+        writeDeckCache(members, user);
+    }, [members, user]);
+
+    useEffect(() => {
+        if (fetched.current) return;
+        fetched.current = true;
+        setNextPage(1);
+        setHasMoreProfiles(true);
+        loadDeckPage(1, { replace: true });
+    }, [access.canRevealPhone, user?.id, currentProfileLabel]);
+
+    useEffect(() => {
+        async function loadLiveStreams() {
+            try {
+                const res = await fetch('/api/live');
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) setLiveStreams(data.streams || []);
+            } catch {}
+        }
+        loadLiveStreams();
+        const timer = window.setInterval(loadLiveStreams, 15000);
+        return () => window.clearInterval(timer);
     }, []);
 
-    // FAST LOAD
-    const loadProfiles = useCallback(async (forceRefresh = false) => {
-        if (fetchingRef.current) return;
-        fetchingRef.current = true;
-        try {
-            if (!forceRefresh) {
-                const cached = getCache();
-                if (cached && cached.length > 0) {
-                    setAllProfiles(cached);
-                    setDbTotal(cached.length);
-                    setLoading(false);
-                }
-            }
-            const res1 = await fetchWithTimeout('/api/profiles?page=1&per_page=50', 10000);
-            if (!res1.ok) throw new Error('API failed');
-            const data1 = await res1.json();
-            const wpPage1 = data1.profiles || [];
-            let memberProfiles = [];
-            try {
-                const membersRes = await fetchWithTimeout(`/api/members?userId=${user?.id || ''}`, 8000);
-                if (membersRes.ok) {
-                    const membersJson = await membersRes.json();
-                    memberProfiles = (membersJson.members || [])
-                        .filter((member) => (member.avatar_url || member.avatarUrl) && !member.is_banned)
-                        .map(normalizeMemberForDiscover);
-                }
-            } catch (memberError) {
-                console.warn('Member mix load failed:', memberError?.message || memberError);
-            }
-            const page1 = stableMixProfiles([...memberProfiles, ...wpPage1]);
-            const totalPages = data1.totalPages || 1;
-            const totalPosts = (data1.totalPosts || wpPage1.length) + memberProfiles.length;
-
-            if (page1.length > 0) {
-                setAllProfiles(page1);
-                setDbTotal(totalPosts);
-                setLoading(false);
-                setCache(page1);
-            }
-
-            // Trickle load remaining pages sequentially in the background.
-            // This prevents concurrent network congestion/timeouts and ensures page 1 loads instantly.
-            if (totalPages > 1) {
-                (async () => {
-                    let currentProfiles = [...page1];
-                    for (let p = 2; p <= totalPages; p++) {
-                        // Delay 1.5s between page loads to keep network bandwidth fully free for image loads
-                        await new Promise(resolve => setTimeout(resolve, 1500));
-                        
-                        try {
-                            const res = await fetch(`/api/profiles?page=${p}&per_page=50`);
-                            if (res.ok) {
-                                const data = await res.json();
-                                const pageProfiles = data.profiles || [];
-                                if (pageProfiles.length > 0) {
-                                    currentProfiles = [...currentProfiles, ...pageProfiles];
-                                    
-                                    // Keep unique
-                                    const seen = new Set();
-                                    const unique = currentProfiles.filter(item => {
-                                        if (seen.has(item.wpId)) return false;
-                                        seen.add(item.wpId);
-                                        return true;
-                                    });
-                                    
-                                    setAllProfiles(unique);
-                                    setCache(unique);
-                                }
-                            }
-                        } catch (e) {
-                            console.warn(`Trickle prefetch failed for page ${p}:`, e);
-                        }
-                    }
-                })();
-            }
-        } catch (err) {
-            console.error('Profile load error:', err);
-            if (allProfiles.length === 0) {
-                const cached = getCache();
-                if (cached && cached.length > 0) {
-                    setAllProfiles(cached);
-                    setDbTotal(cached.length);
-                }
-            }
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-            fetchingRef.current = false;
-        }
-    }, [user?.id]);
-
-    useEffect(() => { loadProfiles(); }, [loadProfiles]);
-
-    useEffect(() => {
-        if (!settings?.locationEnabled || userLocation || locationRequestedRef.current) return;
-        locationRequestedRef.current = true;
-        requestLocation();
-    }, [settings?.locationEnabled, userLocation, requestLocation]);
-
-    // Filter + sort profiles
-    const displayProfiles = useMemo(() => {
-        let filtered = allProfiles.filter(p => !isProfileSwiped(p.wpId) && !locallySwiped.has(p.wpId));
-
-        // Block filter
-        if (blockedUsers && blockedUsers.length > 0) {
-            filtered = filtered.filter(p => !blockedUsers.includes(p.wpId));
-        }
-
-        // Exclude testimonial/review posts
-        filtered = filtered.filter(p => !p.isTestimonial);
-
-        // Strict Gender-based filter: show ONLY matching profileType (e.g. males looking for sugar mummies only see sugar mummies)
-        if (user?.lookingFor) {
-            filtered = filtered.filter(p => p.profileType === user.lookingFor);
-        }
-
-        // Location filter
-        if (filterLocation !== 'All') {
-            filtered = filtered.filter(p => p.location && p.location.toLowerCase().includes(filterLocation.toLowerCase()));
-        }
-
-        // Age filter
-        filtered = filtered.filter(p => {
-            if (!p.age) return true; // show profiles without age
-            return p.age >= filterAgeMin && p.age <= filterAgeMax;
-        });
-
-        return filtered;
-    }, [allProfiles, userLocation, isProfileSwiped, locallySwiped, blockedUsers, filterLocation, filterAgeMin, filterAgeMax, user]);
-
-    // Preload next 3 images
-    useEffect(() => {
-        displayProfiles.slice(0, 3).forEach(p => {
-            if (p.imageUrl) preloadImage(p.imageUrl);
-        });
-    }, [displayProfiles, preloadImage]);
-
-    // Do not auto-clear swipe history. Silent resets make the top card change without a user action.
-
-    // Swipe handler
-    const handleSwipe = useCallback((dir, profile) => {
-        if (!profile || swipeLockedRef.current) return;
-        swipeLockedRef.current = true;
-        setSwipeDir(dir);
-        setLocallySwiped(prev => {
-            const next = new Set(prev);
-            next.add(profile.wpId);
-            return next;
-        });
-        if (dir === 'right') {
-            addLike(profile).then(res => {
-                if (res?.limitReached) {
-                    router.push('/subscribe');
-                } else {
-                    const s = matchScore(profile, userLocation, user);
-                    if (s >= 70) addMatch(profile, s);
-                }
-            });
-        } else if (dir === 'up') {
-            addSuperLike(profile).then(res => {
-                if (res?.limitReached) {
-                    router.push('/subscribe');
-                } else {
-                    addMatch(profile, Math.min(99, matchScore(profile, userLocation, user) + 10));
-                }
-            });
-        } else {
-            addPass(profile.wpId);
-        }
-        setTimeout(() => {
-            setSwipeDir(null);
-            swipeLockedRef.current = false;
-        }, 320);
-    }, [addLike, addMatch, addPass, addSuperLike, userLocation, user, router]);
-
-    // Touch gesture handlers
-    const handleTouchStart = (e) => {
-        const touch = e.touches[0];
-        setTouchStart({ x: touch.clientX, y: touch.clientY });
-        setIsDragging(true);
-        wasDraggedRef.current = false;
-    };
-
-    const handleTouchMove = (e) => {
-        if (!touchStart) return;
-        const touch = e.touches[0];
-        const dx = touch.clientX - touchStart.x;
-        const dy = touch.clientY - touchStart.y;
-        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) wasDraggedRef.current = true;
-        setTouchDelta({
-            x: dx,
-            y: dy,
-        });
-    };
-
-    const handleTouchEnd = () => {
-        if (!touchStart) return;
-        const threshold = 80;
-        const profile = displayProfiles[0];
-
-        if (Math.abs(touchDelta.x) > threshold || Math.abs(touchDelta.y) > threshold) {
-            if (touchDelta.y < -threshold && Math.abs(touchDelta.y) > Math.abs(touchDelta.x)) {
-                handleSwipe('up', profile);
-            } else if (touchDelta.x > threshold) {
-                handleSwipe('right', profile);
-            } else if (touchDelta.x < -threshold) {
-                handleSwipe('left', profile);
-            }
-        }
-
-        setTouchStart(null);
-        setTouchDelta({ x: 0, y: 0 });
-        setIsDragging(false);
-    };
-
-    const handleCardClick = (profile) => {
-        if (!profile) return;
-        if (wasDraggedRef.current) {
-            setTimeout(() => { wasDraggedRef.current = false; }, 0);
+    async function requestNearby() {
+        if (!user?.id) { router.push('/auth/login'); return; }
+        if (!navigator.geolocation) {
+            setNotice('Location is not supported on this device.');
             return;
         }
-        router.push(profile.detailHref || `/discover/${profile.wpId}`);
-    };
-
-    const handleRefresh = () => {
-        setRefreshing(true);
-        setViewedAll(false);
-        setLocallySwiped(new Set());
-        clearSwipeHistory();
-        loadProfiles(true);
-    };
-
-    const currentProfile = displayProfiles[0];
-    const nextProfile = displayProfiles[1];
-
-    // Generate blurred phone (stable per profile, before early returns to satisfy React hooks rules)
-    const blurredPhoneRef = useRef('');
-    if (currentProfile && (!blurredPhoneRef.current || blurredPhoneRef._lastId !== currentProfile.wpId)) {
-        blurredPhoneRef.current = `+254 7${Math.floor(Math.random()*9)}${Math.floor(Math.random()*9)} ${Math.floor(Math.random()*9)}XX XXX`;
-        blurredPhoneRef._lastId = currentProfile.wpId;
-    }
-    const blurredPhone = blurredPhoneRef.current;
-
-    // LOADING
-    if (loading && allProfiles.length === 0) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-4">
-                <img
-                    src="/gs.png"
-                    alt="Loading"
-                    className="w-16 h-16 object-contain animate-pulse-zoom"
-                />
-                <p className="text-sm text-text-muted">Loading profiles...</p>
-            </div>
-        );
-    }
-
-    // EMPTY
-    if (!loading && allProfiles.length === 0) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center space-y-5">
-                <div className="w-20 h-20 rounded-full bg-surface flex items-center justify-center">
-                    <Database size={36} className="text-text-muted" />
-                </div>
-                <h2 className="text-xl font-bold text-text-primary">No Profiles Available</h2>
-                <p className="text-text-secondary text-sm">Check your internet connection and try again.</p>
-                <button onClick={handleRefresh} disabled={refreshing}
-                    className="flex items-center gap-2 px-8 py-3.5 rounded-2xl gradient-primary text-white font-semibold shadow-lg shadow-primary/20 transition-all active:scale-95">
-                    <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-                    {refreshing ? 'Loading...' : 'Retry'}
-                </button>
-            </div>
-        );
-    }
-
-    // If somehow still empty after reset, check if it's because of filters
-    if (!currentProfile && allProfiles.length > 0) {
-        const hasActiveFilter = filterLocation !== 'All' || filterAgeMin > 18 || filterAgeMax < 65;
-        if (hasActiveFilter) {
-            return (
-                <div className="px-3 pt-1 pb-2">
-                    {/* Header */}
-                    <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                            <Flame size={20} className="text-primary" />
-                            <h1 className="text-lg font-bold text-text-primary">Discover</h1>
-                        </div>
-                        <button onClick={() => setShowFilters(!showFilters)}
-                            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[10px] font-semibold transition-colors ${showFilters ? 'text-white bg-primary' : 'text-text-muted'}`}
-                            style={!showFilters ? { background: 'var(--color-surface)' } : {}}>
-                            <SlidersHorizontal size={10} /> Filter
-                        </button>
-                    </div>
-
-                    {/* Show filter bar so user can change */}
-                    <AnimatePresence>
-                        {showFilters && (
-                            <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: 'auto', opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                className="overflow-hidden mb-3">
-                                <div className="rounded-2xl p-3 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                                    <div>
-                                        <label className="text-[10px] text-text-muted font-semibold uppercase tracking-wider block mb-1">Location</label>
-                                        <select value={filterLocation} onChange={(e) => setFilterLocation(e.target.value)}
-                                            className="w-full px-3 py-2 rounded-xl text-xs font-semibold text-text-primary outline-none" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-                                            <option value="All">All Locations</option>
-                                            {[...new Set(allProfiles.map(p => p.location).filter(Boolean))].sort().map(loc => (
-                                                <option key={loc} value={loc}>{loc}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-
-                    <div className="flex flex-col items-center justify-center min-h-[50vh] px-6 text-center space-y-4">
-                        <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: 'var(--color-surface)' }}>
-                            <MapPin size={28} className="text-text-muted" />
-                        </div>
-                        <h2 className="text-lg font-bold text-text-primary">No profiles in this area</h2>
-                        <p className="text-text-secondary text-sm">Try selecting a different location or adjusting your age filter.</p>
-                        <button onClick={() => { setFilterLocation('All'); setFilterAgeMin(18); setFilterAgeMax(65); }}
-                            className="flex items-center gap-2 px-6 py-3 rounded-2xl gradient-primary text-white font-semibold shadow-lg shadow-primary/20 transition-all active:scale-95">
-                            <RefreshCw size={16} /> Clear Filters
-                        </button>
-                    </div>
-                </div>
-            );
+        if (navigator.permissions?.query) {
+            try {
+                const permission = await navigator.permissions.query({ name: 'geolocation' });
+                if (permission.state === 'denied') {
+                    setNotice('Location is blocked for this browser. Open site settings, allow Location, then tap Use Location again.');
+                    return;
+                }
+            } catch {}
         }
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-4">
-                <img
-                    src="/gs.png"
-                    alt="Loading"
-                    className="w-16 h-16 object-contain animate-pulse-zoom"
-                />
-                <p className="text-sm text-text-muted">Loading more profiles...</p>
-            </div>
-        );
+        setNotice('Requesting your device location...');
+        navigator.geolocation.getCurrentPosition(async (position) => {
+            const next = {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+                geo_updated_at: new Date().toISOString(),
+            };
+            const label = locationLabelFromCoords(next.latitude, next.longitude);
+            setGeo(next);
+            setFilter('nearby');
+            updateProfile?.({
+                ...next,
+                location: user.location || label,
+                city: user.city || label,
+            });
+            updateSettings?.({ locationEnabled: true, liveLocation: true });
+            setNotice(`Nearby matching is on from this device: ${label}.`);
+            try {
+                const res = await fetch('/api/location', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: user.id, ...next }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) setNotice(data.error || 'Location was found but could not be saved. Try again.');
+            } catch {}
+        }, (error) => {
+            if (error?.code === error.PERMISSION_DENIED) setNotice('Location permission was denied. Allow Location for this site in your browser settings, then tap Use Location again.');
+            else if (error?.code === error.TIMEOUT) setNotice('Location timed out. Turn on GPS/location services and try again.');
+            else setNotice('Could not read this device location. Check location services and try again.');
+        }, { enableHighAccuracy: true, maximumAge: 5 * 60 * 1000, timeout: 15000 });
     }
 
-    const score = matchScore(currentProfile, userLocation, user);
-    const isNearby = userLocation && currentProfile.coords && haversine(userLocation, currentProfile.coords) < 30;
+    const available = useMemo(() => {
+        const compatible = members
+            .filter((member) => member.swipeKey !== `member:${user?.id}`)
+            .filter((member) => profileFitsUser(member, user))
+            .filter((member) => {
+                if (filter === 'online') return member.isOnline || (member.lastSeenAt && Date.now() - new Date(member.lastSeenAt).getTime() < 5 * 60 * 1000);
+                if (filter === 'nearby') {
+                    const memberDistance = member.distanceKm ?? displayDistanceKm(geo || user, member);
+                    if (memberDistance !== null) return memberDistance <= 100;
+                    const userLocation = String(user?.location || '').toLowerCase();
+                    const memberLocation = String(member.location || member.city || member.country || '').toLowerCase();
+                    return Boolean(userLocation && memberLocation && (memberLocation.includes(userLocation) || userLocation.includes(memberLocation)));
+                }
+                return true;
+            })
+            .filter((member) => !dismissedSwipeKeys.has(member.swipeKey))
+            .filter((member) => !isProfileSwiped(member.swipeKey));
+        // Fallback: if no compatible profiles after all filters, relax non-gender filters but KEEP gender filtering
+        const pool = compatible.length ? compatible : members
+            .filter((member) => member.swipeKey !== `member:${user?.id}`)
+            .filter((member) => profileFitsUser(member, user))
+            .filter((member) => !dismissedSwipeKeys.has(member.swipeKey))
+            .filter((member) => !isProfileSwiped(member.swipeKey));
+        const sortedPool = pool
+            .sort((a, b) => {
+                if (pinnedSwipeKey) {
+                    if (a.swipeKey === pinnedSwipeKey && b.swipeKey !== pinnedSwipeKey) return -1;
+                    if (b.swipeKey === pinnedSwipeKey && a.swipeKey !== pinnedSwipeKey) return 1;
+                }
+                if (filter === 'nearby') {
+                    const aDistance = a.distanceKm ?? displayDistanceKm(geo || user, a);
+                    const bDistance = b.distanceKm ?? displayDistanceKm(geo || user, b);
+                    if (aDistance !== null && bDistance !== null && aDistance !== bDistance) return aDistance - bDistance;
+                }
+                const scoreGap = matchScore(b, user) - matchScore(a, user);
+                if (Math.abs(scoreGap) > 18) return scoreGap;
+                return (a.randomRank || 0) - (b.randomRank || 0);
+            });
+        return weightedPreferenceDeck(sortedPool, user);
+    }, [members, user, isProfileSwiped, filter, geo, pinnedSwipeKey, dismissedSwipeKeys]);
 
-    // Profile type helpers
-    const PROFILE_LABELS = { sugar_mummy: 'Sugar Mummy', sugar_daddy: 'Sugar Daddy', toyboy: 'Toyboy', sugar_guy: 'Sugar Guy', young_lady: 'Young Lady', mistress: 'Mistress', cougar: 'Cougar' };
-    const LABEL_GRADIENTS = { sugar_mummy: 'linear-gradient(135deg,#EC4899,#F43F5E)', sugar_daddy: 'linear-gradient(135deg,#3B82F6,#6366F1)', toyboy: 'linear-gradient(135deg,#F59E0B,#EF4444)', sugar_guy: 'linear-gradient(135deg,#10B981,#14B8A6)', young_lady: 'linear-gradient(135deg,#A855F7,#EC4899)', mistress: 'linear-gradient(135deg,#D946EF,#9333EA)', cougar: 'linear-gradient(135deg,#EF4444,#DC2626)' };
-    const LOOKING_FOR_MAP = { sugar_mummy: 'Toyboy / Sugar Guy', sugar_daddy: 'Young Lady / Mistress', toyboy: 'Sugar Mummy', sugar_guy: 'Sugar Mummy', young_lady: 'Sugar Daddy', mistress: 'Sugar Daddy', cougar: 'Toyboy / Sugar Guy' };
-    const COUNTRY_FLAGS = { Kenya: 'https://flagcdn.com/24x18/ke.png', Uganda: 'https://flagcdn.com/24x18/ug.png', Tanzania: 'https://flagcdn.com/24x18/tz.png', Zimbabwe: 'https://flagcdn.com/24x18/zw.png', Malawi: 'https://flagcdn.com/24x18/mw.png', Rwanda: 'https://flagcdn.com/24x18/rw.png', Burundi: 'https://flagcdn.com/24x18/bi.png', 'South Sudan': 'https://flagcdn.com/24x18/ss.png', Ethiopia: 'https://flagcdn.com/24x18/et.png', Nigeria: 'https://flagcdn.com/24x18/ng.png', Ghana: 'https://flagcdn.com/24x18/gh.png', 'South Africa': 'https://flagcdn.com/24x18/za.png' };
+    const current = available[0];
 
-    const pType = currentProfile.profileType || (currentProfile.gender === 'male' ? 'sugar_daddy' : 'sugar_mummy');
-    const pLabel = PROFILE_LABELS[pType] || 'Sugar Mummy';
-    const pGrad = LABEL_GRADIENTS[pType] || LABEL_GRADIENTS.sugar_mummy;
-    const pLooking = currentProfile.partnerType || LOOKING_FOR_MAP[pType] || 'Partner';
+    useEffect(() => {
+        if (!current?.swipeKey || swiping.current) return;
+        setPinnedSwipeKey(current.swipeKey);
+        try { sessionStorage.setItem(CURRENT_CARD_KEY, current.swipeKey); } catch {}
+    }, [current?.swipeKey]);
 
-    // Calculate card transform from touch
-    const dragX = isDragging ? touchDelta.x : 0;
-    const dragY = isDragging ? Math.min(0, touchDelta.y) : 0;
-    const dragRotate = isDragging ? touchDelta.x * 0.08 : 0;
-    const showLikeIndicator = isDragging && touchDelta.x > 50;
-    const showPassIndicator = isDragging && touchDelta.x < -50;
-    const showSuperIndicator = isDragging && touchDelta.y < -50;
+    useEffect(() => {
+        if (loading || loadingMore || !hasMoreProfiles) return;
+        if (available.length <= 4) loadDeckPage(nextPage);
+    }, [available.length, hasMoreProfiles, loading, loadingMore, nextPage]);
+
+    useEffect(() => {
+        function onLocationUpdated(event) {
+            const location = event.detail?.location;
+            if (location?.latitude && location?.longitude) setGeo(location);
+            setMembers([]);
+            setDismissedSwipeKeys(new Set());
+            sessionStorage.removeItem(CACHE_KEY);
+            fetched.current = true;
+            loadDeckPage(1, { replace: true });
+        }
+        window.addEventListener('gs-location-updated', onLocationUpdated);
+        return () => window.removeEventListener('gs-location-updated', onLocationUpdated);
+    }, [user?.id, currentProfileLabel]);
+
+    function normalizedForAuth(member) {
+        return {
+            wpId: member.swipeKey,
+            id: member.source === 'member' ? member.id : null,
+            name: member.name,
+            imageUrl: member.avatarUrl,
+            location: member.location,
+            age: member.age,
+            excerpt: compactText(member),
+            verified: member.verified,
+            date: member.createdAt,
+            score: matchScore(member, user),
+            source: member.source,
+        };
+    }
+
+    function finishSwipe() {
+        window.setTimeout(() => {
+            x.set(0);
+            setDirection(null);
+            swiping.current = false;
+        }, 240);
+    }
+
+    function beginSwipe(nextDirection) {
+        if (!current || swiping.current) return false;
+        if (guest || !user) { router.push('/auth/login'); return false; }
+        swiping.current = true;
+        setPinnedSwipeKey('');
+        try { sessionStorage.removeItem(CURRENT_CARD_KEY); } catch {}
+        setNotice('');
+        setDirection(nextDirection);
+        return true;
+    }
+
+    function dismissSwipeKey(key) {
+        if (!key) return;
+        setDismissedSwipeKeys((items) => {
+            const next = new Set(items);
+            next.add(key);
+            return next;
+        });
+    }
+
+    function stopSwipeWithPackageNotice(result, fallback = 'Your daily quota has exhausted. Pay for a package to unlock unlimited access.') {
+        setNotice(result?.error || fallback);
+        x.set(0);
+        swiping.current = false;
+        setDirection(null);
+        window.setTimeout(() => router.push(result?.redirectTo || '/packages'), 900);
+    }
+
+    async function handleLike() {
+        const target = current;
+        if (!beginSwipe('right')) return;
+        const profile = normalizedForAuth(target);
+        let result;
+        try { result = await addLike(profile); } catch { result = { ok: false, error: 'Action failed. Choose a package or try again.', redirectTo: '/packages' }; }
+        if (result && !result.ok) {
+            stopSwipeWithPackageNotice(result);
+            return;
+        }
+        dismissSwipeKey(target.swipeKey);
+        const score = matchScore(target, user);
+        if (score >= 93) addMatch(profile, score);
+        addMessage?.({ type: 'like', sender: 'You', title: `You liked ${target.name}`, body: `${score}% compatibility. Keep interacting to turn this into a stronger match.`, memberId: target.id, senderImage: target.avatarUrl });
+        finishSwipe();
+    }
+
+    async function handleSuperLike() {
+        const target = current;
+        if (!beginSwipe('right')) return;
+        const profile = normalizedForAuth(target);
+        let result;
+        try { result = await addSuperLike(profile); } catch { result = { ok: false, error: 'Action failed. Choose a package or try again.', redirectTo: '/packages' }; }
+        if (result && !result.ok) {
+            stopSwipeWithPackageNotice(result);
+            return;
+        }
+        dismissSwipeKey(target.swipeKey);
+        const score = Math.min(99, matchScore(target, user) + 5);
+        if (score >= 88) addMatch(profile, score);
+        addMessage?.({ type: 'superlike', sender: 'You', title: `You super liked ${target.name}`, body: `${score}% compatibility. This profile was added to your priority interactions.`, memberId: target.id, senderImage: target.avatarUrl });
+        finishSwipe();
+    }
+
+    async function handlePass() {
+        const target = current;
+        if (!beginSwipe('left')) return;
+        let result;
+        try { result = await addPass(target.swipeKey); } catch { result = { ok: false, error: 'Action failed. Choose a package or try again.', redirectTo: '/packages' }; }
+        if (result && !result.ok) {
+            stopSwipeWithPackageNotice(result);
+            return;
+        }
+        dismissSwipeKey(target.swipeKey);
+        finishSwipe();
+    }
+
+    async function handleView() {
+        const target = current;
+        if (!target) return;
+        if (guest || !user) { router.push('/auth/login'); return; }
+        const res = await fetch('/api/members', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'record_interaction', actorUserId: user.id, profileKey: target.swipeKey, kind: 'view', profileName: target.name, profileImage: target.avatarUrl, source: target.source }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            setNotice(data.error || 'Your daily quota has exhausted. Pay for a package to unlock unlimited access.');
+            window.setTimeout(() => router.push(data.redirectTo || '/packages'), 900);
+            return;
+        }
+        router.push(target.detailPath);
+    }
+
+    async function handleMessage() {
+        if (!current) return;
+        if (guest || !user) { router.push('/auth/login'); return; }
+        if (current.source === 'member' && current.id) {
+            router.push(`/messages/${current.id}`);
+            return;
+        }
+        if (current.source === 'wp') setNotice('This featured profile is view-only. Open a member account to start chat.');
+        else setNotice('Open this profile first to choose the best action.');
+        window.setTimeout(() => router.push(current.detailPath || '/members'), 900);
+    }
+
+    function handleRefresh() {
+        clearSwipeHistory();
+        setDismissedSwipeKeys(new Set());
+        sessionStorage.removeItem(CACHE_KEY);
+        setNotice('Swipe history cleared.');
+        window.setTimeout(() => window.location.reload(), 250);
+    }
+
+    if (loading) return (
+        <div className="px-4 py-4 pb-28 space-y-4">
+            <div className="relative w-full max-w-sm mx-auto skeleton-card" style={{ aspectRatio: '3/4' }}>
+                <div className="absolute inset-0 rounded-[22px] bg-surface skeleton-shimmer" />
+                <div className="absolute bottom-0 left-0 right-0 p-5 space-y-3">
+                    <div className="h-7 w-48 rounded-xl bg-primary/10 skeleton-shimmer" />
+                    <div className="flex gap-2">
+                        <div className="h-5 w-24 rounded-full bg-primary/8 skeleton-shimmer" />
+                        <div className="h-5 w-20 rounded-full bg-primary/8 skeleton-shimmer" />
+                    </div>
+                    <div className="h-4 w-36 rounded-lg bg-primary/6 skeleton-shimmer" />
+                </div>
+            </div>
+            <div className="flex justify-center gap-4 max-w-sm mx-auto">
+                {[1,2,3,4,5].map(i => <div key={i} className="w-14 h-14 rounded-full bg-surface skeleton-shimmer" />)}
+            </div>
+            <p className="text-center text-xs text-text-muted">Finding your matches…</p>
+        </div>
+    );
+
+    if (!current) {
+        if (hasMoreProfiles || loadingMore) {
+            return <div className="px-4 py-12 text-center space-y-4"><div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center"><Sparkles size={30} className="text-primary" /></div><h2 className="text-xl font-black text-text-primary">Loading More Profiles</h2><p className="text-sm text-text-muted">Finding the next compatible members for your preference.</p><button onClick={() => loadDeckPage(nextPage)} className="mx-auto px-5 py-3 rounded-2xl font-black text-white gradient-primary flex items-center gap-2"><RefreshCw size={17} /> Load More</button></div>;
+        }
+        return <div className="px-4 py-12 text-center space-y-4"><div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center"><Sparkles size={30} className="text-primary" /></div><h2 className="text-xl font-black text-text-primary">Today&apos;s Profiles Reviewed</h2><p className="text-sm text-text-muted">You have reviewed this batch. Load a fresh set or adjust filters.</p><button onClick={handleRefresh} className="mx-auto px-5 py-3 rounded-2xl font-black text-white gradient-primary flex items-center gap-2"><RefreshCw size={17} /> Load Fresh Profiles</button></div>;
+    }
+
+    const score = matchScore(current, user);
+    const currentDistanceText = current.distanceText || profileDistanceText(geo || user, current);
 
     return (
-        <div className="px-3 pt-1 pb-2">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #FF5A5F, #FF2D55)' }}>
-                        <Flame size={16} className="text-white" />
-                    </div>
-                    <h1 className="text-lg font-extrabold text-text-primary">Discover</h1>
-                    <span className="text-[10px] text-white/80 font-bold px-2 py-0.5 rounded-full" style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.3), rgba(139,92,246,0.3))', backdropFilter: 'blur(10px)' }}>
-                        {displayProfiles.length} left
-                    </span>
+        <div className="px-4 py-4 pb-28 space-y-4">
+            {notice && <div className="rounded-2xl p-3 text-xs font-bold text-primary bg-primary/10">{notice}</div>}
+            <StoriesStrip title="Discover Stories" />
+            {liveStreams.length > 0 && <section className="card-premium p-3">
+                <div className="section-header">
+                    <h2 className="section-title"><Radio size={15} className="text-danger" /> Featured Live Now</h2>
+                    <Link href="/live" className="section-link">Open</Link>
                 </div>
-                <div className="flex items-center gap-1.5">
-                    <button onClick={() => setShowFilters(!showFilters)}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-bold transition-all"
-                        style={showFilters ? { background: 'linear-gradient(135deg, #6366F1, #8B5CF6)', color: '#fff' } : { background: 'var(--color-surface)', color: 'var(--color-text-muted)' }}>
-                        <SlidersHorizontal size={10} /> Filters
-                    </button>
-                    {!userLocation && (
-                        <button onClick={requestLocation} className="flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-bold text-white" style={{ background: 'linear-gradient(135deg, #10B981, #059669)' }}>
-                            <Navigation size={10} /> GPS
-                        </button>
-                    )}
-                    <button onClick={handleRefresh} disabled={refreshing} className="p-2 rounded-full transition-all" style={{ background: 'var(--color-surface)' }}>
-                        <RefreshCw size={14} className={`text-text-muted ${refreshing ? 'animate-spin' : ''}`} />
-                    </button>
+                <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                    {liveStreams.slice(0, 8).map((stream) => {
+                        const host = stream.host || {};
+                        const photo = host.avatar_url || host.photos?.[0] || '';
+                        return <Link key={stream.id} href={`/live/${stream.id}`} className="min-w-[148px] rounded-2xl p-2 text-white transition-all active:scale-[0.97]" style={{ background: '#1a1625' }}>
+                            <div className="relative h-24 rounded-xl overflow-hidden bg-primary/20">{photo ? <img src={photo} alt="" className="h-full w-full object-cover" onError={(event) => useProfileImageFallback(event, host.display_name || 'Live')} /> : <UserAvatar name={host.display_name || 'Live'} size={52} />}<span className="absolute left-2 top-2 rounded-full px-2.5 py-0.5 text-[9px] font-black pulse-glow" style={{ background: '#DC2626' }}>LIVE</span></div>
+                            <p className="mt-2 truncate text-[11px] font-black">{stream.title || 'GS Live'}</p>
+                            <p className="text-[10px] text-white/60">{stream.viewer_count || 0} watching · {liveDuration(stream.started_at)}</p>
+                        </Link>;
+                    })}
                 </div>
-            </div>
-
-            {/* Filter Bar */}
-            <AnimatePresence>
-                {showFilters && (
-                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden mb-3">
-                        <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                            <div>
-                                <label className="text-[10px] text-text-muted font-bold uppercase tracking-wider block mb-1">Location</label>
-                                <div className="relative">
-                                    <select value={filterLocation} onChange={(e) => setFilterLocation(e.target.value)}
-                                        className="w-full py-2 px-3 pr-8 rounded-xl text-xs font-medium text-text-primary appearance-none focus:outline-none" style={{ background: 'var(--color-surface)' }}>
-                                        {KENYAN_LOCATIONS.map(loc => <option key={loc} value={loc}>{loc}</option>)}
-                                    </select>
-                                    <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="text-[10px] text-text-muted font-bold uppercase tracking-wider block mb-1">Age Range: {filterAgeMin} – {filterAgeMax}</label>
-                                <div className="flex gap-3 items-center">
-                                    <input type="range" min={18} max={70} value={filterAgeMin} onChange={(e) => setFilterAgeMin(Math.min(Number(e.target.value), filterAgeMax - 1))} className="flex-1 accent-primary h-1" />
-                                    <input type="range" min={18} max={70} value={filterAgeMax} onChange={(e) => setFilterAgeMax(Math.max(Number(e.target.value), filterAgeMin + 1))} className="flex-1 accent-primary h-1" />
-                                </div>
+            </section>}
+            <BoostedMembersStrip title="Boosted In Discover" />
+            <section className="flex items-center gap-2 overflow-x-auto pb-1">
+                {[
+                    ['all', 'All', null],
+                    ['online', 'Online', null],
+                    ['nearby', 'Nearby', null],
+                ].map(([id, label]) => (
+                    <button key={id} onClick={() => id === 'nearby' && !geo ? requestNearby() : setFilter(id)} className={`filter-pill ${filter === id ? 'filter-pill--active' : 'filter-pill--inactive'}`}>
+                        {label}
+                    </button>
+                ))}
+                <button onClick={requestNearby} className="filter-pill filter-pill--inactive inline-flex items-center gap-1">
+                    <LocateFixed size={13} /> Use Location
+                </button>
+            </section>
+            <div className="relative w-full max-w-sm mx-auto" style={{ aspectRatio: '3/4' }}>
+                <AnimatePresence mode="wait">
+                    <motion.article key={current.swipeKey} className="absolute inset-0 rounded-[22px] overflow-hidden card-shadow bg-white touch-pan-y cursor-pointer" onTap={handleView} onDoubleClick={handleView} style={{ x, rotate }} drag="x" dragConstraints={{ left: 0, right: 0 }} dragElastic={0.32} onDragEnd={(_, info) => { if (Math.abs(info.offset.x) < 140) { x.set(0); return; } if (info.offset.x > 0) handleLike(); else handlePass(); }} initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ x: direction === 'right' ? 260 : direction === 'left' ? -260 : 0, opacity: 0, transition: { duration: 0.22 } }}>
+                        <img src={current.avatarUrl || fallbackProfileImageSrc(current.name)} alt={current.name} className="absolute inset-0 w-full h-full object-cover" onError={(event) => useProfileImageFallback(event, current.name)} />
+                        <div className="absolute inset-0 swipe-card-gradient" />
+                        <motion.div className="absolute top-7 left-5 px-5 py-2.5 rounded-2xl border-[3px] border-success text-success font-black text-2xl -rotate-12" style={{ opacity: likeOpacity, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(5,150,105,0.3)' }}>LIKE ✓</motion.div>
+                        <motion.div className="absolute top-7 right-5 px-5 py-2.5 rounded-2xl border-[3px] border-danger text-danger font-black text-2xl rotate-12" style={{ opacity: nopeOpacity, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(220,38,38,0.3)' }}>PASS ✗</motion.div>
+                        <div className="absolute bottom-0 left-0 right-0 p-4 text-white space-y-2">
+                            <div className="flex items-center gap-2"><h2 className="text-2xl font-black truncate">{current.name}</h2>{current.age && <span className="text-lg opacity-85">{current.age}</span>}<VerifiedBadge verified={current.verified} size={19} /></div>
+                            <div className="flex flex-wrap items-center gap-2 text-xs"><span className={`w-3 h-3 rounded-full ring-2 ring-white/70 ${presenceTone(current)}`} /><span className="px-2 py-1 rounded-full bg-white/18 font-bold">{formatLabel(current.profileLabel)}</span>{current.lookingFor && <span className="px-2 py-1 rounded-full bg-white/18 font-bold">Looking for {current.lookingFor}</span>}<span className="px-2 py-1 rounded-full bg-white/18 font-bold">{score}% match</span>{current.source === 'wp' && <span className="px-2 py-1 rounded-full bg-white/18 font-bold">Featured</span>}</div>
+                            {current.location && <p className="flex items-center gap-1 text-xs opacity-90"><MapPin size={13} /> {current.location}</p>}
+                            {currentDistanceText && <p className="flex items-center gap-1 text-xs opacity-90"><LocateFixed size={13} /> {currentDistanceText}</p>}
+                            <p className="text-sm leading-snug line-clamp-2 opacity-95">{compactText(current)}</p>
+                            <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                {current.ageRangePreference && <p><b>Age:</b> {current.ageRangePreference}</p>}
+                                {current.neededQualities && <p className="truncate"><b>Qualities:</b> {current.neededQualities}</p>}
+                                {current.interests?.[0] && <p className="truncate"><b>Interest:</b> {current.interests[0]}</p>}
+                                <p className="flex items-center gap-1 truncate"><Phone size={11} /> <span className="font-bold tracking-wide">{access.canRevealPhone ? (current.phone || current.phoneMasked || 'Hidden') : (current.phoneMasked || 'Hidden')}</span></p>
                             </div>
                         </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
-            {/* Card Stack */}
-            <div className="relative w-full aspect-[3/4] max-h-[52vh] rounded-3xl overflow-hidden mb-2">
-                {/* Next card preview */}
-                {nextProfile && (
-                    <div className="absolute inset-2 rounded-2xl overflow-hidden bg-surface" style={{ transform: 'scale(0.95)', opacity: 0.5 }}>
-                        {nextProfile.imageUrl && <img src={nextProfile.imageUrl} alt="" className="w-full h-full object-cover" loading="eager" referrerPolicy="no-referrer" />}
-                    </div>
-                )}
-
-                {/* Current Card */}
-                <AnimatePresence mode="popLayout">
-                    <motion.div
-                        key={currentProfile.wpId}
-                        ref={cardRef}
-                        initial={{ scale: 0.95, opacity: 0 }}
-                        animate={{
-                            scale: 1, opacity: 1,
-                            x: swipeDir === 'left' ? -400 : swipeDir === 'right' ? 400 : dragX,
-                            y: swipeDir === 'up' ? -400 : dragY,
-                            rotate: swipeDir === 'left' ? -20 : swipeDir === 'right' ? 20 : dragRotate,
-                        }}
-                        transition={isDragging ? { duration: 0 } : { duration: 0.3, ease: 'easeOut' }}
-                        className="absolute inset-0 rounded-3xl overflow-hidden card-shadow touch-none"
-                        onTouchStart={handleTouchStart}
-                        onTouchMove={handleTouchMove}
-                        onTouchEnd={handleTouchEnd}
-                        onClick={() => handleCardClick(currentProfile)}
-                    >
-                        <div className="block w-full h-full cursor-pointer">
-                            {currentProfile.imageUrl ? (
-                                <img src={currentProfile.imageUrl} alt={currentProfile.name} loading="eager" draggable={false}
-                                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-                                    onError={(e) => { e.target.style.display = 'none'; }} referrerPolicy="no-referrer" />
-                            ) : (
-                                <div className="w-full h-full flex items-center justify-center" style={{ background: 'var(--color-surface)' }}>
-                                    <UserAvatar name={currentProfile.name} size={120} />
-                                </div>
-                            )}
-
-                            <div className="absolute inset-0 gradient-overlay" />
-
-                            {/* Swipe indicators */}
-                            {(swipeDir === 'right' || showLikeIndicator) && (
-                                <div className="absolute top-8 left-6 px-5 py-2.5 rounded-2xl border-3 rotate-[-15deg] z-20" style={{ borderColor: '#10B981', background: 'rgba(16,185,129,0.25)', backdropFilter: 'blur(8px)' }}>
-                                    <span style={{ color: '#10B981' }} className="text-2xl font-black">LIKE</span>
-                                </div>
-                            )}
-                            {(swipeDir === 'left' || showPassIndicator) && (
-                                <div className="absolute top-8 right-6 px-5 py-2.5 rounded-2xl border-3 rotate-[15deg] z-20" style={{ borderColor: '#EF4444', background: 'rgba(239,68,68,0.25)', backdropFilter: 'blur(8px)' }}>
-                                    <span style={{ color: '#EF4444' }} className="text-2xl font-black">PASS</span>
-                                </div>
-                            )}
-                            {(swipeDir === 'up' || showSuperIndicator) && (
-                                <div className="absolute top-8 left-1/2 -translate-x-1/2 px-5 py-2.5 rounded-2xl border-3 z-20" style={{ borderColor: '#F59E0B', background: 'rgba(245,158,11,0.25)', backdropFilter: 'blur(8px)' }}>
-                                    <span style={{ color: '#F59E0B' }} className="text-2xl font-black">SUPER</span>
-                                </div>
-                            )}
-
-                            {/* Top badges */}
-                            <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-10">
-                                <div className="flex items-center gap-1.5">
-                                    {/* Profile type label — colorful gradient */}
-                                    <span className="px-3 py-1.5 rounded-full text-[10px] font-black text-white tracking-wide shadow-lg"
-                                        style={{ background: pGrad, boxShadow: `0 4px 15px ${pGrad.includes('#EC4899') ? 'rgba(236,72,153,0.4)' : 'rgba(99,102,241,0.4)'}` }}>
-                                        {pLabel}
-                                    </span>
-                                    {isNearby && (
-                                        <span className="flex items-center gap-1 px-2 py-1 rounded-full text-[9px] font-bold text-white" style={{ background: 'rgba(16,185,129,0.85)', backdropFilter: 'blur(8px)' }}>
-                                            <Navigation size={8} /> Near
-                                        </span>
-                                    )}
-                                </div>
-                                <span className="px-2.5 py-1 rounded-full text-[10px] text-white font-bold" style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                                    {score}% Match
-                                </span>
-                            </div>
-
-                            {/* Bottom Profile Info */}
-                            <div className="absolute bottom-0 left-0 right-0 p-4" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 70%, transparent 100%)' }}>
-                                {/* Name + Age + Verified */}
-                                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                                    <h2 className="text-xl font-extrabold text-white">{currentProfile.name || 'Member'}</h2>
-                                    {currentProfile.age && <span className="text-white/70 text-base font-medium">{currentProfile.age}</span>}
-                                    <VerifiedBadge size={16} verified={true} />
-                                    {currentProfile.subscription?.plan && currentProfile.subscription.plan !== 'free' && (
-                                        <VerifiedBadge size={16} badgeText={currentProfile.subscription.plan} />
-                                    )}
-                                </div>
-
-                                {/* Looking for */}
-                                <div className="flex items-center gap-1.5 mb-2">
-                                    <Heart size={11} className="text-pink-400" />
-                                    <span className="text-[11px] text-pink-300 font-semibold">Looking for {pLooking}</span>
-                                </div>
-
-                                {/* Location — always Kenya */}
-                                {currentProfile.location && (
-                                    <div className="flex items-center gap-1.5 mb-2">
-                                        <MapPin size={11} className="text-white/60" />
-                                        <img src="https://flagcdn.com/24x18/ke.png" alt="KE" style={{ width: '14px', height: '10px', borderRadius: '1px' }} />
-                                        <span className="text-xs text-white/70">{currentProfile.location}, Kenya</span>
-                                    </div>
-                                )}
-
-                                {/* Interests / Hobbies tags */}
-                                {currentProfile.interests && currentProfile.interests.length > 0 && (
-                                    <div className="flex flex-wrap gap-1 mb-2">
-                                        {(Array.isArray(currentProfile.interests) ? currentProfile.interests : []).slice(0, 4).map((t, i) => (
-                                            <span key={i} className="text-[9px] font-bold px-2 py-0.5 rounded-full text-white/90"
-                                                style={{ background: ['rgba(236,72,153,0.25)','rgba(99,102,241,0.25)','rgba(16,185,129,0.25)','rgba(245,158,11,0.25)'][i%4], border: '1px solid rgba(255,255,255,0.1)' }}>
-                                                {t}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* 📱 Phone Number */}
-                                <button onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    if (!canUseFeature('revealPhone')) router.push('/subscribe');
-                                }}
-                                    className="flex items-center gap-2 py-1.5 px-3 rounded-lg mt-1 transition-all active:scale-[0.98]"
-                                    style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.2)' }}>
-                                    <span className="text-[11px] text-amber-300 font-mono font-bold">
-                                        {canUseFeature('revealPhone') ? deterministicPhone(currentProfile) : (currentProfile.phoneMasked || blurredPhone || "+2547*******")}
-                                    </span>
-                                    <span className="text-[8px] text-amber-400/60">{canUseFeature('revealPhone') ? 'Unlocked' : 'View number'}</span>
-                                </button>
-                            </div>
-                        </div>
-                    </motion.div>
+                    </motion.article>
                 </AnimatePresence>
             </div>
 
-            {/* Action Buttons — Premium styled */}
-            <div className="flex items-center justify-center gap-4 py-2">
-                {/* Pass */}
-                <motion.button whileTap={{ scale: 0.8 }} whileHover={{ scale: 1.05 }}
-                    onClick={() => handleSwipe('left', currentProfile)}
-                    className="w-14 h-14 rounded-full flex items-center justify-center shadow-xl transition-all"
-                    style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.1), rgba(239,68,68,0.05))', border: '2px solid rgba(239,68,68,0.3)', boxShadow: '0 4px 20px rgba(239,68,68,0.15)' }}>
-                    <X size={26} className="text-red-400" />
-                </motion.button>
-
-                {/* Super Like */}
-                <motion.button whileTap={{ scale: 0.8 }} whileHover={{ scale: 1.1 }}
-                    onClick={() => handleSwipe('up', currentProfile)}
-                    className="w-12 h-12 rounded-full flex items-center justify-center shadow-xl"
-                    style={{ background: 'linear-gradient(135deg, #F59E0B, #F97316)', boxShadow: '0 4px 25px rgba(245,158,11,0.4)' }}>
-                    <Zap size={22} className="text-white" fill="white" />
-                </motion.button>
-
-                {/* Like */}
-                <motion.button whileTap={{ scale: 0.8 }} whileHover={{ scale: 1.05 }}
-                    onClick={() => handleSwipe('right', currentProfile)}
-                    className="w-14 h-14 rounded-full flex items-center justify-center shadow-xl"
-                    style={{ background: 'linear-gradient(135deg, #EC4899, #EF4444)', boxShadow: '0 4px 25px rgba(236,72,153,0.4)' }}>
-                    <Heart size={26} className="text-white" fill="white" />
-                </motion.button>
+            <div className="flex items-end justify-center gap-3 max-w-sm mx-auto pb-2 pt-1">
+                <button onClick={handlePass} className="action-circle" style={{ background: 'rgba(220,38,38,0.08)' }}>
+                    <X size={22} className="text-danger" />
+                    <span className="action-circle-label text-danger">Pass</span>
+                </button>
+                <button onClick={handleView} className="action-circle" style={{ background: 'rgba(155,44,94,0.08)' }}>
+                    <Eye size={19} className="text-primary" />
+                    <span className="action-circle-label text-primary">View</span>
+                </button>
+                <button onClick={handleSuperLike} className="action-circle" style={{ background: 'rgba(212,160,60,0.12)', width: 62, height: 62 }}>
+                    <HeartHandshake size={24} className="text-secondary" />
+                    <span className="action-circle-label text-secondary">Super</span>
+                </button>
+                <button onClick={handleMessage} className="action-circle" style={{ background: 'rgba(59,130,246,0.08)' }}>
+                    <MessageCircle size={19} className="text-accent" />
+                    <span className="action-circle-label text-accent">Chat</span>
+                </button>
+                <button onClick={handleLike} className="action-circle" style={{ background: 'var(--gradient-primary)', boxShadow: '0 4px 16px rgba(155,44,94,0.3)' }}>
+                    <Heart size={24} fill="white" className="text-white" />
+                    <span className="action-circle-label text-primary">Like</span>
+                </button>
             </div>
 
-            {/* Swipe hint */}
-            <p className="text-center text-[9px] text-text-muted mt-1 mb-1">
-                ← Pass · ⭐ Super Like · ❤️ Like →
-            </p>
+            <div className="text-center text-xs text-text-muted">{available.length} compatible profiles ready{loadingMore ? ' · loading more...' : hasMoreProfiles ? ' · more loading as you swipe' : ''}</div>
         </div>
     );
 }
+

@@ -1,471 +1,88 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-    <title>Device Offline</title>
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <style type="text/css"> 
-        :root {
-            --background-color: #FFFFFF;
-            --primary-color: #1C1C1E;
-            --card-bg: #F2F2F7;
-            --border-color: rgba(0, 0, 0, 0.05);
-            --text-muted: #8E8E93;
-            --accent-orange: #E8634A;
-            --success-green: #34C759;
-            --primary-gradient: linear-gradient(135deg, #E8634A, #FF8A6B);
-        }
-        
-        [data-theme="dark"] {
-            --background-color: #0A0A0F;
-            --primary-color: #F2F2F7;
-            --card-bg: #1C1C1E;
-            --border-color: rgba(255, 255, 255, 0.06);
-            --text-muted: #8E8E93;
-        }
-
-        * {
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Offline - Genuine Sugar Mummies</title>
+    <meta name="theme-color" content="#0f766e">
+    <style>
+        * { box-sizing: border-box; }
+        body {
             margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        html, body {
-            background-color: var(--background-color) !important;
-            color: var(--primary-color);
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             min-height: 100vh;
-            min-height: 100dvh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 1.5rem;
-            overflow: hidden;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: #10211f;
+            background:
+                radial-gradient(circle at 20% 10%, rgba(236, 72, 153, .16), transparent 28%),
+                radial-gradient(circle at 80% 0%, rgba(20, 184, 166, .18), transparent 30%),
+                linear-gradient(145deg, #f7f7fb, #edf7f5);
         }
-
-        /* Clean Card Layout */
-        .glass-card {
-            width: 100%;
-            max-width: 380px;
+        main {
+            width: min(100%, 420px);
+            padding: 28px;
+            border: 1px solid rgba(15, 118, 110, .18);
+            border-radius: 28px;
+            background: rgba(255, 255, 255, .9);
+            box-shadow: 0 24px 80px rgba(15, 23, 42, .14);
             text-align: center;
-            padding: 1rem;
-            animation: fadeIn 0.5s ease-out forwards;
         }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(12px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* SVG Logo styling */
-        #logo {
-            margin: 0 auto 1.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 120px;
-            height: 96px;
-        }
-        
-        #logo svg g path {
-            fill: var(--primary-color) !important;
-            transition: fill 0.3s ease;
-        }
-
-        /* Glowing Connection Badges */
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            padding: 0.35rem 0.8rem;
-            border-radius: 100px;
-            background: rgba(232, 99, 74, 0.08);
-            border: 1px solid rgba(232, 99, 74, 0.15);
-            color: var(--accent-orange);
-            font-size: 0.72rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.03em;
-            margin-bottom: 1.25rem;
-        }
-
-        .status-badge.online-state {
-            background: rgba(52, 199, 89, 0.1);
-            border-color: rgba(52, 199, 89, 0.2);
-            color: var(--success-green);
-        }
-
-        .status-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: currentColor;
-            display: inline-block;
-        }
-
-        .status-dot.pulsing {
-            animation: pulse-dot 1.5s infinite;
-        }
-
-        h1 {
-            font-family: 'Outfit', sans-serif;
-            font-size: 1.45rem;
-            font-weight: 800;
-            letter-spacing: -0.02em;
-            margin-bottom: 0.5rem;
-        }
-
-        p.desc {
-            font-size: 0.875rem;
-            color: var(--text-muted);
-            line-height: 1.5;
-            margin-bottom: 1.75rem;
-            padding: 0 0.5rem;
-        }
-
-        /* Action Buttons */
-        .btn-primary {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            width: 100%;
-            padding: 0.85rem 1.5rem;
-            border-radius: 14px;
-            background: var(--primary-gradient);
-            border: none;
-            color: #FFFFFF;
-            font-family: 'Outfit', sans-serif;
-            font-size: 0.9rem;
-            font-weight: 700;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(232, 99, 74, 0.2);
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-
-        .btn-primary:active {
-            transform: scale(0.98);
-        }
-
-        /* Diagnostic List styling */
-        .diagnostic-card {
-            background: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 1rem;
-            margin-top: 1.75rem;
-            text-align: left;
-        }
-
-        .diagnostic-title {
-            font-size: 0.7rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-muted);
-            margin-bottom: 0.75rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .diagnostic-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            font-size: 0.8rem;
-            padding: 0.4rem 0;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .diagnostic-item:last-child {
-            border-bottom: none;
-            padding-bottom: 0;
-        }
-
-        .diag-label {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            color: var(--primary-color);
-        }
-
-        .diag-label svg {
-            width: 14px;
-            height: 14px;
-            stroke-width: 2.2;
-            color: var(--text-muted);
-        }
-
-        .diag-value {
-            font-weight: 600;
-        }
-
-        .value-good { color: var(--success-green); }
-        .value-bad { color: #FF3B30; }
-        .value-loading { color: var(--text-muted); animation: pulse-text 1.2s infinite; }
-
-        /* Helpful Troubleshooting Steps */
-        .tips-list {
-            margin-top: 1.5rem;
-            padding: 0 0.5rem;
-            text-align: left;
-        }
-
-        .tips-title {
-            font-size: 0.72rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            margin-bottom: 0.5rem;
-        }
-
-        .tips-list ul {
-            list-style: none;
-            font-size: 0.8rem;
-            color: var(--text-muted);
-        }
-
-        .tips-list li {
-            position: relative;
-            padding-left: 1.15rem;
-            margin-bottom: 0.35rem;
-            line-height: 1.4;
-        }
-
-        .tips-list li::before {
-            content: "";
-            position: absolute;
-            left: 0.25rem;
-            top: 0.45rem;
-            width: 4px;
-            height: 4px;
-            border-radius: 50%;
-            background-color: var(--accent-orange);
-        }
-
-        /* Success Alert Toast */
-        .toast-success {
-            position: fixed;
-            top: 24px;
-            background: var(--success-green);
+        .mark {
+            width: 76px;
+            height: 76px;
+            margin: 0 auto 18px;
+            display: grid;
+            place-items: center;
+            border-radius: 24px;
+            background: linear-gradient(135deg, #0f766e, #ec4899);
             color: white;
-            padding: 0.8rem 1.25rem;
-            border-radius: 14px;
-            display: flex;
+            font-size: 34px;
+            font-weight: 900;
+        }
+        h1 { margin: 0 0 10px; font-size: 26px; line-height: 1.08; }
+        p { margin: 0; color: #60716d; font-size: 14px; line-height: 1.65; }
+        .status {
+            margin: 18px 0;
+            padding: 12px;
+            border-radius: 18px;
+            background: rgba(15, 118, 110, .08);
+            color: #0f766e;
+            font-size: 12px;
+            font-weight: 800;
+        }
+        button, a {
+            width: 100%;
+            min-height: 48px;
+            display: inline-flex;
             align-items: center;
-            gap: 0.6rem;
-            font-size: 0.85rem;
-            font-weight: 600;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-            z-index: 1000;
-            transform: translateY(-80px);
-            opacity: 0;
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            justify-content: center;
+            gap: 8px;
+            border: 0;
+            border-radius: 18px;
+            background: linear-gradient(135deg, #0f766e, #ec4899);
+            color: white;
+            font-size: 14px;
+            font-weight: 900;
+            text-decoration: none;
+            cursor: pointer;
         }
-
-        .toast-success svg {
-            width: 16px;
-            height: 16px;
-            stroke-width: 3;
-        }
-
-        .toast-success.show {
-            transform: translateY(0);
-            opacity: 1;
-        }
-
-        /* Animation utilities */
-        @keyframes pulse-dot {
-            0% { opacity: 0.4; transform: scale(0.9); }
-            50% { opacity: 1; transform: scale(1.1); }
-            100% { opacity: 0.4; transform: scale(0.9); }
-        }
-
-        @keyframes pulse-text {
-            0% { opacity: 0.5; }
-            50% { opacity: 1; }
-            100% { opacity: 0.5; }
-        }
-
-        .spin {
-            animation: spinning 1s linear infinite;
-        }
-
-        @keyframes spinning {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+        .secondary {
+            margin-top: 10px;
+            background: #eef7f5;
+            color: #0f766e;
         }
     </style>
 </head>
 <body>
-    <!-- Toast Banner on connection recovery -->
-    <div class="toast-success" id="online-toast">
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span>Connection restored! Reconnecting...</span>
-    </div>
-
-    <div class="glass-card">
-        <div id="logo">
-            <svg width="120" height="96" viewBox="0 0 120 96" fill="none" xmlns="http://www.w3.org/2000/svg"><g clip-path="url(#clip0_5510_497)"><path d="M118.275 87.9562L7.27647 0.958312C6.45147 0.313687 5.47272 0 4.50522 0C3.17022 0 1.84459 0.592125 0.959779 1.72294C-0.575284 3.68062 -0.234596 6.51 1.72253 8.04187L112.554 94.8731C114.523 96.4112 117.348 96.0596 118.871 94.1085C120.581 92.325 120.225 89.4937 118.275 87.9562Z" fill="black"/><path opacity="0.4" d="M36 53.8313C32.6869 53.8313 30 56.5163 30 59.6625V89.4937C30 92.8069 32.6869 95.4937 36 95.4937C39.3131 95.4937 42 92.8069 42 89.4937V59.6625C42 56.6813 39.3187 53.8313 36 53.8313ZM54 90C54 93.3131 56.6869 96 60 96C63.3131 96 66 93.3131 66 90V69.8625L54 60.4575V90ZM12 71.8313C8.68687 71.8313 6 74.5163 6 77.6625V89.4937C6 92.8069 8.68687 95.4937 12 95.4937C15.3131 95.4937 18 92.8069 18 89.4937V77.6625C18 74.6813 15.3131 71.8313 12 71.8313ZM60 36C57.9937 36 56.325 37.0313 55.2375 38.55L66 46.9875V42C66 38.6812 63.3187 36 60 36ZM107.831 0C104.518 0 101.831 2.68687 101.831 6V75.2063L113.831 84.6113V6C113.831 2.68687 111.319 0 107.831 0ZM78 90C78 93.3131 80.6869 96 84 96C87.3131 96 90 93.3131 90 90V88.6684L78 79.2634V90ZM84 18C80.6869 18 78 20.6869 78 24V56.3813L90 65.7862V24C90 20.6812 87.3187 18 84 18Z" fill="black"/></g><defs><clipPath id="clip0_5510_497"><rect width="120" height="96" fill="white"/></clipPath></defs></svg>
-        </div>
-
-        <div class="status-badge" id="net-badge">
-            <span class="status-dot pulsing"></span>
-            <span id="badge-txt">Offline Mode</span>
-        </div>
-
-        <h1 id="headline">Connection Lost</h1>
-        
-        <span id="message">
-            <p class="desc">No internet connection. Check your connection and try again.</p>
-        </span>
-
-        <button class="btn-primary" id="retryButton" onclick="triggerRetry()">
-            <svg id="r-icon" width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="display:none; vertical-align: middle; margin-right: 4px;">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89H18" />
-            </svg>
-            <span id="r-txt">Retry</span>
-        </button>
-
-        <!-- Troubleshooting Tips list -->
-        <div class="tips-list">
-            <h4 class="tips-title">Troubleshooting</h4>
-            <ul>
-                <li>Verify your cellular data or Wi-Fi is active</li>
-                <li>Check your router signals or network settings</li>
-                <li>Try toggling Airplane mode on and off</li>
-            </ul>
-        </div>
-
-        <!-- Connection Diagnostics -->
-        <div class="diagnostic-card">
-            <div class="diagnostic-title">
-                <span>Diagnostics</span>
-                <span onclick="runDiagnostics()" style="display:inline-flex; align-items:center; gap:0.25rem; color:var(--accent-orange); cursor:pointer;">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 10px; height: 10px; stroke-width: 2.5;">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89H18" />
-                    </svg>
-                    Refresh
-                </span>
-            </div>
-            <div class="diagnostic-item">
-                <span class="diag-label">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.829a5 5 0 010-7.07m7.07 0a5 5 0 010 7.07M13 12a1 1 0 11-2 0 1 1 0 012 0z" />
-                    </svg>
-                    Interface Adapter
-                </span>
-                <span class="diag-value" id="diag-net"><span class="value-loading">Scanning...</span></span>
-            </div>
-            <div class="diagnostic-item">
-                <span class="diag-label">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 100-6 3 3 0 000 6z" />
-                    </svg>
-                    Server Signals
-                </span>
-                <span class="diag-value" id="diag-ping"><span class="value-loading">Testing...</span></span>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        var message = document.getElementById('message');
-        var retryButton = document.getElementById('retryButton');
-        
-        // Korean localization support from template
-        if (['ko', 'ko-kr', 'ko-kp'].indexOf(navigator.language.toLowerCase()) > -1) {
-            message.innerHTML = '<p class="desc">인터넷 연결이 끊겼습니다.<br/>연결하고 다시 시도하시길 바랍니다.</p>';
-            retryButton.innerText = '괜찮아';
-        }
-
-        // Live system theme preferences sync
-        function updateDarkMode(){
-            if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-                document.documentElement.setAttribute("data-theme", "dark");
-            } else {
-                document.documentElement.setAttribute("data-theme", "light");
-            } 
-        }
-        updateDarkMode();
-        if(window.matchMedia){
-            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateDarkMode);
-        }
-
-        // Helper selector
-        const $ = id => document.getElementById(id);
-
-        // Connection Diagnostics check
-        function runDiagnostics() {
-            const netDiag = $('diag-net');
-            const pingDiag = $('diag-ping');
-            
-            if (navigator.onLine) {
-                netDiag.innerHTML = '<span class="value-good">Connected</span>';
-            } else {
-                netDiag.innerHTML = '<span class="value-bad">Disconnected</span>';
-            }
-
-            pingDiag.innerHTML = '<span class="value-loading">Pinging...</span>';
-
-            fetch(window.location.origin + '/favicon.ico?t=' + Date.now(), { 
-                method: 'HEAD',
-                mode: 'no-cors'
-            })
-            .then(() => {
-                pingDiag.innerHTML = '<span class="value-good">Online</span>';
-                handleOnlineState();
-            })
-            .catch(() => {
-                pingDiag.innerHTML = '<span class="value-bad">Unreachable</span>';
-            });
-        }
-
-        function handleOnlineState() {
-            document.getElementById('online-toast').classList.add('show');
-            const badge = document.getElementById('net-badge');
-            badge.className = 'status-badge online-state';
-            document.getElementById('badge-txt').textContent = 'Online';
-            document.getElementById('headline').textContent = 'Back Online!';
-            setTimeout(() => {
-                triggerReload();
-            }, 2000);
-        }
-
-        function triggerRetry() {
-            const icon = $('r-icon');
-            const txt = $('r-txt');
-            
-            if (icon) { icon.style.display = 'inline-block'; icon.classList.add('spin'); }
-            if (txt) txt.textContent = 'Checking...';
-
-            runDiagnostics();
-
-            setTimeout(() => {
-                if (icon) { icon.classList.remove('spin'); icon.style.display = 'none'; }
-                if (txt) txt.textContent = (['ko', 'ko-kr', 'ko-kp'].indexOf(navigator.language.toLowerCase()) > -1) ? '괜찮아' : 'Retry';
-                triggerReload();
-            }, 1000);
-        }
-
-        function triggerReload() {
-            if (typeof gonative !== 'undefined' && gonative.webview && typeof gonative.webview.reload === 'function') {
-                gonative.webview.reload();
-            } else {
-                window.location.reload();
-            }
-        }
-
-        window.addEventListener('online', handleOnlineState);
-        window.addEventListener('load', runDiagnostics);
-    </script>
+    <main>
+        <div class="mark">GS</div>
+        <h1>You are offline</h1>
+        <p>The app could not reach the network. Your installed GS app is still here; reconnect mobile data or Wi-Fi and continue.</p>
+        <div class="status">No Vercel error page. This is the GS offline screen.</div>
+        <button type="button" onclick="window.location.reload()">Try Again</button>
+        <a class="secondary" href="/members">Open Cached App</a>
+    </main>
 </body>
 </html>

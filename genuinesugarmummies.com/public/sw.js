@@ -1,49 +1,98 @@
-const CACHE_NAME = 'gscom-cache-v1';
+const CACHE_NAME = 'gscom-cache-v6';
 const OFFLINE_URL = '/offline.html';
 
 const PRECACHE_URLS = [
-    '/',
-    '/discover',
     '/offline.html',
 ];
 
-self.addEventListener('install', (e) => {
-    e.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => {
-            return cache.addAll(PRECACHE_URLS);
-        })
+self.addEventListener('install', (event) => {
+    event.waitUntil(
+        caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
     );
     self.skipWaiting();
 });
 
-self.addEventListener('activate', (e) => {
-    e.waitUntil(
-        caches.keys().then((keys) =>
-            Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-        )
+self.addEventListener('activate', (event) => {
+    event.waitUntil(
+        caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
     );
     self.clients.claim();
 });
 
-self.addEventListener('fetch', (e) => {
-    if (e.request.mode === 'navigate') {
-        e.respondWith(
-            fetch(e.request).catch(() => caches.match(OFFLINE_URL))
+self.addEventListener('message', (event) => {
+    const data = event.data || {};
+    if (data.type === 'GS_BADGE_COUNT') {
+        const count = Math.max(0, Math.min(99, Number(data.count || 0)));
+        if (self.navigator?.setAppBadge) {
+            if (count > 0) self.navigator.setAppBadge(count).catch(() => {});
+            else self.navigator.clearAppBadge?.().catch(() => {});
+        }
+    }
+});
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const targetUrl = new URL(event.notification?.data?.url || '/alerts', self.location.origin).href;
+    event.waitUntil((async () => {
+        const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        for (const client of list) {
+            if ('focus' in client) {
+                await client.focus();
+                if ('navigate' in client) await client.navigate(targetUrl);
+                return;
+            }
+        }
+        if (self.clients.openWindow) await self.clients.openWindow(targetUrl);
+    })());
+});
+
+self.addEventListener('push', (event) => {
+    let payload = {};
+    try { payload = event.data ? event.data.json() : {}; } catch { payload = { title: 'GS notification', body: event.data?.text() || '' }; }
+    const title = payload.title || 'Genuine Sugar Mummies';
+    const count = Math.max(0, Math.min(99, Number(payload.count || 1)));
+    const options = {
+        body: payload.body || '',
+        icon: payload.icon || '/icons/icon-192.png',
+        badge: payload.badge || '/icons/icon-192.png',
+        image: payload.image || undefined,
+        tag: payload.tag || 'gs-push',
+        renotify: true,
+        vibrate: [160, 80, 160],
+        data: { url: payload.url || '/alerts', count, label: count > 99 ? '99+' : String(count) },
+    };
+    event.waitUntil((async () => {
+        if (self.navigator?.setAppBadge) {
+            if (count > 0) await self.navigator.setAppBadge(count).catch(() => {});
+            else await self.navigator.clearAppBadge?.().catch(() => {});
+        }
+        await self.registration.showNotification(title, options);
+    })());
+});
+
+self.addEventListener('fetch', (event) => {
+    const url = new URL(event.request.url);
+
+    if (url.pathname.startsWith('/_next/') || url.pathname.startsWith('/api/')) {
+        event.respondWith(fetch(event.request));
+        return;
+    }
+
+    if (event.request.mode === 'navigate') {
+        event.respondWith(
+            fetch(event.request)
+                .then((response) => {
+                    if (!response || response.status >= 500) return caches.match(OFFLINE_URL);
+                    return response;
+                })
+                .catch(() => caches.match(OFFLINE_URL))
         );
         return;
     }
 
-    e.respondWith(
-        caches.match(e.request).then((cached) => {
-            return cached || fetch(e.request).then((res) => {
-                if (res.status === 200 && e.request.url.startsWith(self.location.origin)) {
-                    const clone = res.clone();
-                    caches.open(CACHE_NAME).then((cache) => {
-                        cache.put(e.request, clone);
-                    });
-                }
-                return res;
-            }).catch(() => new Response('Offline', { status: 503 }));
-        })
+    event.respondWith(
+        fetch(event.request)
+            .then((response) => response)
+            .catch(() => caches.match(event.request).then((cached) => cached || new Response('Offline', { status: 503 })))
     );
 });

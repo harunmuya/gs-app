@@ -1,21 +1,19 @@
-'use client';
-
-import TopBar from '@/components/TopBar';
 import BottomNav from '@/components/BottomNav';
+import TopBar from '@/components/TopBar';
 import AuthGuard from '@/components/AuthGuard';
-import { usePathname } from 'next/navigation';
+import IncomingCallManager from '@/components/IncomingCallManager';
+import LocationPermissionManager from '@/components/LocationPermissionManager';
 
 export default function MainLayout({ children }) {
-    const pathname = usePathname();
-    const isChatRoom = pathname?.startsWith('/chat/');
-
     return (
         <AuthGuard>
-            <div className={`min-h-dvh bg-bg w-full ${isChatRoom ? '' : 'pb-20'}`}>
-                {!isChatRoom && <TopBar />}
-                <main className={`w-full max-w-[1180px] mx-auto ${isChatRoom ? 'px-0' : 'px-2 sm:px-4 lg:px-6 pt-14'}`}>
+            <div className="min-h-dvh app-shell pb-20">
+                <TopBar />
+                <main className="app-main">
                     {children}
                 </main>
+                <LocationPermissionManager />
+                <IncomingCallManager />
                 <BottomNav />
             </div>
         </AuthGuard>

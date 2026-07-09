@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import { createBrowserSupabaseClient, isSupabaseConfigured } from '@/lib/supabaseClient';
 
 const AuthContext = createContext({});
 
@@ -22,7 +23,22 @@ const STORAGE_KEYS = {
     LAST_POST_ID: 'gscom_last_post_id',
     LIVE_LOCATION: 'gscom_live_location',
     PREFERENCE: 'gscom_preference',
+    LOGIN_EMAIL: 'gscom_login_email',
+    SIGNED_OUT_UNTIL: 'gscom_signed_out_until',
 };
+
+function cleanDisplayName(value, email = '') {
+    const emailText = String(email || '').trim().toLowerCase();
+    const localPart = emailText.split('@')[0] || '';
+    let name = String(value || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+    if (!name || name.includes('@') || name.toLowerCase() === emailText || name.toLowerCase() === localPart) {
+        name = localPart
+            ? localPart.replace(/[._-]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()).slice(0, 40)
+            : 'GS Member';
+    }
+    if (!name || name.includes('@')) name = 'GS Member';
+    return name;
+}
 
 function getStored(key, fallback = null) {
     if (typeof window === 'undefined') return fallback;
@@ -45,6 +61,7 @@ const DEFAULT_SETTINGS = {
     showAge: true,
     emailNotifications: false,
     liveLocation: false,
+    darkMode: false,
 };
 
 // ==========================================
@@ -269,7 +286,7 @@ export function AuthProvider({ children }) {
     const [verificationStatus, setVerificationStatus] = useState(null);
     const [verificationTimer, setVerificationTimer] = useState(null); // timestamp when moderation ends
     const [realProfilePool, setRealProfilePool] = useState([]);
-    const [preference, setPreference] = useState('sugar_mummy'); // 'sugar_mummy' | 'sugar_daddy' | 'both'
+    const [preference, setPreference] = useState('sugar_mummy_looking_for_toyboy');
     const [subscribed, setSubscribed] = useState(false);
     const [liveLocationData, setLiveLocationData] = useState(null);
 
@@ -286,44 +303,109 @@ export function AuthProvider({ children }) {
         setMessages(getStored(STORAGE_KEYS.MESSAGES, []));
         setVerificationStatus(getStored(STORAGE_KEYS.VERIFICATION, null));
         setVerificationTimer(getStored(STORAGE_KEYS.VERIFICATION_TIMER, null));
-        setPreference(getStored(STORAGE_KEYS.PREFERENCE, 'sugar_mummy'));
+        setPreference(getStored(STORAGE_KEYS.PREFERENCE, 'sugar_mummy_looking_for_toyboy'));
         setSubscribed(getStored(STORAGE_KEYS.SUBSCRIBED, false));
         setLiveLocationData(getStored(STORAGE_KEYS.LIVE_LOCATION, null));
         setLoading(false);
     }, []);
 
-    // ---- Moderation timer: check if review period is done ----
     useEffect(() => {
-        if (verificationStatus !== 'moderation_review' || !verificationTimer) return;
+        // Google OAuth is disabled for the GS app because provider redirects leave
+        // the Android wrapper and return to the public Vercel URL.
+        try {
+            if (!isSupabaseConfigured()) return;
+            const signedOutUntil = Number(getStored(STORAGE_KEYS.SIGNED_OUT_UNTIL, 0) || 0);
+            if (signedOutUntil && Date.now() < signedOutUntil) return;
+            const url = new URL(window.location.href);
+            const hasOAuthParams = url.hash.includes('access_token=') || url.searchParams.has('code') || url.searchParams.has('provider_token');
+            if (!hasOAuthParams) return;
+            createBrowserSupabaseClient().auth.signOut({ scope: 'local' }).catch(() => {});
+            url.hash = '';
+            url.searchParams.delete('code');
+            url.searchParams.delete('provider_token');
+            window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+        } catch {}
+    }, []);
 
-        const check = () => {
-            const remaining = verificationTimer - Date.now();
-            if (remaining <= 0) {
-                // Moderation complete — approve
-                setVerificationStatus('verified');
-                setStored(STORAGE_KEYS.VERIFICATION, 'verified');
-                setVerificationTimer(null);
-                setStored(STORAGE_KEYS.VERIFICATION_TIMER, null);
-                logActivity('profile_update', { title: 'Profile Verified ✓', message: 'Your identity has been verified after moderation review! Blue badge awarded.' });
-                addMessage({
-                    type: 'verification', sender: 'GS Verification Team',
-                    senderImage: '', title: 'Profile Verified!',
-                    body: 'Congratulations! Your selfie has passed our AI analysis and moderation review. You now have a blue verification badge on your profile.',
+    // Refresh server account state so admin approvals and package unlocks reach the device.
+    useEffect(() => {
+        if (!user?.email || loading) return;
+        let alive = true;
+        async function refreshAccount() {
+            try {
+                const res = await fetch('/api/members', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'refresh_account', memberId: user.id, email: user.email }),
                 });
-                // Fire notification
-                if (typeof window !== 'undefined') {
-                    window.dispatchEvent(new CustomEvent('gs-notification', {
-                        detail: { title: 'Verified!', body: 'Your profile has been verified! Blue badge awarded.', icon: '/icons/shield.svg' }
-                    }));
-                }
+                const data = await res.json().catch(() => ({}));
+                if (!alive || !res.ok || !data.member) return;
+                const account = { ...user, ...accountFromMember(data.member, user.email) };
+                setUser(account);
+                setVerificationStatus(account.verification_status || null);
+                setStored(STORAGE_KEYS.USER, account);
+                setStored(STORAGE_KEYS.VERIFICATION, account.verification_status || null);
+                loadAccountInbox(account);
+                loadChatInbox(account);
+                loadRemoteSettings(account);
+                loadAccountState(account);
+                requestAccountReminders(account);
+            } catch {}
+        }
+        refreshAccount();
+        const timer = setInterval(refreshAccount, 10000);
+        return () => { alive = false; clearInterval(timer); };
+    }, [user?.email, loading]);
+
+    useEffect(() => {
+        if (!user?.id || loading) return;
+        let stopped = false;
+        let channel = null;
+
+        async function heartbeat() {
+            if (stopped || document.visibilityState === 'hidden') return;
+            try {
+                await fetch('/api/members', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'heartbeat', memberId: user.id, email: user.email }),
+                });
+            } catch {}
+        }
+
+        try {
+            if (isSupabaseConfigured()) {
+                const supabase = createBrowserSupabaseClient();
+                channel = supabase.channel('gs-online-presence', {
+                    config: { presence: { key: user.id } },
+                });
+                channel.subscribe((status) => {
+                    if (status === 'SUBSCRIBED') {
+                        channel.track({
+                            userId: user.id,
+                            name: user.display_name || 'Member',
+                            at: new Date().toISOString(),
+                        }).catch(() => {});
+                    }
+                });
             }
+        } catch {}
+
+        heartbeat();
+        const interval = window.setInterval(heartbeat, 60 * 1000);
+        const onFocus = () => heartbeat();
+        const onVisibility = () => { if (document.visibilityState === 'visible') heartbeat(); };
+        window.addEventListener('focus', onFocus);
+        document.addEventListener('visibilitychange', onVisibility);
+
+        return () => {
+            stopped = true;
+            window.clearInterval(interval);
+            window.removeEventListener('focus', onFocus);
+            document.removeEventListener('visibilitychange', onVisibility);
+            try { if (channel) createBrowserSupabaseClient().removeChannel(channel); } catch {}
         };
-
-        check(); // immediate check
-        const interval = setInterval(check, 5000); // check every 5s
-        return () => clearInterval(interval);
-    }, [verificationStatus, verificationTimer]);
-
+    }, [user?.id, user?.email, user?.display_name, loading]);
     // ---- Fetch Real Profile Pool for AI engagement ----
     useEffect(() => {
         async function loadProfilePool() {
@@ -388,33 +470,404 @@ export function AuthProvider({ children }) {
 
     const markMessagesRead = useCallback(() => {
         setMessages(prev => {
-            const updated = prev.map(m => ({ ...m, read: true }));
+            const updated = prev.map(m => ({ ...m, read: true, unreadCount: 0 }));
             setStored(STORAGE_KEYS.MESSAGES, updated);
             return updated;
         });
     }, []);
 
+    async function syncAccountToServer(account, auth = {}) {
+        if (!account?.email) return null;
+        try {
+            const res = await fetch('/api/members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'upsert_account', ...account, password: auth.password }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.member) return null;
+            const synced = {
+                ...account,
+                id: data.member.id || account.id,
+                username: data.member.username || account.username,
+                display_name: data.member.name || account.display_name,
+                avatar_url: data.member.avatarUrl || account.avatar_url,
+                photos: data.member.photos || account.photos || [],
+                bio: data.member.bio || account.bio,
+                age: data.member.age || account.age,
+                location: data.member.location || account.location,
+                country: data.member.country || account.country,
+                city: data.member.city || account.city,
+                latitude: data.member.latitude ?? account.latitude,
+                longitude: data.member.longitude ?? account.longitude,
+                geo_updated_at: data.member.geoUpdatedAt || account.geo_updated_at,
+                phone: data.member.phone || account.phone,
+                phone_number: data.member.phone || data.member.phone_number || account.phone_number || account.phone,
+                profile_label: data.member.profileLabel || account.profile_label,
+                member_category: data.member.memberCategory || account.member_category,
+                looking_for: data.member.lookingFor || account.looking_for,
+                intent_summary: data.member.intentSummary || account.intent_summary,
+                wants: data.member.wants || account.wants,
+                needed_qualities: data.member.neededQualities || account.needed_qualities,
+                age_range_preference: data.member.ageRangePreference || account.age_range_preference,
+                hobbies: data.member.hobbies || account.hobbies || [],
+                interests: data.member.interests || account.interests || [],
+                subscription_tier: data.member.subscriptionTier || account.subscription_tier,
+                admin_approved: data.member.adminApproved ?? account.admin_approved,
+                package_locked: data.member.packageLocked ?? account.package_locked,
+                show_in_public: data.member.showInPublic ?? account.show_in_public,
+                verification_status: data.member.verified ? 'verified' : (data.member.verificationStatus || account.verification_status),
+                verified: Boolean(data.member.verified),
+            };
+            setUser(synced);
+            setStored(STORAGE_KEYS.USER, synced);
+            return synced;
+        } catch {
+            return null;
+        }
+    }
+
+    function accountFromMember(member, email) {
+        return {
+            id: member.id || btoa(email),
+            username: member.username || String(member.name || member.display_name || email.split('@')[0] || 'member')
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9_]+/g, '_')
+                .replace(/^_+|_+$/g, '')
+                .slice(0, 24) || 'member',
+            email: member.email || email,
+            display_name: member.name || member.display_name || email.split('@')[0],
+            avatar_url: member.avatarUrl || member.avatar_url || '',
+            photos: member.photos || [],
+            bio: member.bio || '',
+            age: member.age || '',
+            location: member.location || '',
+            country: member.country || '',
+            city: member.city || '',
+            latitude: member.latitude ?? null,
+            longitude: member.longitude ?? null,
+            geo_updated_at: member.geoUpdatedAt || null,
+            phone_number: member.phone || member.phone_number || '',
+            phone: member.phone || member.phone_number || '',
+            profile_label: member.profileLabel || member.memberCategory || 'member',
+            member_category: member.memberCategory || member.profileLabel || 'member',
+            looking_for: member.lookingFor || '',
+            intent_summary: member.intentSummary || '',
+            wants: member.wants || '',
+            needed_qualities: member.neededQualities || '',
+            age_range_preference: member.ageRangePreference || '',
+            interests: member.interests || [],
+            hobbies: member.hobbies || [],
+            subscription_tier: member.subscriptionTier || 'free',
+            admin_approved: Boolean(member.adminApproved),
+            package_locked: Boolean(member.packageLocked),
+            show_in_public: member.showInPublic !== false,
+            verification_status: member.verified ? 'verified' : (member.verificationStatus || null),
+            verified: Boolean(member.verified),
+            preference_locked: true,
+        };
+    }
+
+    async function loadAccountInbox(account) {
+        if (!account?.email && !account?.id) return;
+        try {
+            const res = await fetch('/api/members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'account_inbox', memberId: account.id, email: account.email }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !Array.isArray(data.notifications)) return;
+            const inboxItems = data.notifications.map((item) => ({
+                id: `admin-${item.id}`,
+                type: item.type || 'admin',
+                sender: item.metadata?.senderLabel || item.metadata?.team || 'GS Admin',
+                title: item.title,
+                body: item.body,
+                timestamp: item.created_at,
+                read: Boolean(item.read),
+            }));
+            setMessages((prev) => {
+                const seen = new Set(prev.map((item) => item.id));
+                const merged = [...inboxItems.filter((item) => !seen.has(item.id)), ...prev].slice(0, 250);
+                setStored(STORAGE_KEYS.MESSAGES, merged);
+                return merged;
+            });
+        } catch {}
+    }
+
+    async function loadChatInbox(account) {
+        if (!account?.id) return;
+        try {
+            const res = await fetch(`/api/chat?userId=${encodeURIComponent(account.id)}`);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !Array.isArray(data.conversations)) return;
+            const chatItems = data.conversations.map((conversation) => {
+                const peer = conversation.peer || {};
+                const latest = conversation.latestMessage || {};
+                const unreadCount = Math.max(0, Number(conversation.unreadCount || 0));
+                return {
+                    id: `chat-${conversation.id}`,
+                    type: 'member_message',
+                    sender: peer.display_name || 'Member',
+                    senderImage: peer.avatar_url || peer.photos?.[0] || '',
+                    title: peer.display_name ? `Message from ${peer.display_name}` : 'Member message',
+                    body: latest.body || 'Conversation opened',
+                    timestamp: latest.created_at || conversation.updated_at || conversation.created_at || new Date().toISOString(),
+                    read: unreadCount <= 0,
+                    unreadCount,
+                    memberId: conversation.peerId,
+                    conversationId: conversation.id,
+                };
+            });
+            setMessages((prev) => {
+                const nonChatItems = prev.filter((item) => !String(item.id || '').startsWith('chat-'));
+                const merged = [...chatItems, ...nonChatItems]
+                    .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
+                    .slice(0, 250);
+                setStored(STORAGE_KEYS.MESSAGES, merged);
+                return merged;
+            });
+        } catch {}
+    }
+
+    function applyRemoteSettings(remoteSettings) {
+        if (!remoteSettings || typeof remoteSettings !== 'object') return null;
+        const merged = { ...DEFAULT_SETTINGS, ...getStored(STORAGE_KEYS.SETTINGS, {}), ...remoteSettings };
+        setSettings(merged);
+        setStored(STORAGE_KEYS.SETTINGS, merged);
+        return merged;
+    }
+
+    async function loadRemoteSettings(account) {
+        if (!account?.email && !account?.id) return null;
+        try {
+            const res = await fetch('/api/members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'account_settings', memberId: account.id, email: account.email }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.settings) return null;
+            return applyRemoteSettings(data.settings);
+        } catch {
+            return null;
+        }
+    }
+
+    async function loadAccountState(account) {
+        if (!account?.email && !account?.id) return null;
+        try {
+            const res = await fetch('/api/members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'account_state', memberId: account.id, email: account.email }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) return null;
+            if (Array.isArray(data.likes)) {
+                setLikes(data.likes);
+                setStored(STORAGE_KEYS.LIKES, data.likes);
+            }
+            if (Array.isArray(data.matches)) {
+                setMatches(data.matches);
+                setStored(STORAGE_KEYS.MATCHES, data.matches);
+            }
+            if (Array.isArray(data.passes)) {
+                setPasses(data.passes);
+                setStored(STORAGE_KEYS.PASSES, data.passes);
+            }
+            if (Array.isArray(data.saved)) {
+                setSaved(data.saved);
+                setStored(STORAGE_KEYS.SAVED, data.saved);
+            }
+            return data;
+        } catch {
+            return null;
+        }
+    }
+
+    async function requestAccountReminders(account) {
+        if (!account?.email && !account?.id) return;
+        const today = new Date().toISOString().slice(0, 10);
+        const key = `gscom_reminders_${account.id || account.email}`;
+        if (getStored(key) === today) return;
+        setStored(key, today);
+        try {
+            await fetch('/api/members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'account_reminders', memberId: account.id, email: account.email }),
+            });
+            loadAccountInbox(account);
+            loadChatInbox(account);
+        } catch {}
+    }
+
+    async function signInExisting(email, password) {
+        setStored(STORAGE_KEYS.SIGNED_OUT_UNTIL, null);
+        const cleanEmail = String(email || '').trim().toLowerCase();
+        if (!cleanEmail || !cleanEmail.includes('@')) throw new Error('Enter a valid email address.');
+        const res = await fetch('/api/members', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'login_account', email: cleanEmail, password }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.member) throw new Error(data.error || 'Could not sign in.');
+        const account = accountFromMember(data.member, cleanEmail);
+        setUser(account);
+        setGuest(false);
+        setPreference(account.preference || getStored(STORAGE_KEYS.PREFERENCE, 'sugar_mummy_looking_for_toyboy'));
+        setStored(STORAGE_KEYS.USER, account);
+        setStored(STORAGE_KEYS.LOGIN_EMAIL, cleanEmail);
+        setStored(STORAGE_KEYS.VERIFICATION, account.verification_status || null);
+        setVerificationStatus(account.verification_status || null);
+        setStored(STORAGE_KEYS.GUEST, false);
+        logActivity('login', { title: 'Signed in', message: `Welcome back, ${account.display_name}!` });
+        loadAccountInbox(account);
+        loadChatInbox(account);
+        loadRemoteSettings(account);
+        loadAccountState(account);
+        requestAccountReminders(account);
+        return account;
+    }
+
+    async function syncOAuthAccount(sessionUser) {
+        const cleanEmail = String(sessionUser?.email || '').trim().toLowerCase();
+        if (!cleanEmail) return null;
+        const res = await fetch('/api/members', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'oauth_account',
+                auth_user_id: sessionUser.id,
+                email: cleanEmail,
+                display_name: sessionUser.user_metadata?.full_name || sessionUser.user_metadata?.name || cleanEmail.split('@')[0],
+                avatar_url: sessionUser.user_metadata?.avatar_url || '',
+            }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.member) throw new Error(data.error || 'Could not sync Google account.');
+        const account = accountFromMember(data.member, cleanEmail);
+        setPreference(account.preference || getStored(STORAGE_KEYS.PREFERENCE, 'toyboy_looking_for_sugar_mummy'));
+        setVerificationStatus(account.verification_status || null);
+        return account;
+    }
+
+    async function signInWithGoogle() {
+        throw new Error('Google login has been removed. Use email and password to continue inside the GS app.');
+    }
+
+
+    async function requestPasswordReset(email) {
+        const cleanEmail = String(email || '').trim().toLowerCase();
+        if (!cleanEmail || !cleanEmail.includes('@')) throw new Error('Enter the email on your account.');
+        const res = await fetch('/api/members', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'request_password_reset', email: cleanEmail }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not send reset code.');
+        setStored(STORAGE_KEYS.LOGIN_EMAIL, cleanEmail);
+        return data;
+    }
+
+    async function resetPassword(email, code, password) {
+        setStored(STORAGE_KEYS.SIGNED_OUT_UNTIL, null);
+        const cleanEmail = String(email || '').trim().toLowerCase();
+        if (!cleanEmail || !cleanEmail.includes('@')) throw new Error('Enter the email on your account.');
+        if (!/^\d{6}$/.test(String(code || '').trim())) throw new Error('Enter the 6-digit reset code.');
+        if (String(password || '').length < 6) throw new Error('New password must be at least 6 characters.');
+        const res = await fetch('/api/members', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'reset_password', email: cleanEmail, code: String(code).trim(), password }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.member) throw new Error(data.error || 'Could not reset password.');
+        const account = accountFromMember(data.member, cleanEmail);
+        setUser(account);
+        setGuest(false);
+        setStored(STORAGE_KEYS.USER, account);
+        setStored(STORAGE_KEYS.LOGIN_EMAIL, cleanEmail);
+        setStored(STORAGE_KEYS.GUEST, false);
+        logActivity('security', { title: 'Password reset', message: 'Your password was changed successfully.' });
+        loadRemoteSettings(account);
+        loadAccountInbox(account);
+        loadChatInbox(account);
+        loadAccountState(account);
+        requestAccountReminders(account);
+        return account;
+    }
     // ---- Auth Methods ----
-    function signIn(email, displayName, userPreference) {
+    async function signIn(email, password, displayName, userPreference, profileDetails = {}) {
+        setStored(STORAGE_KEYS.SIGNED_OUT_UNTIL, null);
+        const cleanEmail = String(email || '').trim().toLowerCase();
+        const cleanedName = cleanDisplayName(displayName || profileDetails.display_name || profileDetails.realName, cleanEmail);
+        const photos = Array.isArray(profileDetails.photos)
+            ? profileDetails.photos.filter(Boolean).slice(0, 6)
+            : (profileDetails.avatar_url || profileDetails.photo ? [profileDetails.avatar_url || profileDetails.photo] : []);
+        const avatarUrl = profileDetails.avatar_url || photos[0] || '';
+        const cleanUsername = String(profileDetails.username || cleanedName)
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9_]+/g, '_')
+            .replace(/^_+|_+$/g, '')
+            .slice(0, 24);
+        const intentMap = {
+            sugar_mummy_looking_for_toyboy: { profile_label: 'sugar_mummy', looking_for: 'Sugar Guy / Toyboy', intent_summary: 'I am a sugar mummy looking for a sugar guy / toyboy.' },
+            sugar_daddy_looking_for_mistress: { profile_label: 'sugar_daddy', looking_for: 'Mistress', intent_summary: 'I am a sugar daddy looking for an adult mistress.' },
+            mistress_looking_for_sugar_daddy: { profile_label: 'mistress', looking_for: 'Sugar Daddy', intent_summary: 'I am an adult mistress looking for a sugar daddy.' },
+            toyboy_looking_for_sugar_mummy: { profile_label: 'toyboy', looking_for: 'Sugar Mummy', intent_summary: 'I am a sugar guy / toyboy looking for a sugar mummy.' },
+        };
+        const selectedIntent = intentMap[userPreference] || intentMap.sugar_mummy_looking_for_toyboy;
         const userData = {
-            id: btoa(email), email,
-            display_name: displayName || email.split('@')[0],
-            avatar_url: '', photos: [], bio: '', interests: [],
-            orientation: '', age: '',
-            preference: userPreference || 'sugar_mummy',
+            id: btoa(cleanEmail), email: cleanEmail,
+            display_name: cleanedName,
+            username: cleanUsername || 'member',
+            avatar_url: avatarUrl,
+            photos,
+            bio: String(profileDetails.bio || '').trim(),
+            interests: Array.isArray(profileDetails.interests) ? profileDetails.interests.slice(0, 12) : [],
+            hobbies: Array.isArray(profileDetails.hobbies) ? profileDetails.hobbies.slice(0, 12) : [],
+            orientation: '',
+            age: String(profileDetails.age || '').trim(),
+            location: String(profileDetails.location || '').trim(),
+            city: String(profileDetails.city || profileDetails.location || '').trim(),
+            country: String(profileDetails.country || '').trim(),
+            phone: String(profileDetails.phone || profileDetails.phone_number || '').trim(),
+            phone_number: String(profileDetails.phone_number || profileDetails.phone || '').trim(),
+            preference: userPreference || 'sugar_mummy_looking_for_toyboy',
+            ...selectedIntent,
+            subscription_tier: 'free', admin_approved: true, package_locked: false, preference_locked: true,
             created_at: new Date().toISOString(),
         };
         const existing = getStored(STORAGE_KEYS.USER);
-        const merged = existing?.email === email
-            ? { ...userData, ...existing, display_name: displayName || existing.display_name, preference: userPreference || existing.preference || 'sugar_mummy' }
+        const merged = existing?.email === cleanEmail
+            ? { ...userData, ...existing, ...profileDetails, display_name: cleanedName, username: cleanUsername || existing.username || userData.username, preference: userPreference || existing.preference || 'sugar_mummy_looking_for_toyboy' }
             : userData;
         setUser(merged);
         setGuest(false);
         setPreference(merged.preference);
         setStored(STORAGE_KEYS.USER, merged);
+        setStored(STORAGE_KEYS.LOGIN_EMAIL, String(email || '').trim().toLowerCase());
         setStored(STORAGE_KEYS.GUEST, false);
         setStored(STORAGE_KEYS.PREFERENCE, merged.preference);
         logActivity('login', { title: 'Signed in', message: `Welcome back, ${merged.display_name}!` });
+        const synced = await syncAccountToServer(merged, { password });
+        if (!synced) {
+            setUser(null);
+            setStored(STORAGE_KEYS.USER, null);
+            throw new Error('Could not create account. Check your email and password, then try again.');
+        }
+        loadAccountInbox(synced);
+        loadChatInbox(synced);
+        loadRemoteSettings(synced);
+        loadAccountState(synced);
+        requestAccountReminders(synced);
 
         // Welcome message (first sign-in only)
         const existingMessages = getStored(STORAGE_KEYS.MESSAGES, []);
@@ -435,10 +888,62 @@ export function AuthProvider({ children }) {
         setStored(STORAGE_KEYS.GUEST, true);
     }
 
-    function signOut() {
+    async function signOut() {
+        setStored(STORAGE_KEYS.SIGNED_OUT_UNTIL, Date.now() + 2 * 60 * 1000);
+        try {
+            if (isSupabaseConfigured()) {
+                const supabase = createBrowserSupabaseClient();
+                await supabase.auth.signOut({ scope: 'local' });
+                await supabase.auth.signOut();
+            }
+        } catch {}
+        try {
+            if (typeof window !== 'undefined') {
+                Object.keys(localStorage).forEach((key) => {
+                    if (key.startsWith('sb-') || key.includes('supabase') || key.includes('auth-token')) {
+                        localStorage.removeItem(key);
+                    }
+                });
+                Object.keys(sessionStorage).forEach((key) => {
+                    if (key.startsWith('sb-') || key.includes('supabase') || key.includes('auth-token')) {
+                        sessionStorage.removeItem(key);
+                    }
+                });
+            }
+        } catch {}
         setUser(null); setGuest(false);
+        setLikes([]); setMatches([]); setPasses([]); setSaved([]);
+        setMessages([]); setVerificationStatus(null); setVerificationTimer(null);
         setStored(STORAGE_KEYS.USER, null);
         setStored(STORAGE_KEYS.GUEST, false);
+        setStored(STORAGE_KEYS.LIKES, []);
+        setStored(STORAGE_KEYS.MATCHES, []);
+        setStored(STORAGE_KEYS.PASSES, []);
+        setStored(STORAGE_KEYS.SAVED, []);
+        setStored(STORAGE_KEYS.MESSAGES, []);
+        setStored(STORAGE_KEYS.VERIFICATION, null);
+        setStored(STORAGE_KEYS.VERIFICATION_TIMER, null);
+        return true;
+    }
+
+    function resetVerificationForPhotoChange(account, reason = 'Your profile photo was changed. Please submit verification again.') {
+        const updated = {
+            ...account,
+            verified: false,
+            verification_status: 'reverify_required',
+            verification_selfie_url: '',
+            verification_document_url: '',
+            verification_document_type: '',
+            verification_phone: '',
+            verification_submitted_at: null,
+            verification_rejection_reason: reason,
+        };
+        setVerificationStatus('reverify_required');
+        setVerificationTimer(null);
+        setStored(STORAGE_KEYS.VERIFICATION, 'reverify_required');
+        setStored(STORAGE_KEYS.VERIFICATION_TIMER, null);
+        setStored(STORAGE_KEYS.VERIFICATION_SELFIE, null);
+        return updated;
     }
 
     function updateProfile(updates) {
@@ -451,21 +956,55 @@ export function AuthProvider({ children }) {
         setUser(updated);
         setStored(STORAGE_KEYS.USER, updated);
         logActivity('profile_update', { title: 'Profile updated', message: 'You updated your profile info' });
+        syncAccountToServer(updated);
         return updated;
     }
 
     function addPhoto(dataUrl) {
         if (!user) return;
+        const changesProfilePhoto = !(user.avatar_url || user.photos?.[0]);
         const photos = [...(user.photos || []), dataUrl].slice(0, 6);
-        const updated = { ...user, photos };
+        let updated = { ...user, photos };
         if (!updated.avatar_url && photos.length > 0) updated.avatar_url = photos[0];
+        if (changesProfilePhoto && (user.verified || user.verification_status === 'verified')) {
+            updated = resetVerificationForPhotoChange(updated);
+            addMessage({
+                type: 'verification',
+                sender: 'GS Verification Team',
+                senderImage: '',
+                title: 'Verification reset',
+                body: 'Your profile photo changed. Your badge was removed until you submit selfie, ID/passport, and phone details again.',
+            });
+        }
         setUser(updated);
         setStored(STORAGE_KEYS.USER, updated);
         logActivity('photo_added', { title: 'Photo added', message: 'You added a new photo' });
+        syncAccountToServer(updated);
     }
 
     function removePhoto(index) {
         if (!user) return;
+        {
+            const photos = [...(user.photos || [])];
+            const removingPrimary = index === 0;
+            photos.splice(index, 1);
+            let updated = { ...user, photos, avatar_url: photos[0] || '' };
+            if ((removingPrimary || photos.length === 0) && (user.verified || user.verification_status === 'verified')) {
+                updated = resetVerificationForPhotoChange(updated, 'Your profile photo was removed or changed. Please submit verification again.');
+                logActivity('profile_update', { title: 'Verification reset', message: 'Your profile photo was changed. Please re-verify your identity.' });
+                addMessage({
+                    type: 'verification',
+                    sender: 'GS Verification Team',
+                    senderImage: '',
+                    title: 'Verification reset',
+                    body: 'Your profile picture was removed or changed. Your badge has been revoked. Please re-submit selfie, ID/passport, and phone details.',
+                });
+            }
+            setUser(updated);
+            setStored(STORAGE_KEYS.USER, updated);
+            syncAccountToServer(updated);
+            return;
+        }
         const photos = [...(user.photos || [])];
         const removingPrimary = index === 0;
         photos.splice(index, 1);
@@ -481,6 +1020,7 @@ export function AuthProvider({ children }) {
             setStored(STORAGE_KEYS.VERIFICATION_TIMER, null);
             setStored(STORAGE_KEYS.VERIFICATION_SELFIE, null);
             logActivity('profile_update', { title: 'Verification reset', message: 'Your profile photo was changed. Please re-verify your identity.' });
+        syncAccountToServer(updated);
             addMessage({
                 type: 'verification', sender: 'GS Verification Team', senderImage: '',
                 title: '⚠️ Verification Reset',
@@ -490,9 +1030,9 @@ export function AuthProvider({ children }) {
     }
 
     // ==========================================
-    // SMART AI VERIFICATION (10-min moderation)
+    // MANUAL VERIFICATION REQUEST
     // ==========================================
-    function verifyProfile(selfieDataUrl) {
+    async function verifyProfile(input) {
         if (!user) {
             setVerificationStatus('failed');
             setStored(STORAGE_KEYS.VERIFICATION, 'failed');
@@ -500,62 +1040,96 @@ export function AuthProvider({ children }) {
             return 'failed';
         }
 
+        const request = typeof input === 'string'
+            ? { selfieDataUrl: input }
+            : (input || {});
+        const selfieDataUrl = request.selfieDataUrl || request.verification_selfie_url || '';
+        const documentDataUrl = request.documentDataUrl || request.verification_document_url || '';
+        const documentType = request.documentType || request.verification_document_type || 'id';
+        const phone = request.phone || request.verification_phone || user.phone_number || user.phone || '';
         const profilePic = user.avatar_url || (user.photos && user.photos[0]);
+
         if (!profilePic) {
             setVerificationStatus('failed');
             setStored(STORAGE_KEYS.VERIFICATION, 'failed');
-            addMessage({ type: 'verification', sender: 'GS Verification Team', senderImage: '', title: 'Verification Failed', body: 'You must upload a profile photo first before requesting verification.' });
+            addMessage({ type: 'verification', sender: 'GS Verification Team', senderImage: '', title: 'Verification Failed', body: 'Upload a profile photo before requesting manual verification.' });
             return 'failed';
         }
 
         if (!selfieDataUrl || !selfieDataUrl.startsWith('data:image/')) {
             setVerificationStatus('failed');
             setStored(STORAGE_KEYS.VERIFICATION, 'failed');
-            addMessage({ type: 'verification', sender: 'GS Verification Team', senderImage: '', title: 'Invalid Image', body: 'Please upload a clear selfie photograph.' });
+            addMessage({ type: 'verification', sender: 'GS Verification Team', senderImage: '', title: 'Selfie Required', body: 'Please upload a clear selfie photograph.' });
             return 'failed';
         }
 
-        setVerificationStatus('processing');
-        setStored(STORAGE_KEYS.VERIFICATION, 'processing');
+        if (!documentDataUrl || !documentDataUrl.startsWith('data:image/')) {
+            setVerificationStatus('failed');
+            setStored(STORAGE_KEYS.VERIFICATION, 'failed');
+            addMessage({ type: 'verification', sender: 'GS Verification Team', senderImage: '', title: 'ID or Passport Required', body: 'Please upload a clear photo of your ID or passport.' });
+            return 'failed';
+        }
 
-        // Simulate AI processing delay (2-4 seconds)
-        setTimeout(async () => {
-            const result = await analyzeSelfie(selfieDataUrl, profilePic);
+        if (!String(phone).trim()) {
+            setVerificationStatus('failed');
+            setStored(STORAGE_KEYS.VERIFICATION, 'failed');
+            addMessage({ type: 'verification', sender: 'GS Verification Team', senderImage: '', title: 'Phone Required', body: 'Please add your phone number before verification.' });
+            return 'failed';
+        }
 
-            if (result.status === 'failed') {
-                setVerificationStatus('failed');
-                setStored(STORAGE_KEYS.VERIFICATION, 'failed');
-                addMessage({
-                    type: 'verification', sender: 'GS AI Verification', senderImage: '',
-                    title: '❌ Verification Denied',
-                    body: result.reason,
-                });
-                window.dispatchEvent(new CustomEvent('gs-notification', {
-                    detail: { title: 'Verification Failed', body: result.reason, icon: '❌' }
-                }));
-            } else {
-                // Passed AI analysis → enter 10-minute moderation review
-                const moderationEndTime = Date.now() + (10 * 60 * 1000); // 10 minutes
-                setVerificationStatus('moderation_review');
-                setVerificationTimer(moderationEndTime);
-                setStored(STORAGE_KEYS.VERIFICATION, 'moderation_review');
-                setStored(STORAGE_KEYS.VERIFICATION_TIMER, moderationEndTime);
-                setStored(STORAGE_KEYS.VERIFICATION_SELFIE, selfieDataUrl.slice(0, 200));
-                logActivity('profile_update', { title: 'Verification under review', message: 'Your selfie passed AI analysis. Moderation team is reviewing (~10 min).' });
-                addMessage({
-                    type: 'verification', sender: 'GS Verification Team', senderImage: '',
-                    title: '🔍 Under Moderation Review',
-                    body: 'Your selfie passed our AI face analysis. Our moderation team is now reviewing your submission. This usually takes about 10 minutes. You\'ll be notified when it\'s complete.',
-                });
-                window.dispatchEvent(new CustomEvent('gs-notification', {
-                    detail: { title: 'Verification In Progress', body: 'Your selfie passed AI analysis. Moderation review takes ~10 minutes.', icon: '🔍' }
-                }));
+        setVerificationStatus('pending_admin');
+        setStored(STORAGE_KEYS.VERIFICATION, 'pending_admin');
+        setStored(STORAGE_KEYS.VERIFICATION_SELFIE, selfieDataUrl.slice(0, 200));
+
+        const updated = {
+            ...user,
+            verification_status: 'pending_admin',
+            verified: false,
+            verification_selfie_url: selfieDataUrl,
+            verification_document_url: documentDataUrl,
+            verification_document_type: documentType,
+            verification_phone: phone,
+            phone_number: phone,
+            phone,
+            verification_submitted_at: new Date().toISOString(),
+        };
+        setUser(updated);
+        setStored(STORAGE_KEYS.USER, updated);
+
+        try {
+            const res = await fetch('/api/members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'submit_verification',
+                    memberId: updated.id,
+                    email: updated.email,
+                    verification_selfie_url: selfieDataUrl,
+                    verification_document_url: documentDataUrl,
+                    verification_document_type: documentType,
+                    verification_phone: phone,
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Verification submission failed.');
+            if (data.member) {
+                const synced = {
+                    ...updated,
+                    id: data.member.id || updated.id,
+                    verification_status: 'pending_admin',
+                    verified: false,
+                };
+                setUser(synced);
+                setStored(STORAGE_KEYS.USER, synced);
             }
-        }, 2000 + Math.random() * 2000);
+        } catch (error) {
+            addMessage({ type: 'verification', sender: 'GS Verification Team', senderImage: '', title: 'Saved Locally', body: 'Your verification request is saved on this device. Run the admin SQL if it does not appear in the control panel.' });
+        }
 
-        return 'processing';
+        logActivity('profile_update', { title: 'Verification submitted', message: 'Your selfie, ID/passport, and phone are waiting for manual admin approval.' });
+        addMessage({ type: 'verification', sender: 'GS Verification Team', senderImage: '', title: 'Manual Verification Pending', body: 'Admin will review your selfie, ID/passport, phone number, and approve your badge from the admin panel.' });
+        return 'pending_admin';
     }
-
     function clearVerification() {
         setVerificationStatus(null);
         setVerificationTimer(null);
@@ -564,11 +1138,29 @@ export function AuthProvider({ children }) {
         setStored(STORAGE_KEYS.VERIFICATION_SELFIE, null);
     }
 
+    useEffect(() => {
+        if (typeof document === 'undefined') return;
+        document.documentElement.dataset.theme = settings.darkMode ? 'dark' : 'light';
+    }, [settings.darkMode]);
+
     // ---- Settings ----
     function updateSettings(updates) {
         const updated = { ...settings, ...updates };
         setSettings(updated);
         setStored(STORAGE_KEYS.SETTINGS, updated);
+
+        if (user?.email || user?.id) {
+            fetch('/api/members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'update_settings', memberId: user.id, email: user.email, settings: updated }),
+            })
+                .then((res) => res.json().catch(() => ({})).then((data) => ({ ok: res.ok, data })))
+                .then(({ ok, data }) => {
+                    if (ok && data.settings) applyRemoteSettings(data.settings);
+                })
+                .catch(() => {});
+        }
 
         // Live location toggle
         if ('liveLocation' in updates) {
@@ -577,6 +1169,9 @@ export function AuthProvider({ children }) {
             } else {
                 stopLiveLocation();
             }
+        }
+        if (updates.notifications === true && typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('gs-request-notifications'));
         }
     }
 
@@ -612,6 +1207,27 @@ export function AuthProvider({ children }) {
                 if (!locData.city) locData.city = `${pos.coords.latitude.toFixed(2)}°, ${pos.coords.longitude.toFixed(2)}°`;
                 setLiveLocationData(locData);
                 setStored(STORAGE_KEYS.LIVE_LOCATION, locData);
+                if (user?.id) {
+                    const updatedUser = {
+                        ...user,
+                        latitude: pos.coords.latitude,
+                        longitude: pos.coords.longitude,
+                        geo_updated_at: new Date().toISOString(),
+                        location: user.location || locData.city,
+                        city: user.city || locData.city,
+                    };
+                    setUser(updatedUser);
+                    setStored(STORAGE_KEYS.USER, updatedUser);
+                    fetch('/api/location', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userId: user.id,
+                            latitude: pos.coords.latitude,
+                            longitude: pos.coords.longitude,
+                        }),
+                    }).catch(() => {});
+                }
             },
             () => { }, { enableHighAccuracy: true, maximumAge: 30000 }
         );
@@ -650,7 +1266,20 @@ export function AuthProvider({ children }) {
     }
 
     // ---- Like/Match/Pass ----
-    const addLike = useCallback((profile) => {
+    const addLike = useCallback(async (profile) => {
+        if (user?.id) {
+            const memberId = profile?.id || (String(profile?.wpId || '').startsWith('member:') ? String(profile.wpId).slice(7) : null);
+            const payload = memberId
+                ? { action: 'like', memberId, actorUserId: user.id, senderName: user.display_name || user.email, profileName: profile.name, profileImage: profile.imageUrl, score: profile.score }
+                : { action: 'record_interaction', actorUserId: user.id, profileKey: profile.wpId, kind: 'like', profileName: profile.name, profileImage: profile.imageUrl, source: profile.source || 'wp', score: profile.score };
+            const res = await fetch('/api/members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) return { ok: false, error: data.error || 'Like limit reached.', redirectTo: data.redirectTo };
+        }
         setLikes(prev => {
             if (prev.find(l => l.wpId === profile.wpId)) return prev;
             const updated = [...prev, { ...profile, likedAt: new Date().toISOString() }];
@@ -658,7 +1287,8 @@ export function AuthProvider({ children }) {
             return updated;
         });
         logActivity('like', { title: `You liked ${profile.name || 'someone'}`, message: profile.location || '', image: profile.imageUrl, profileId: profile.wpId });
-    }, [logActivity]);
+        return { ok: true };
+    }, [logActivity, user?.id, user?.display_name, user?.email]);
 
     const addMatch = useCallback((profile, score = 85) => {
         setMatches(prev => {
@@ -667,17 +1297,38 @@ export function AuthProvider({ children }) {
             setStored(STORAGE_KEYS.MATCHES, updated);
             return updated;
         });
+        if (user?.id) {
+            fetch('/api/members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'record_interaction', actorUserId: user.id, profileKey: profile.wpId, kind: 'match', profileName: profile.name, profileImage: profile.imageUrl, source: profile.source || '', score }),
+            }).catch(() => {});
+        }
         logActivity('match', { title: `Matched with ${profile.name || 'someone'}!`, message: `${score}% compatibility`, image: profile.imageUrl, profileId: profile.wpId });
-    }, [logActivity]);
+    }, [logActivity, user?.id]);
 
-    const addPass = useCallback((profileWpId) => {
+    const addPass = useCallback(async (profileWpId) => {
+        const memberId = String(profileWpId || '').startsWith('member:') ? String(profileWpId).slice(7) : '';
+        if (user?.id) {
+            const payload = memberId
+                ? { action: 'swipe_pass', memberId, actorUserId: user.id }
+                : { action: 'record_interaction', actorUserId: user.id, profileKey: profileWpId, kind: 'pass', source: 'wp' };
+            const res = await fetch('/api/members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) return { ok: false, error: data.error || 'Swipe limit reached.', redirectTo: data.redirectTo };
+        }
         setPasses(prev => {
             if (prev.includes(profileWpId)) return prev;
             const updated = [...prev, profileWpId];
             setStored(STORAGE_KEYS.PASSES, updated);
             return updated;
         });
-    }, []);
+        return { ok: true };
+    }, [user?.id]);
 
     const isProfileSwiped = useCallback((wpId) => {
         return likes.some(l => l.wpId === wpId) || passes.includes(wpId);
@@ -691,8 +1342,16 @@ export function AuthProvider({ children }) {
             setStored(STORAGE_KEYS.SAVED, updated);
             return updated;
         });
+        if (user?.id) {
+            const memberId = profile?.id || (String(profile?.wpId || '').startsWith('member:') ? String(profile.wpId).slice(7) : null);
+            fetch('/api/members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'save_profile', memberId, actorUserId: user.id, savedKey: profile.wpId || memberId, savedName: profile.name, savedImage: profile.imageUrl || profile.avatarUrl }),
+            }).catch(() => {});
+        }
         logActivity('save', { title: `Saved ${profile.name || 'a profile'}`, message: 'Added to your saved list', image: profile.imageUrl, profileId: profile.wpId });
-    }, [logActivity]);
+    }, [logActivity, user?.id]);
 
     const unsaveProfile = useCallback((wpId) => {
         setSaved(prev => {
@@ -700,20 +1359,42 @@ export function AuthProvider({ children }) {
             setStored(STORAGE_KEYS.SAVED, updated);
             return updated;
         });
-    }, []);
+        if (user?.id) {
+            const memberId = String(wpId || '').startsWith('member:') ? String(wpId).slice(7) : null;
+            fetch('/api/members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'unsave_profile', memberId, actorUserId: user.id, savedKey: wpId || memberId }),
+            }).catch(() => {});
+        }
+    }, [user?.id]);
 
     const isProfileSaved = useCallback((wpId) => saved.some(s => s.wpId === wpId), [saved]);
 
     // ---- Super Like ----
-    const addSuperLike = useCallback((profile) => {
+    const addSuperLike = useCallback(async (profile) => {
+        if (user?.id) {
+            const memberId = profile?.id || (String(profile?.wpId || '').startsWith('member:') ? String(profile.wpId).slice(7) : null);
+            const payload = memberId
+                ? { action: 'superlike', memberId, actorUserId: user.id, senderName: user.display_name || user.email, profileName: profile.name, profileImage: profile.imageUrl, score: profile.score }
+                : { action: 'record_interaction', actorUserId: user.id, profileKey: profile.wpId, kind: 'superlike', profileName: profile.name, profileImage: profile.imageUrl, source: profile.source || 'wp', score: profile.score };
+            const res = await fetch('/api/members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) return { ok: false, error: data.error || 'Super like limit reached.', redirectTo: data.redirectTo };
+        }
         setLikes(prev => {
             if (prev.find(l => l.wpId === profile.wpId)) return prev;
             const updated = [...prev, { ...profile, likedAt: new Date().toISOString(), super: true }];
             setStored(STORAGE_KEYS.LIKES, updated);
             return updated;
         });
-        logActivity('like', { title: `You super liked ${profile.name || 'someone'}`, message: `${profile.location || ''} — Super Like!`, image: profile.imageUrl, profileId: profile.wpId });
-    }, [logActivity]);
+        logActivity('like', { title: `You super liked ${profile.name || 'someone'}`, message: `${profile.location || ''} - Super Like!`, image: profile.imageUrl, profileId: profile.wpId });
+        return { ok: true };
+    }, [logActivity, user?.id, user?.display_name, user?.email]);
 
     // ---- Request Connection ----
     const requestConnection = useCallback((profileName, profileId) => {
@@ -730,84 +1411,6 @@ export function AuthProvider({ children }) {
     const logProfileView = useCallback((profile) => {
         logActivity('view', { title: `Viewed ${profile.name || 'a profile'}`, message: profile.location || '', image: profile.imageUrl, profileId: profile.wpId });
     }, [logActivity]);
-
-    // ==========================================
-    // PREFERENCE-AWARE AI ENGAGEMENT
-    // ==========================================
-    const aiTimerRef = useRef(null);
-    const realProfilePoolRef = useRef([]);
-    const preferenceRef = useRef(preference);
-    useEffect(() => { realProfilePoolRef.current = realProfilePool; }, [realProfilePool]);
-    useEffect(() => { preferenceRef.current = preference; }, [preference]);
-
-    useEffect(() => {
-        if (loading) return;
-
-        const AI_LOCATIONS = [
-            'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Thika',
-            'Westlands', 'Kilimani', 'Karen', 'Langata', 'Kiambu', 'Ruiru',
-            'Kampala', 'Dar es Salaam', 'Juba',
-        ];
-
-        // Templates adapt to preference
-        const getTemplates = (pref) => {
-            const isMummy = pref === 'sugar_mummy' || pref === 'both';
-            const pronoun = isMummy ? 'She' : 'He';
-            const title = isMummy ? 'Sugar Mummy' : 'Sugar Daddy';
-
-            return [
-                { type: 'meetup_ready', msg: (n, l) => ({ title: `${n} is ready to meet up today`, message: `Available in ${l} — tap to connect` }) },
-                { type: 'connection_request', msg: (n, l) => ({ title: `${n} wants to connect with you`, message: `${pronoun}'s interested in your profile from ${l}` }) },
-                { type: 'request_hookup', msg: (n, l) => ({ title: `${n} sent you a hookup request`, message: `${pronoun}'s available near ${l}` }) },
-                { type: 'match', msg: (n, l) => ({ title: `New ${title} match: ${n}`, message: `${l} — High compatibility` }) },
-                { type: 'like', msg: (n, l) => ({ title: `${n} liked your profile`, message: `${title} from ${l}` }) },
-                { type: 'meetup_ready', msg: (n, l) => ({ title: `${n} is looking for you tonight`, message: `Currently in ${l}` }) },
-                { type: 'connection_request', msg: (n, l) => ({ title: `${n} viewed your profile 3 times`, message: `${pronoun} seems very interested!` }) },
-                { type: 'like', msg: (n, l) => ({ title: `${n} sent a wink 😉`, message: `${pronoun} wants your attention from ${l}` }) },
-            ];
-        };
-
-        const MUMMY_NAMES = ['Faith', 'Grace', 'Mercy', 'Joy', 'Hope', 'Rose', 'Lilian', 'Agnes', 'Esther', 'Margaret', 'Catherine', 'Diana', 'Susan', 'Amina', 'Wangari'];
-        const DADDY_NAMES = ['James', 'David', 'Michael', 'Robert', 'Joseph', 'Daniel', 'Samuel', 'Peter', 'Abraham', 'George', 'Thomas', 'Brian', 'Kevin'];
-
-        const generateAIAlert = () => {
-            const pref = preferenceRef.current;
-            const pool = realProfilePoolRef.current;
-            const templates = getTemplates(pref);
-            let name, location, profileId, image;
-
-            if (pool.length > 0) {
-                const profile = pool[Math.floor(Math.random() * pool.length)];
-                name = profile.name || 'Someone';
-                location = profile.location || AI_LOCATIONS[Math.floor(Math.random() * AI_LOCATIONS.length)];
-                profileId = profile.wpId;
-                image = profile.imageUrl || '';
-            } else {
-                const nameList = pref === 'sugar_daddy' ? DADDY_NAMES : MUMMY_NAMES;
-                name = nameList[Math.floor(Math.random() * nameList.length)];
-                location = AI_LOCATIONS[Math.floor(Math.random() * AI_LOCATIONS.length)];
-                profileId = null;
-                image = '';
-            }
-
-            const template = templates[Math.floor(Math.random() * templates.length)];
-            const { title, message } = template.msg(name, location);
-
-            logActivity(template.type, { title, message, profileId, image });
-            addMessage({
-                type: 'ai_engagement', sender: name, senderImage: image,
-                title, body: message, profileId,
-            });
-        };
-
-        const scheduleNext = () => {
-            const delay = (30 + Math.random() * 60) * 1000;
-            aiTimerRef.current = setTimeout(() => { generateAIAlert(); scheduleNext(); }, delay);
-        };
-
-        const initialDelay = setTimeout(() => { generateAIAlert(); scheduleNext(); }, 5000);
-        return () => { clearTimeout(initialDelay); if (aiTimerRef.current) clearTimeout(aiTimerRef.current); };
-    }, [loading, logActivity, addMessage]);
 
     // ==========================================
     // POST SUBSCRIPTION CHECKER
@@ -868,7 +1471,7 @@ export function AuthProvider({ children }) {
         likes, matches, saved, activity, settings,
         messages, verificationStatus, verificationTimer, realProfilePool,
         preference, subscribed, liveLocationData,
-        signIn, signOut, skipLogin,
+        signIn, signInExisting, signInWithGoogle, requestPasswordReset, resetPassword, signOut, skipLogin,
         updateProfile, addPhoto, removePhoto,
         updateSettings, updatePreference, toggleSubscription,
         addLike, addMatch, addPass, isProfileSwiped, addSuperLike, clearSwipeHistory,
@@ -886,3 +1489,11 @@ export function AuthProvider({ children }) {
 }
 
 export const useAuth = () => useContext(AuthContext);
+
+
+
+
+
+
+
+

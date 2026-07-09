@@ -1,7 +1,8 @@
 import './globals.css';
 
 import { AuthProvider } from '@/contexts/AuthContext';
-import ClientProviders from '@/components/ClientProviders';
+import NotificationManager from '@/components/NotificationManager';
+import PrivacyProtection from '@/components/PrivacyProtection';
 
 export const viewport = {
     width: 'device-width',
@@ -9,153 +10,77 @@ export const viewport = {
     maximumScale: 1,
     userScalable: false,
     viewportFit: 'cover',
-    themeColor: [
-        { media: '(prefers-color-scheme: light)', color: '#FFFFFF' },
-        { media: '(prefers-color-scheme: dark)', color: '#0F0F14' },
-    ],
+    themeColor: '#9B2C5E',
 };
 
 export const metadata = {
-    title: 'Genuine Sugar Mummies - Kenya\'s #1 Dating App | Find Your Match',
-    description: 'Join Kenya\'s most trusted dating platform. Connect with genuine sugar mummies and sugar daddies. Verified profiles, secure messaging, and real connections. Download the app today!',
-    keywords: 'sugar mummy kenya, dating app kenya, sugar mummy dating, genuine sugar mummies, nairobi dating, kenya dating app, sugar daddy kenya, real connections, verified profiles',
-    authors: [{ name: 'Genuine Sugar Mummies', url: 'https://genuinesugarmummies.co.ke' }],
-    manifest: '/manifest.json',
-    metadataBase: new URL('https://genuine-sugarmummies-app.vercel.app'),
+    title: 'Genuine Sugar Mummies - Find Your Perfect Match',
+    description: 'The #1 premium dating app for genuine sugar mummy connections. Swipe, match, and connect with verified profiles worldwide. Safe, secure, and real.',
+    keywords: ['sugar mummy', 'dating app', 'connections', 'match', 'verified profiles', 'genuine sugar mummies'],
+    authors: [{ name: 'Genuine Sugar Mummies' }],
+    creator: 'Genuine Sugar Mummies',
+    metadataBase: new URL('https://genuinesugarmummies.co.ke'),
     alternates: {
-        canonical: './',
+        canonical: '/',
     },
+    openGraph: {
+        title: 'Genuine Sugar Mummies - Find Your Perfect Match',
+        description: 'The premium dating app for genuine sugar mummy connections. Swipe, match, and connect with verified profiles.',
+        url: 'https://genuinesugarmummies.co.ke',
+        siteName: 'Genuine Sugar Mummies',
+        locale: 'en_US',
+        type: 'website',
+    },
+    twitter: {
+        card: 'summary_large_image',
+        title: 'Genuine Sugar Mummies',
+        description: 'Premium dating app for genuine connections',
+    },
+    manifest: '/manifest.json',
     icons: {
-        icon: [
-            { url: '/gs-logo.png', type: 'image/png', sizes: '500x500' },
-            { url: '/gs-logo.svg', type: 'image/svg+xml' },
-        ],
-        apple: [
-            { url: '/gs-logo.png', sizes: '500x500' },
-        ],
+        icon: '/gs-logo.png',
+        apple: '/gs-logo.png',
     },
     appleWebApp: {
         capable: true,
         statusBarStyle: 'default',
-        title: 'GS App',
-    },
-    openGraph: {
-        type: 'website',
-        locale: 'en_KE',
-        url: 'https://genuinesugarmummies.co.ke',
-        siteName: 'Genuine Sugar Mummies',
-        title: 'Genuine Sugar Mummies - Kenya\'s #1 Dating App',
-        description: 'Join Kenya\'s most trusted dating platform. Connect with genuine sugar mummies and sugar daddies. Verified profiles, secure messaging, and real connections.',
-        images: [
-            {
-                url: '/gs-logo.png',
-                width: 500,
-                height: 500,
-                alt: 'Genuine Sugar Mummies - Kenya\'s #1 Dating App',
-            },
-        ],
-    },
-    twitter: {
-        card: 'summary_large_image',
-        title: 'Genuine Sugar Mummies - Kenya\'s #1 Dating App',
-        description: 'Join Kenya\'s most trusted dating platform. Verified profiles, secure messaging, real connections.',
-        images: ['/gs-logo.png'],
-    },
-    robots: {
-        index: true,
-        follow: true,
-        googleBot: {
-            index: true,
-            follow: true,
-            'max-video-preview': -1,
-            'max-image-preview': 'large',
-            'max-snippet': -1,
-        },
-    },
-    verification: {
-        google: '',
+        title: 'GS Mummies',
     },
 };
 
 export default function RootLayout({ children }) {
     return (
-        <html lang="en" suppressHydrationWarning>
+        <html lang="en">
             <head>
                 <link rel="preconnect" href="https://fonts.googleapis.com" />
                 <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-                <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
-                <link rel="icon" href="/gs-logo.png" type="image/png" />
-                <link rel="apple-touch-icon" href="/gs-logo.png" />
+                <link
+                    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@300;400;500;600;700;800;900&display=swap"
+                    rel="stylesheet"
+                />
                 <meta name="apple-mobile-web-app-capable" content="yes" />
                 <meta name="mobile-web-app-capable" content="yes" />
-                <meta name="format-detection" content="telephone=no" />
-                {/* JSON-LD Structured Data */}
-                <script
-                    type="application/ld+json"
-                    dangerouslySetInnerHTML={{
-                        __html: JSON.stringify({
-                            "@context": "https://schema.org",
-                            "@type": "WebApplication",
-                            "name": "Genuine Sugar Mummies",
-                            "url": "https://genuinesugarmummies.co.ke",
-                            "description": "Kenya's #1 dating app for genuine sugar mummy and sugar daddy connections. Verified profiles, secure messaging, and real connections.",
-                            "applicationCategory": "SocialNetworkingApplication",
-                            "operatingSystem": "Any",
-                            "browserRequirements": "Requires JavaScript",
-                            "softwareVersion": "4.0",
-                            "offers": {
-                                "@type": "Offer",
-                                "price": "0",
-                                "priceCurrency": "KES"
-                            },
-                            "author": {
-                                "@type": "Organization",
-                                "name": "Genuine Sugar Mummies",
-                                "url": "https://genuinesugarmummies.co.ke"
-                            },
-                            "aggregateRating": {
-                                "@type": "AggregateRating",
-                                "ratingValue": "4.5",
-                                "ratingCount": "1200",
-                                "bestRating": "5"
-                            }
-                        }),
-                    }}
-                />
-                <script
-                    dangerouslySetInnerHTML={{
-                        __html: `
-                            (function(){
-                                try {
-                                    var d = localStorage.getItem('gs_dark_mode');
-                                    var userSetTheme = localStorage.getItem('gs_theme_user_set') === 'true';
-                                    if (d === 'true' && userSetTheme) {
-                                        document.documentElement.classList.add('dark');
-                                    } else {
-                                        document.documentElement.classList.remove('dark');
-                                        if (!userSetTheme) localStorage.setItem('gs_dark_mode', 'false');
-                                    }
-                                    
-                                    // Detect GoNative/Median app wrapper and persist
-                                    if (window.gonative || 
-                                        (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.gonative) || 
-                                        navigator.userAgent.indexOf('GoNative') > -1 || 
-                                        navigator.userAgent.indexOf('Median') > -1 || 
-                                        window.location.search.indexOf('gonative=true') > -1) {
-                                        localStorage.setItem('is_gonative', 'true');
-                                    }
-                                } catch(e){}
-                            })();
-                        `,
-                    }}
-                />
             </head>
             <body className="antialiased" suppressHydrationWarning>
                 <AuthProvider>
-                    <ClientProviders>
-                        {children}
-                    </ClientProviders>
+                    <NotificationManager />
+                    <PrivacyProtection />
+                    {children}
                 </AuthProvider>
+
+                {/* Register Service Worker */}
+                <script
+                    dangerouslySetInnerHTML={{
+                        __html: `
+                            if ('serviceWorker' in navigator) {
+                                window.addEventListener('load', () => {
+                                    navigator.serviceWorker.getRegistrations?.().then((regs) => regs.forEach((reg) => reg.update?.())).catch(() => {});
+                                    navigator.serviceWorker.register('/sw.js?v=20260709-2', { updateViaCache: 'none' }).catch(() => {});
+                                });
+                            }
+                        `,
+                    }}
+                />
             </body>
         </html>
     );

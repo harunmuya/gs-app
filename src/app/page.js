@@ -1,79 +1,40 @@
-'use client';
+﻿'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+import Logo from '@/components/Logo';
+import { motion } from 'framer-motion';
 
-export default function Home() {
+export default function HomePage() {
     const { user, loading } = useAuth();
     const router = useRouter();
-    const [minTimeElapsed, setMinTimeElapsed] = useState(false);
 
     useEffect(() => {
-        const timer = setTimeout(() => setMinTimeElapsed(true), 1200);
-        return () => clearTimeout(timer);
-    }, []);
-
-    useEffect(() => {
-        if (!loading && minTimeElapsed) {
+        if (!loading) {
             if (user) {
                 router.replace('/discover');
             } else {
                 router.replace('/auth/login');
             }
         }
-    }, [loading, minTimeElapsed, user]);
+    }, [user, loading, router]);
 
     return (
-        <div style={{
-            minHeight: '100dvh',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'linear-gradient(145deg, #0F0F14 0%, #1a1025 50%, #0F0F14 100%)',
-            color: '#F0F0F5',
-            fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-            position: 'relative',
-            overflow: 'hidden',
-        }}>
-            {/* Ambient glow */}
-            <div style={{
-                position: 'absolute',
-                top: '30%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                width: 300,
-                height: 300,
-                borderRadius: '50%',
-                background: 'radial-gradient(circle, rgba(255,90,95,0.15) 0%, transparent 70%)',
-                filter: 'blur(60px)',
-                pointerEvents: 'none',
-            }} />
+        <div className="min-h-dvh flex items-center justify-center" style={{ background: 'var(--gradient-primary)' }}>
+            <motion.div
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.5 }}
+                className="flex flex-col items-center gap-5"
+            >
+                <div className="logo-pulse">
+                    <Logo size={80} />
+                </div>
 
-            {/* GS Icon */}
-            <img
-                src="/gs-logo.png?v=7"
-                alt="GS"
-                style={{
-                    width: 80,
-                    height: 80,
-                    objectFit: 'contain',
-                    marginBottom: 20,
-                    animation: 'splashZoom 1.2s ease-in-out infinite',
-                }}
-            />
-
-            <p style={{ fontSize: 12, opacity: 0.5, letterSpacing: '0.5px', fontWeight: 500 }}>
-                Kenya&apos;s #1 Dating Platform
-            </p>
-
-            <style>{`
-                @keyframes splashZoom {
-                    0%, 100% { transform: scale(0.85); opacity: 0.6; }
-                    50% { transform: scale(1.1); opacity: 1; }
-                }
-            `}</style>
+                <div className="w-8 h-8 border-3 border-white/30 border-t-white rounded-full animate-spin" />
+            </motion.div>
         </div>
     );
 }
+
