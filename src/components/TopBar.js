@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Bell, Search } from 'lucide-react';
+import { Bell, Search } from '@/components/icons';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -30,7 +30,7 @@ export default function TopBar() {
                     <Link href="/alerts" className="relative p-2 rounded-xl transition-all active:scale-90" style={{ color: 'var(--color-text-muted)' }}>
                         <Bell size={20} strokeWidth={2} />
                         {unreadAlerts > 0 && (
-                            <span className="absolute top-1 right-1 min-w-[16px] h-4 rounded-full flex items-center justify-center text-[8px] font-black text-white px-0.5 gradient-primary" style={{ boxShadow: '0 2px 6px rgba(155,44,94,0.3)' }}>
+                            <span className="absolute top-1 right-1 min-w-[16px] h-4 rounded-full flex items-center justify-center text-[8px] font-semibold text-white px-0.5 gradient-primary" style={{ boxShadow: '0 2px 6px rgba(155,44,94,0.3)' }}>
                                 {unreadAlerts > 9 ? '9+' : unreadAlerts}
                             </span>
                         )}

@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { PhoneCall, PhoneOff, Video } from 'lucide-react';
+import { PhoneCall, PhoneOff, Video } from '@/components/icons';
 import { createBrowserSupabaseClient, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthContext';
 import UserAvatar from '@/components/UserAvatar';
+import { startRingtone, stopRingtone } from '@/lib/ringtone';
+import { POLL } from '@/lib/usePolling';
 
 export default function IncomingCallManager() {
     const { user } = useAuth();
@@ -29,16 +31,51 @@ export default function IncomingCallManager() {
     async function loadCalls() {
         if (!user?.id) return;
         try {
-            const res = await fetch(`/api/calls?userId=${encodeURIComponent(user.id)}`);
+            const res = await fetch(`/api/calls`);
             const data = await res.json().catch(() => ({}));
             if (res.ok) setSessions(data.sessions || []);
         } catch {}
     }
 
+    /*
+      Watch for incoming calls.
+
+      Realtime is not currently published for call_sessions, so this poll is the
+      only way a ringing call reaches the member — it cannot simply be removed.
+      But it ran every 3 seconds for every signed-in member forever, including on
+      a tab left open in the background: 1,200 requests an hour per open tab, the
+      overwhelming majority answering "no calls".
+
+      A hidden tab cannot show the call sheet or play the ringtone anyway, so it
+      drops to 20 seconds and catches up immediately on becoming visible. The
+      subscription stays and takes over once migration 090 publishes the table.
+    */
     useEffect(() => {
-        if (!user?.id) return;
+        if (!user?.id) return undefined;
+        let interval = null;
+        // Set once the postgres_changes subscription reports SUBSCRIBED. Until
+        // then the poll is the only delivery path and has to run fast.
+        let realtime = false;
+
+        function schedule() {
+            if (interval) window.clearInterval(interval);
+            // A hidden tab cannot show the sheet or sound the ringtone, so it
+            // polls nothing at all. This is the case that accumulates — a tab
+            // left open for days — and it now costs zero.
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            interval = window.setInterval(loadCalls, realtime ? POLL.incomingCallsRealtime : POLL.incomingCalls);
+        }
+
+        function onVisibility() {
+            // Coming back to the tab: check at once, do not wait for the tick.
+            if (document.visibilityState === 'visible') loadCalls();
+            schedule();
+        }
+
         loadCalls();
-        const interval = window.setInterval(loadCalls, 3000);
+        schedule();
+        document.addEventListener('visibilitychange', onVisibility);
+
         let channel = null;
         try {
             if (isSupabaseConfigured()) {
@@ -46,14 +83,45 @@ export default function IncomingCallManager() {
                 channel = supabase
                     .channel(`gs-incoming-calls-${user.id}`)
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'call_sessions', filter: `receiver_id=eq.${user.id}` }, loadCalls)
-                    .subscribe();
+                    .subscribe((state) => {
+                        /*
+                          When the websocket is actually carrying call changes the
+                          poll becomes a safety net and drops from every 6s to
+                          every 60s — a tenfold cut in the single largest source of
+                          edge requests in the app.
+
+                          Realtime traffic goes straight to Supabase and never
+                          passes through Vercel, so it is free in the terms that
+                          matter here. This only engages once migration 090
+                          publishes call_sessions; until then nothing changes.
+                        */
+                        const nowRealtime = state === 'SUBSCRIBED';
+                        if (nowRealtime !== realtime) {
+                            realtime = nowRealtime;
+                            schedule();
+                        }
+                    });
             }
         } catch {}
+
         return () => {
-            window.clearInterval(interval);
+            if (interval) window.clearInterval(interval);
+            document.removeEventListener('visibilitychange', onVisibility);
             try { if (channel) createBrowserSupabaseClient().removeChannel(channel); } catch {}
         };
     }, [user?.id]);
+
+    // Ring while a call is on screen, and stop the moment it is answered,
+    // declined or withdrawn. Tied to the sheet being visible rather than to the
+    // accept handler, so a caller who hangs up also silences it.
+    useEffect(() => {
+        if (!incoming?.id) {
+            stopRingtone();
+            return undefined;
+        }
+        startRingtone();
+        return stopRingtone;
+    }, [incoming?.id]);
 
     async function setCallStatus(status) {
         if (!incoming?.id || busy) return null;
@@ -63,7 +131,7 @@ export default function IncomingCallManager() {
             const res = await fetch('/api/calls', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'status', sessionId: incoming.id, userId: user.id, status }),
+                body: JSON.stringify({ action: 'status', sessionId: incoming.id, status }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {

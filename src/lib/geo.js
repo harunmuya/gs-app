@@ -74,18 +74,41 @@ export function inferCoordinates(value = '') {
     return match ? { latitude: match.latitude, longitude: match.longitude, approximate: true, placeName: match.name } : null;
 }
 
+/**
+ * Nearest known place to a coordinate, or '' when nothing is genuinely close.
+ *
+ * This is the offline fallback for reverse geocoding — `/api/location?action=reverse`
+ * is the accurate path. Two bugs were fixed here:
+ *
+ *  1. It measured distance as `sqrt(dLat² + dLng²)` on raw degrees. A degree of
+ *     longitude is not a degree of latitude — it shrinks by cos(latitude) — so the
+ *     comparison was geometrically wrong. It now uses the real haversine distance.
+ *  2. Anything beyond ~9 km was labelled "<nearest place> area", with no upper
+ *     bound. A member in Nyeri was told "Meru area", roughly 100 km away. It now
+ *     returns '' beyond 25 km rather than asserting a place that is simply wrong —
+ *     an empty field the member fills in is better than a confident falsehood.
+ */
 export function labelFromCoordinates(latitude, longitude) {
     const lat = Number(latitude);
     const lng = Number(longitude);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return '';
-    const nearest = [...KNOWN_PLACES]
-        .map((place) => ({
-            ...place,
-            roughDistance: Math.sqrt((lat - place.latitude) ** 2 + (lng - place.longitude) ** 2),
-        }))
-        .sort((a, b) => a.roughDistance - b.roughDistance)[0];
-    if (!nearest) return `${lat.toFixed(2)}, ${lng.toFixed(2)}`;
-    return nearest.roughDistance < 0.08 ? nearest.name : `${nearest.name} area`;
+
+    const here = { latitude: lat, longitude: lng };
+    let nearest = null;
+    let nearestKm = Infinity;
+
+    for (const place of KNOWN_PLACES) {
+        const km = distanceKm(here, place);
+        if (km !== null && km < nearestKm) {
+            nearestKm = km;
+            nearest = place;
+        }
+    }
+
+    if (!nearest) return '';
+    if (nearestKm <= 8) return nearest.name;
+    if (nearestKm <= 25) return `${nearest.name} area`;
+    return '';
 }
 
 export function coordinatesForProfile(profile = {}) {

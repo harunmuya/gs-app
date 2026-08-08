@@ -1,8 +1,10 @@
 'use client';
 
+import { POLL } from '@/lib/usePolling';
+
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Megaphone, MessageCircle, Rocket, Search } from 'lucide-react';
+import { Megaphone, MessageCircle, Rocket, Search } from '@/components/icons';
 import UserAvatar from '@/components/UserAvatar';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import LiveNowStrip from '@/components/LiveNowStrip';
@@ -51,7 +53,7 @@ export default function MessagesPage() {
             }
         }
         load();
-        const interval = window.setInterval(load, 5000);
+        const interval = window.setInterval(load, POLL.messageList);
         return () => { alive = false; window.clearInterval(interval); };
     }, [user?.id]);
 
@@ -79,10 +81,10 @@ export default function MessagesPage() {
             <Link href="/messages/community" className="flex items-center gap-3 rounded-2xl p-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                 <div className="h-12 w-12 rounded-2xl gradient-primary text-white flex items-center justify-center"><Megaphone size={20} /></div>
                 <div className="min-w-0 flex-1">
-                    <p className="text-sm font-black text-text-primary">GS App Community</p>
+                    <p className="text-sm font-bold text-text-primary">GS App Community</p>
                     <p className="text-xs text-text-muted truncate">Official updates, user instructions, safety tips, boosts, stories, and package guidance.</p>
                 </div>
-                <span className="rounded-full bg-secondary/10 px-2 py-1 text-[10px] font-black text-secondary inline-flex items-center gap-1"><Rocket size={11} /> New</span>
+                <span className="rounded-full bg-secondary/10 px-2 py-1 text-[10px] font-semibold text-secondary inline-flex items-center gap-1"><Rocket size={11} /> New</span>
             </Link>
 
             <label className="relative block">
@@ -98,7 +100,7 @@ export default function MessagesPage() {
                     <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 text-primary flex items-center justify-center"><MessageCircle size={30} /></div>
                     <h2 className="text-lg font-black text-text-primary">No Conversations Yet</h2>
                     <p className="text-sm text-text-muted max-w-xs mx-auto">Open a member profile and start a premium message thread. Your chats will appear here.</p>
-                    <Link href="/members" className="inline-flex rounded-2xl px-5 py-3 text-sm font-black text-white gradient-primary">Browse Members</Link>
+                    <Link href="/members" className="inline-flex rounded-2xl px-5 py-3 text-sm font-bold text-white gradient-primary">Browse Members</Link>
                 </div>
             ) : (
                 <div className="space-y-2">
@@ -111,11 +113,11 @@ export default function MessagesPage() {
                                 <div className="relative shrink-0">
                                     <UserAvatar name={peer.display_name || 'Member'} src={photo} size={52} />
                                     <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full ring-2 ring-white ${onlineTone(peer)}`} />
-                                    {item.unreadCount > 0 && <span className="absolute -right-1 -top-1 min-w-5 h-5 rounded-full bg-secondary text-white text-[10px] font-black flex items-center justify-center px-1">{item.unreadCount > 99 ? '99+' : item.unreadCount}</span>}
+                                    {item.unreadCount > 0 && <span className="absolute -right-1 -top-1 min-w-5 h-5 rounded-full bg-secondary text-white text-[10px] font-semibold flex items-center justify-center px-1">{item.unreadCount > 99 ? '99+' : item.unreadCount}</span>}
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-1">
-                                        <p className="text-sm font-black text-text-primary truncate">{peer.display_name || 'Member'}</p>
+                                        <p className="text-sm font-bold text-text-primary truncate">{peer.display_name || 'Member'}</p>
                                         <VerifiedBadge verified={peer.verified} size={14} />
                                     </div>
                                     <p className="text-xs text-text-secondary truncate">{latest?.body || 'Conversation opened'}</p>

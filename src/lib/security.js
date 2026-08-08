@@ -30,3 +30,9 @@ export function hashResetCode(email, code) {
         .update(`${String(email || '').trim().toLowerCase()}:${String(code || '').trim()}`)
         .digest('hex');
 }
+
+export function hashEmail(email) {
+    return createHash('sha256')
+        .update(String(email || '').trim().toLowerCase())
+        .digest('hex');
+}

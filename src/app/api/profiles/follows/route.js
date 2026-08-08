@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
+import { getSessionMember, requireMember } from '@/lib/authSession';
 
 function jsonError(message, status = 500) {
     return NextResponse.json({ error: message }, { status });
@@ -27,10 +28,13 @@ export async function GET(request) {
     const supabase = createServerSupabaseClient({ admin: true });
     if (!supabase) return jsonError('Supabase admin env missing.', 503);
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+    // Follower/following lists for a target are public, but "am I following this
+    // profile" is answered for the signed-in member only. Anonymous callers get false.
+    const viewer = await getSessionMember({ fields: 'id, auth_user_id, is_banned, is_suspended, account_deleted_at' });
+    const userId = viewer?.id || null;
     const targetId = searchParams.get('targetId');
     const list = searchParams.get('list');
-    if (!userId && !targetId) return jsonError('User id is required.', 400);
+    if (!userId && !targetId) return jsonError('A target profile is required.', 400);
 
     if (list === 'followers' || list === 'following') {
         const column = list === 'followers' ? 'following_id' : 'follower_id';
@@ -55,9 +59,12 @@ export async function POST(request) {
     const supabase = createServerSupabaseClient({ admin: true });
     if (!supabase) return jsonError('Supabase admin env missing.', 503);
     const body = await request.json().catch(() => ({}));
-    const userId = body.userId;
+    // Follower is the signed-in member, not whoever the body claims.
+    const { member, response } = await requireMember();
+    if (response) return response;
+    const userId = member.id;
     const targetId = body.targetId;
-    if (!userId || !targetId) return jsonError('Follower and profile are required.', 400);
+    if (!targetId) return jsonError('Profile to follow is required.', 400);
     if (userId === targetId) return jsonError('You cannot follow yourself.', 400);
 
     const existing = await supabase.from('user_follows').select('id').eq('follower_id', userId).eq('following_id', targetId).maybeSingle();

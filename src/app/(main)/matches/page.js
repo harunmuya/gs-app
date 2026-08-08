@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Eye, Heart, MapPin, MessageCircle, RefreshCw, BadgeCheck, UserCheck, Users } from 'lucide-react';
+import { Eye, HeartHandshake, MapPin, MessageCircle, RefreshCw, BadgeCheck, UserCheck, Users } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import LiveNowStrip from '@/components/LiveNowStrip';
 import BoostedMembersStrip from '@/components/BoostedMembersStrip';
 import StoriesStrip from '@/components/StoriesStrip';
-import { fallbackProfileImageSrc, useProfileImageFallback } from '@/lib/profileImages';
+import { getProfileImageSrc, useProfileImageFallback } from '@/lib/profileImages';
 import { distanceText as profileDistanceText } from '@/lib/geo';
 
 const VALID_PROFILE_LABELS = new Set(['sugar_mummy', 'sugar_daddy', 'mistress', 'toyboy']);
@@ -91,21 +91,18 @@ function targetLabelsForUser(user) {
     const label = userProfileLabel(user);
     if (label === 'sugar_mummy') return new Set(['toyboy', 'sugar_daddy']);
     if (label === 'toyboy') return new Set(['sugar_mummy', 'mistress']);
-    if (label === 'sugar_daddy') return new Set(['sugar_mummy', 'mistress']);
+    if (label === 'sugar_daddy') return new Set(['mistress', 'sugar_mummy']);
     if (label === 'mistress') return new Set(['sugar_daddy', 'toyboy']);
     return new Set(['sugar_mummy', 'sugar_daddy', 'mistress', 'toyboy']);
 }
 
 function preferenceMixForUser(user) {
     const label = userProfileLabel(user);
-    // Toyboy: 80% Sugar Mummies, 20% Mistresses
-    if (label === 'toyboy') return { primary: 'sugar_mummy', secondary: 'mistress', pattern: ['primary', 'primary', 'primary', 'primary', 'secondary'] };
-    // Sugar Mummy: 80% Toyboys/SugarGuys, 20% Sugar Daddies
-    if (label === 'sugar_mummy') return { primary: 'toyboy', secondary: 'sugar_daddy', pattern: ['primary', 'primary', 'primary', 'primary', 'secondary'] };
-    // Sugar Daddy: 70% Mistresses, 30% Sugar Mummies
-    if (label === 'sugar_daddy') return { primary: 'mistress', secondary: 'sugar_mummy', pattern: ['primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'secondary', 'secondary', 'secondary'] };
-    // Mistress: 90% Sugar Daddies, 10% Toyboys/SugarGuys
-    if (label === 'mistress') return { primary: 'sugar_daddy', secondary: 'toyboy', pattern: ['primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'secondary'] };
+    const pattern = ['primary', 'primary', 'primary', 'primary', 'secondary'];
+    if (label === 'toyboy') return { primary: 'sugar_mummy', secondary: 'mistress', pattern };
+    if (label === 'sugar_mummy') return { primary: 'toyboy', secondary: 'sugar_daddy', pattern };
+    if (label === 'sugar_daddy') return { primary: 'mistress', secondary: 'sugar_mummy', pattern };
+    if (label === 'mistress') return { primary: 'sugar_daddy', secondary: 'toyboy', pattern };
     return null;
 }
 
@@ -172,19 +169,20 @@ export default function MatchesPage() {
         setFollowed(getLocalMap('gscom_followed_members'));
         async function load() {
             try {
+                // One request covering every target label. This previously fired
+                // 1 + N parallel requests each pulling 240 rows — and the unlabelled
+                // one was redundant, since `recommendations` filters to target
+                // labels anyway. Only 40 cards are ever rendered.
                 const targetLabels = Array.from(targetLabelsForUser(user) || []);
-                const memberRequests = [
-                    fetch(`/api/members?per_page=240${user?.id ? `&viewer_id=${encodeURIComponent(user.id)}` : ''}`, { cache: 'no-store' }),
-                    ...targetLabels.map((label) => fetch(`/api/members?per_page=240&label=${encodeURIComponent(label)}${user?.id ? `&viewer_id=${encodeURIComponent(user.id)}` : ''}`, { cache: 'no-store' })),
-                ];
-                const responses = await Promise.allSettled(memberRequests);
-                const payloads = await Promise.all(responses.map((item) => item.status === 'fulfilled' ? item.value.json().catch(() => ({})) : {}));
+                const params = new URLSearchParams({ per_page: '120' });
+                if (targetLabels.length) params.set('labels', targetLabels.join(','));
+                const res = await fetch(`/api/members?${params.toString()}`, { cache: 'no-store' });
+                const payload = await res.json().catch(() => ({}));
                 const byId = new Map();
-                payloads.flatMap((payload) => payload.members || []).forEach((member) => {
+                (payload.members || []).forEach((member) => {
                     if (member?.id && !byId.has(member.id)) byId.set(member.id, member);
                 });
-                const memberDeck = Array.from(byId.values());
-                setMembers(memberDeck);
+                setMembers(Array.from(byId.values()));
             } finally {
                 setLoading(false);
             }
@@ -229,14 +227,14 @@ export default function MatchesPage() {
             </section>
 
             {loading ? <div className="py-12 text-center text-primary font-black">Finding compatible users...</div> : recommendations.length === 0 ? (
-                <div className="text-center py-16 space-y-3"><div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center"><Users size={30} className="text-primary" /></div><h2 className="text-lg font-black text-text-primary">No matches yet</h2><p className="text-sm text-text-muted">Complete your profile and interact with members to improve recommendations.</p></div>
+                <div className="text-center py-16 space-y-3"><div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center"><HeartHandshake size={30} className="text-primary" /></div><h2 className="text-lg font-black text-text-primary">No matches yet</h2><p className="text-sm text-text-muted">Complete your profile and interact with members to improve recommendations.</p></div>
             ) : (
                 <section className="space-y-3">
                     {recommendations.map((member, index) => (
                         <motion.article key={member.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.02 }} className="rounded-2xl overflow-hidden" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                             <div className="p-3 flex gap-3">
                                 <Link href={memberPath(member)} className="w-20 h-24 rounded-2xl overflow-hidden shrink-0 bg-primary/10 flex items-center justify-center">
-                                    <img src={member.avatarUrl || fallbackProfileImageSrc(member.name)} alt={member.name} className="w-full h-full object-cover" onError={(event) => useProfileImageFallback(event, member.name)} />
+                                    <img src={getProfileImageSrc(member)} alt={member.name} loading="lazy" decoding="async" className="w-full h-full object-cover" onError={(event) => useProfileImageFallback(event, member.name, member.profileLabel, member.isSeedProfile)} />
                                 </Link>
                                 <div className="min-w-0 flex-1 space-y-1.5">
                                     <div className="flex items-center gap-1.5"><h2 className="font-black text-text-primary truncate">{member.name}</h2><VerifiedBadge verified={member.verified} size={16} /></div>
@@ -244,13 +242,13 @@ export default function MatchesPage() {
                                     <p className="text-xs font-bold text-text-primary truncate">{profileSummary(member)}</p>
                                     {(member.distanceText || profileDistanceText(user, member)) && <p className="text-xs font-bold text-primary truncate">{member.distanceText || profileDistanceText(user, member)}</p>}
                                     <p className="text-xs text-text-secondary line-clamp-2">{member.intentSummary || member.wants || member.bio || 'Compatible member suggestion.'}</p>
-                                    <div className="flex flex-wrap gap-1"><span className="px-2 py-0.5 rounded-full text-[10px] font-black text-primary bg-primary/10">{member.score}% fit</span>{member.isBoosted && <span className="px-2 py-0.5 rounded-full text-[10px] font-black text-white bg-secondary">Boosted</span>}<span className="px-2 py-0.5 rounded-full text-[10px] font-black text-secondary bg-secondary/10">{member.reason}</span></div>
+                                    <div className="flex flex-wrap gap-1"><span className="px-2 py-0.5 rounded-full text-[10px] font-semibold text-primary bg-primary/10">{member.score}% fit</span>{member.isBoosted && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold text-white bg-secondary">Boosted</span>}<span className="px-2 py-0.5 rounded-full text-[10px] font-semibold text-secondary bg-secondary/10">{member.reason}</span></div>
                                 </div>
                             </div>
                             <div className="grid grid-cols-3 border-t" style={{ borderColor: 'rgba(15,118,110,0.08)' }}>
-                                <Link href={memberPath(member)} className="py-2 text-xs font-black text-primary flex items-center justify-center gap-1"><Eye size={14} /> View</Link>
-                                <Link href={memberPath(member, '#message')} className="py-2 text-xs font-black text-sky-700 flex items-center justify-center gap-1"><MessageCircle size={14} /> Message</Link>
-                                <Link href="/packages" className="py-2 text-xs font-black text-gold flex items-center justify-center gap-1"><BadgeCheck size={14} /> Pro</Link>
+                                <Link href={memberPath(member)} className="py-2 text-xs font-semibold text-primary flex items-center justify-center gap-1"><Eye size={14} /> View</Link>
+                                <Link href={memberPath(member, '#message')} className="py-2 text-xs font-semibold text-sky-700 flex items-center justify-center gap-1"><MessageCircle size={14} /> Message</Link>
+                                <Link href="/packages" className="py-2 text-xs font-semibold text-gold flex items-center justify-center gap-1"><BadgeCheck size={14} /> Pro</Link>
                             </div>
                         </motion.article>
                     ))}

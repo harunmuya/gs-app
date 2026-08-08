@@ -3,8 +3,9 @@
 import { use, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Gift, ImagePlus, Lock, PhoneCall, Send, Video, Wallet, X } from 'lucide-react';
+import { ArrowLeft, Gift, ImagePlus, Lock, PhoneCall, Send, Smile, Sticker, Video, Wallet, X } from '@/components/icons';
 import { createBrowserSupabaseClient, isSupabaseConfigured } from '@/lib/supabaseClient';
+import PresenceDot from '@/components/PresenceDot';
 import { useAuth } from '@/contexts/AuthContext';
 import UserAvatar from '@/components/UserAvatar';
 import VerifiedBadge from '@/components/VerifiedBadge';
@@ -25,15 +26,15 @@ const REACTION_REPLIES = [
     { name: 'Heart', text: 'I like your profile.' },
     { name: 'Smile', text: 'Your profile made me smile.' },
 ];
+const EMOJI_CHOICES = ['😊', '😍', '😘', '❤️', '😂', '🔥', '👍', '💋', '🌹', '✨'];
+const FALLBACK_STICKERS = [
+    { id: 'rose', name: 'Rose Sticker', url: '/gifts/rose.webp', type: 'image' },
+    { id: 'heart', name: 'Heart Sticker', url: '/gifts/heart.webp', type: 'image' },
+    { id: 'kiss', name: 'Kiss Sticker', url: '/gifts/kiss.webp', type: 'image' },
+    { id: 'confetti', name: 'Confetti GIF', url: '/gifts/confetti.webp', type: 'gif' },
+];
 function timeText(date) {
     try { return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch { return ''; }
-}
-
-function presenceTone(peer) {
-    const seen = peer?.last_seen_at ? Date.now() - new Date(peer.last_seen_at).getTime() : Infinity;
-    if (seen < 3 * 60 * 1000) return 'bg-success';
-    if (seen < 24 * 60 * 60 * 1000) return 'bg-amber-400';
-    return 'bg-gray-300';
 }
 
 export default function MessageThreadPage({ params }) {
@@ -43,12 +44,14 @@ export default function MessageThreadPage({ params }) {
     const [peer, setPeer] = useState(null);
     const [conversation, setConversation] = useState(null);
     const [messages, setMessages] = useState([]);
+    const [packageAccess, setPackageAccess] = useState(null);
     const [text, setText] = useState('');
     const [attachment, setAttachment] = useState(null);
     const [voiceNote, setVoiceNote] = useState(null);
     const [canMessage, setCanMessage] = useState(false);
     const [wallet, setWallet] = useState({ giftCatalog: [] });
     const [giftPanelOpen, setGiftPanelOpen] = useState(false);
+    const [stickerPanelOpen, setStickerPanelOpen] = useState(false);
     const [giftBurst, setGiftBurst] = useState(null);
     const [status, setStatus] = useState('');
     const [loading, setLoading] = useState(true);
@@ -71,6 +74,7 @@ export default function MessageThreadPage({ params }) {
             setConversation(data.conversation || null);
             setMessages(data.messages || []);
             setCanMessage(Boolean(data.canMessage));
+            setPackageAccess(data.packageAccess || null);
         } catch (err) {
             setStatus(err.message || 'Could not open chat.');
         } finally {
@@ -139,10 +143,39 @@ export default function MessageThreadPage({ params }) {
     }, [messages, user?.id]);
 
     function attachImage(file) {
+        if (!packageAccess?.can_send_images) {
+            setStatus('Image sharing requires Basic package or higher.');
+            return;
+        }
         if (!file || !file.type.startsWith('image/')) return;
         const reader = new FileReader();
         reader.onload = (event) => setAttachment({ url: event.target.result, type: 'image', name: file.name || 'Image' });
         reader.readAsDataURL(file);
+    }
+
+    function addEmoji(emoji) {
+        setText((current) => `${current}${current && !/\s$/.test(current) ? ' ' : ''}${emoji}`);
+    }
+
+    function attachSticker(item) {
+        const url = item?.gif_url || item?.gifUrl || item?.icon_url || item?.iconUrl || item?.url || '';
+        const type = item?.gif_url || item?.gifUrl || item?.type === 'gif' ? 'gif' : 'image';
+        if (!url) {
+            setStatus('Sticker media is not available yet.');
+            return;
+        }
+        if (type === 'gif' && !canSendGifs) {
+            setStatus('GIF sharing requires Silver package or higher.');
+            return;
+        }
+        if (type === 'image' && !canSendImages) {
+            setStatus('Sticker sharing requires Basic package or higher.');
+            return;
+        }
+        setAttachment({ url, type, name: item.name || 'Sticker' });
+        setStickerPanelOpen(false);
+        setGiftPanelOpen(false);
+        setStatus('');
     }
 
     function handleTextChange(event) {
@@ -200,7 +233,8 @@ export default function MessageThreadPage({ params }) {
             await loadThread({ silent: true });
         } catch (err) {
             setStatus(err.message || 'Message failed.');
-            if (String(err.message || '').includes('premium')) window.setTimeout(() => router.push('/packages'), 900);
+            const lower = String(err.message || '').toLowerCase();
+            if (lower.includes('premium') || lower.includes('package') || lower.includes('quota') || lower.includes('requires')) window.setTimeout(() => router.push('/packages'), 900);
         }
     }
 
@@ -239,13 +273,19 @@ export default function MessageThreadPage({ params }) {
     const peerPhoto = peer?.avatar_url || peer?.photos?.[0] || '';
     const isSelfThread = peerId === user?.id;
     const inventoryByGift = new Map((wallet.giftInventory || []).map((item) => [item.gift_id, item]));
+    const canSendImages = Boolean(packageAccess?.can_send_images);
+    const canSendVoice = Boolean(packageAccess?.can_send_voice_notes);
+    const canSendGifs = Boolean(packageAccess?.can_send_voice_notes || packageAccess?.voice_video_access);
+    const stickerItems = (wallet.giftCatalog || []).length
+        ? (wallet.giftCatalog || []).filter((item) => item.icon_url || item.iconUrl || item.gif_url || item.gifUrl).slice(0, 24)
+        : FALLBACK_STICKERS;
 
     return (
         <div className="min-h-[calc(100dvh-70px)] pb-24 flex flex-col">
             {giftBurst && <div className="fixed inset-x-0 top-20 z-50 mx-auto w-[min(92%,360px)] pointer-events-none">
                 <div className="gs-gift-burst rounded-[28px] p-4 shadow-2xl text-center" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                     <GiftVisual gift={giftBurst.gift} className="mx-auto h-28 w-28 rounded-3xl" />
-                    <p className="mt-2 text-sm font-black text-text-primary">{giftBurst.gift?.name || 'Gift'} delivered</p>
+                    <p className="mt-2 text-sm font-bold text-text-primary">{giftBurst.gift?.name || 'Gift'} delivered</p>
                     <p className="text-xs text-text-muted">Sent to {giftBurst.receiver}</p>
                 </div>
             </div>}
@@ -254,14 +294,14 @@ export default function MessageThreadPage({ params }) {
                 <Link href={`/members/${peerId}`} className="min-w-0 flex flex-1 items-center gap-3">
                     <div className="relative shrink-0">
                         <UserAvatar name={peer?.display_name || 'Member'} src={peerPhoto} size={44} />
-                        <span className={`absolute right-0 bottom-0 w-3.5 h-3.5 rounded-full ring-2 ring-white ${presenceTone(peer)}`} />
+                        <PresenceDot member={peer} size={14} className="absolute right-0 bottom-0 ring-2 ring-white" />
                     </div>
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1">
-                            <h1 className="text-sm font-black text-text-primary truncate">{peer?.display_name || 'Member'}</h1>
+                            <h1 className="text-sm font-bold text-text-primary truncate">{peer?.display_name || 'Member'}</h1>
                             <VerifiedBadge verified={peer?.verified} size={14} />
                         </div>
-                        <p className="text-[10px] text-text-muted">{peerTyping ? 'typing...' : canMessage ? 'Chat active' : 'Daily quota reached'}</p>
+                        <p className="text-[10px] text-text-muted">{peerTyping ? 'typing...' : canMessage ? 'Chat active' : 'Recharge or upgrade to continue'}</p>
                     </div>
                 </Link>
                 {!isSelfThread && <Link href={`/calls/${peerId}?type=voice`} className="w-9 h-9 rounded-full bg-sky-100 text-sky-700 flex items-center justify-center" aria-label="Voice call"><PhoneCall size={16} /></Link>}
@@ -280,9 +320,9 @@ export default function MessageThreadPage({ params }) {
                             <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                                 <div onDoubleClick={() => reactToMessage(message, 'heart')} className={`max-w-[82%] rounded-[22px] p-3 shadow-sm ${mine ? 'rounded-br-md text-white gradient-primary' : 'rounded-bl-md text-text-primary'}`} style={!mine ? { background: 'var(--color-bg-card)', border: 'var(--card-border)' } : {}}>
                                     {callMeta?.id && <CallLogCard call={callMeta} mine={mine} />}
-                                    {attachmentMeta?.type === 'image' && attachmentMeta.url && <img src={attachmentMeta.url} alt={attachmentMeta.name || 'Attachment'} className="mb-2 max-h-56 rounded-2xl object-cover" />}
-                                    {attachmentMeta?.type === 'gif' && attachmentMeta.url && <img src={attachmentMeta.url} alt={attachmentMeta.name || 'Reaction'} className="mb-2 max-h-48 rounded-2xl object-cover" />}
-                                    {attachmentMeta?.type === 'gif' && !attachmentMeta.url && <p className="mb-2 rounded-xl bg-white/20 px-3 py-2 text-xs font-black">{attachmentMeta.name || 'Reaction'}</p>}
+                                    {attachmentMeta?.type === 'image' && attachmentMeta.url && <img src={attachmentMeta.url} alt={attachmentMeta.name || 'Attachment'} className="mb-2 max-h-56 rounded-2xl object-cover"  loading="lazy" decoding="async" />}
+                                    {attachmentMeta?.type === 'gif' && attachmentMeta.url && <img src={attachmentMeta.url} alt={attachmentMeta.name || 'Reaction'} className="mb-2 max-h-48 rounded-2xl object-cover"  loading="lazy" decoding="async" />}
+                                    {attachmentMeta?.type === 'gif' && !attachmentMeta.url && <p className="mb-2 rounded-xl bg-white/20 px-3 py-2 text-xs font-semibold">{attachmentMeta.name || 'Reaction'}</p>}
                                     {message.metadata?.gift?.name && <GiftMessageCard gift={message.metadata.gift} mine={mine} />}
                                     {voiceMeta?.url && <div className={`mb-2 rounded-2xl p-2 ${mine ? 'bg-white/18' : 'bg-sky-50'}`}>
                                         <audio src={voiceMeta.url} controls className="max-w-full" />
@@ -291,7 +331,7 @@ export default function MessageThreadPage({ params }) {
                                     {!callMeta?.id && <p className="text-sm whitespace-pre-wrap">{message.body}</p>}
                                     {message.metadata?.reactions && Object.keys(message.metadata.reactions).length > 0 && <div className="mt-2 flex flex-wrap gap-1">
                                         {Object.entries(message.metadata.reactions).map(([name, users]) => (
-                                            <button key={name} type="button" onClick={() => reactToMessage(message, name)} className={`rounded-full px-2 py-0.5 text-[10px] font-black ${mine ? 'bg-white/20 text-white' : 'bg-rose-50 text-rose-700'}`}>
+                                            <button key={name} type="button" onClick={() => reactToMessage(message, name)} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${mine ? 'bg-white/20 text-white' : 'bg-rose-50 text-rose-700'}`}>
                                                 {name === 'heart' ? 'Love' : name} {Array.isArray(users) ? users.length : 0}
                                             </button>
                                         ))}
@@ -308,36 +348,64 @@ export default function MessageThreadPage({ params }) {
             <form onSubmit={sendMessage} className="fixed bottom-[72px] left-0 right-0 z-30 px-3">
                 <div className="max-w-md mx-auto rounded-3xl p-2 shadow-xl space-y-2" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                     <div className="flex flex-wrap gap-1 px-1">
-                        {QUICK_REPLIES.map((reply) => <button key={reply.label} type="button" onClick={() => setText(reply.text)} className="px-2 h-8 rounded-xl bg-primary/10 text-primary text-[10px] font-black">{reply.label}</button>)}
-                        {REACTION_REPLIES.map((reply) => <button key={reply.name} type="button" onClick={() => setText(reply.text)} className="px-2 h-8 rounded-xl bg-amber-100 text-gold text-[10px] font-black">{reply.name}</button>)}
-                        <button type="button" onClick={() => setGiftPanelOpen((open) => !open)} className="px-2 h-8 rounded-xl bg-secondary/10 text-secondary text-[10px] font-black flex items-center gap-1"><Gift size={12} /> Gifts</button>
+                        {QUICK_REPLIES.map((reply) => <button key={reply.label} type="button" onClick={() => setText(reply.text)} className="px-2 h-8 rounded-xl bg-primary/10 text-primary text-[10px] font-semibold">{reply.label}</button>)}
+                        {REACTION_REPLIES.map((reply) => <button key={reply.name} type="button" onClick={() => setText(reply.text)} className="px-2 h-8 rounded-xl bg-amber-100 text-gold text-[10px] font-semibold">{reply.name}</button>)}
+                        <button type="button" onClick={() => setGiftPanelOpen((open) => !open)} className="px-2 h-8 rounded-xl bg-secondary/10 text-secondary text-[10px] font-semibold flex items-center gap-1"><Gift size={12} /> Gifts</button>
                     </div>
+                    <div className="flex items-center gap-1 overflow-x-auto px-1 pb-1">
+                        <span className="shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary"><Smile size={14} /></span>
+                        {EMOJI_CHOICES.map((emoji) => (
+                            <button key={emoji} type="button" onClick={() => addEmoji(emoji)} className="shrink-0 h-8 w-8 rounded-xl bg-white/80 text-base shadow-sm ring-1 ring-black/5" aria-label={`Add ${emoji}`}>{emoji}</button>
+                        ))}
+                        <button type="button" onClick={() => { setStickerPanelOpen((open) => !open); setGiftPanelOpen(false); }} className="shrink-0 h-8 rounded-xl px-2 bg-primary/10 text-primary text-[10px] font-semibold flex items-center gap-1">
+                            <Sticker size={12} /> Stickers/GIFs
+                        </button>
+                    </div>
+                    {stickerPanelOpen && <div className="mx-1 rounded-2xl p-2" style={{ background: 'var(--color-surface)' }}>
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                            <p className="text-[10px] font-semibold text-text-primary">Stickers and GIFs</p>
+                            <Link href="/packages" className="text-[10px] font-semibold text-primary">Unlock media</Link>
+                        </div>
+                        <div className="grid grid-cols-4 gap-2 max-h-48 overflow-auto">
+                            {stickerItems.map((item) => {
+                                const url = item.gif_url || item.gifUrl || item.icon_url || item.iconUrl || item.url || '';
+                                const type = item.gif_url || item.gifUrl || item.type === 'gif' ? 'gif' : 'image';
+                                return (
+                                    <button key={item.id || item.name || url} type="button" onClick={() => attachSticker(item)} className="rounded-xl p-1 text-center bg-white/80 shadow-sm ring-1 ring-black/5">
+                                        {url ? <img src={url} alt="" className="mx-auto h-12 w-12 rounded-lg object-contain"  loading="lazy" decoding="async" /> : <span className="block h-12 rounded-lg bg-primary/10" />}
+                                        <span className="mt-1 block truncate text-[9px] font-semibold text-text-primary">{type === 'gif' ? 'GIF' : item.name || 'Sticker'}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <p className="mt-2 text-[10px] text-text-muted">Stickers require Basic. GIFs, voice notes, and richer media require Silver or higher.</p>
+                    </div>}
                     {giftPanelOpen && <div className="mx-1 rounded-2xl p-2" style={{ background: 'var(--color-surface)' }}>
                         <div className="mb-2 flex items-center justify-between gap-2">
-                            <p className="text-[10px] font-black text-text-primary">Gift credits: {(wallet.giftWallet?.credits || 0) + (wallet.creditWallet?.credits || 0)}</p>
-                            <Link href="/wallet" className="text-[10px] font-black text-primary inline-flex items-center gap-1"><Wallet size={11} /> Buy credits</Link>
+                            <p className="text-[10px] font-semibold text-text-primary">Gift credits: {(wallet.giftWallet?.credits || 0) + (wallet.creditWallet?.credits || 0)}</p>
+                            <Link href="/wallet" className="text-[10px] font-semibold text-primary inline-flex items-center gap-1"><Wallet size={11} /> Buy credits</Link>
                         </div>
                         <p className="mb-2 text-[10px] text-text-muted">Owned gifts send first. If you do not own the gift, approved credits are used and the receiver keeps it in their gift wallet.</p>
                         <div className="grid grid-cols-3 gap-2 max-h-72 overflow-auto">
                             {(wallet.giftCatalog || []).length === 0 ? <p className="col-span-3 text-xs text-text-muted">No gifts are active yet. Ask admin to activate gift catalog.</p> : wallet.giftCatalog.map((gift) => (
                                 <button key={gift.id} type="button" onClick={() => sendGift(gift)} className="rounded-xl p-2 text-left bg-white/80 shadow-sm ring-1 ring-black/5">
                                     <GiftVisual gift={gift} className="mb-1 h-14 w-full rounded-lg" />
-                                    <span className="block truncate text-[10px] font-black text-text-primary">{gift.name}</span>
-                                    <span className="text-[9px] font-black text-primary">{inventoryByGift.get(gift.id)?.quantity ? `Owned x${inventoryByGift.get(gift.id)?.quantity}` : `${gift.credit_cost || 0} credits`}</span>
+                                    <span className="block truncate text-[10px] font-semibold text-text-primary">{gift.name}</span>
+                                    <span className="text-[9px] font-semibold text-primary">{inventoryByGift.get(gift.id)?.quantity ? `Owned x${inventoryByGift.get(gift.id)?.quantity}` : `${gift.credit_cost || 0} credits`}</span>
                                 </button>
                             ))}
                         </div>
                     </div>}
-                    {attachment?.type === 'image' && <Preview onClear={() => setAttachment(null)}><img src={attachment.url} alt="" className="w-20 h-20 rounded-xl object-cover" /></Preview>}
-                    {attachment?.type === 'gif' && <Preview onClear={() => setAttachment(null)}><span className="text-xs font-black text-gold">{attachment.name}</span></Preview>}
-                    {voiceNote?.url && <Preview onClear={() => setVoiceNote(null)}><div className="flex items-center gap-2"><audio src={voiceNote.url} controls className="max-w-[210px]" /><span className="text-[10px] font-black text-primary">{voiceNote.durationSeconds || 0}s</span></div></Preview>}
+                    {attachment?.type === 'image' && <Preview onClear={() => setAttachment(null)}><img src={attachment.url} alt="" className="w-20 h-20 rounded-xl object-cover"  loading="lazy" decoding="async" /></Preview>}
+                    {attachment?.type === 'gif' && <Preview onClear={() => setAttachment(null)}><span className="text-xs font-semibold text-gold">{attachment.name}</span></Preview>}
+                    {voiceNote?.url && <Preview onClear={() => setVoiceNote(null)}><div className="flex items-center gap-2"><audio src={voiceNote.url} controls className="max-w-[210px]" /><span className="text-[10px] font-semibold text-primary">{voiceNote.durationSeconds || 0}s</span></div></Preview>}
                     <div className="flex items-center gap-2">
-                        <input value={text} onChange={handleTextChange} placeholder={canMessage ? 'Type a message' : 'Upgrade for more messages'} className="min-w-0 flex-1 rounded-2xl px-3 py-3 text-sm" style={{ background: 'var(--color-surface)' }} />
-                        <button type="button" onClick={() => fileInputRef.current?.click()} className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center" aria-label="Attach image"><ImagePlus size={17} /></button>
-                        <VoiceRecorder disabled={!canMessage} onRecorded={setVoiceNote} onError={setStatus} />
+                        <input value={text} onChange={handleTextChange} placeholder={canMessage ? 'Type a message' : 'Recharge or upgrade to continue'} enterKeyHint="send" className="min-w-0 flex-1 rounded-2xl px-3 py-3 text-sm" style={{ background: 'var(--color-surface)' }} />
+                        <button type="button" disabled={!canMessage || !canSendImages} onClick={() => fileInputRef.current?.click()} className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center disabled:opacity-45" aria-label="Attach image"><ImagePlus size={17} /></button>
+                        <VoiceRecorder disabled={!canMessage || !canSendVoice} onRecorded={setVoiceNote} onError={setStatus} />
                         <button className="w-11 h-10 rounded-2xl gradient-primary text-white flex items-center justify-center" aria-label="Send"><Send size={17} /></button>
                     </div>
-                    {!canMessage && <p className="px-2 text-[10px] font-bold text-text-muted flex items-center gap-1"><Lock size={11} /> Your message quota is exhausted. Upgrade for more access.</p>}
+                    {!canMessage && <p className="px-2 text-[10px] font-bold text-text-muted flex items-center gap-1"><Lock size={11} /> Daily quota reached. Subscribe to Basic, Silver, or Gold for unlimited messaging.</p>}
                     <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => { attachImage(event.target.files?.[0]); event.target.value = ''; }} />
                 </div>
             </form>
@@ -363,10 +431,10 @@ function GiftMessageCard({ gift, mine }) {
             <GiftVisual gift={normalized} className="mb-2 h-24 w-full rounded-2xl" />
             <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
-                    <p className={`truncate text-xs font-black ${mine ? 'text-white' : 'text-text-primary'}`}>{normalized.name}</p>
+                    <p className={`truncate text-xs font-semibold ${mine ? 'text-white' : 'text-text-primary'}`}>{normalized.name}</p>
                     <p className={`text-[10px] ${mine ? 'text-white/75' : 'text-text-muted'}`}>{gift.source === 'gift_wallet' ? 'Sent from gift wallet' : 'Premium gift delivered'}</p>
                 </div>
-                <span className={`rounded-full px-2 py-1 text-[10px] font-black ${mine ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary'}`}>{gift.creditsSpent || normalized.credit_cost || 0} cr</span>
+                <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${mine ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary'}`}>{gift.creditsSpent || normalized.credit_cost || 0} cr</span>
             </div>
         </div>
     );
@@ -388,7 +456,7 @@ function CallLogCard({ call, mine }) {
                     {isVideo ? <Video size={16} /> : <PhoneCall size={16} />}
                 </span>
                 <div className="min-w-0">
-                    <p className={`text-xs font-black ${mine ? 'text-white' : 'text-text-primary'}`}>{isVideo ? 'Video call' : 'Voice call'} {call.status || 'ended'}</p>
+                    <p className={`text-xs font-semibold ${mine ? 'text-white' : 'text-text-primary'}`}>{isVideo ? 'Video call' : 'Voice call'} {call.status || 'ended'}</p>
                     <p className={`text-[10px] ${mine ? 'text-white/75' : 'text-text-muted'}`}>Duration {formatCallDuration(call.durationSeconds)}</p>
                 </div>
             </div>

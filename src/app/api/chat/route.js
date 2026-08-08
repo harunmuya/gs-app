@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
-import { canUseFeature, dailyLimitForFeature, getUserPackageAccess } from '@/lib/packageAccess';
+import { accountRestrictionMessage, canUseFeature, dailyLimitForFeature, getUserPackageAccess, isAccountRestricted } from '@/lib/packageAccess';
+import { requireMember } from '@/lib/authSession';
+import { consumeQuota } from '@/lib/entitlementGuard';
+import { FACILITATION_NOTICE, profileKindFor, requiresFacilitation } from '@/lib/profileKind';
 
-const LIMIT_NOTICE = 'Your daily quota has been exhausted. Pay for a package to unlock unlimited access.';
+const LIMIT_NOTICE = 'Daily quota reached. Subscribe to Basic, Silver, or Gold for unlimited messaging.';
 
 function jsonError(message, status = 500) {
     return NextResponse.json({ error: message }, { status });
@@ -12,27 +15,13 @@ function pairIds(a, b) {
     return [a, b].sort();
 }
 
-async function enforceDailyLimit(supabase, userId, tier, kind) {
-    const limit = dailyLimitForFeature(tier, kind);
-    if (limit === null || limit === undefined) return { ok: true, limit: null, remaining: null };
-    if (limit <= 0) return { ok: false, limit, remaining: 0, message: LIMIT_NOTICE, redirectTo: '/packages' };
-    const usageDate = new Date().toISOString().slice(0, 10);
-    const result = await supabase
-        .from('user_daily_usage')
-        .select('id, count')
-        .eq('user_id', userId)
-        .eq('usage_date', usageDate)
-        .eq('kind', kind)
-        .maybeSingle();
-    if (result.error && result.error.code !== 'PGRST116') return { ok: true, limit, remaining: Math.max(0, limit - 1), skipped: true };
-    const current = result.data?.count || 0;
-    if (current >= limit) return { ok: false, limit, used: current, remaining: 0, message: LIMIT_NOTICE, redirectTo: '/packages' };
-    if (result.data?.id) {
-        await supabase.from('user_daily_usage').update({ count: current + 1, updated_at: new Date().toISOString() }).eq('id', result.data.id);
-    } else {
-        await supabase.from('user_daily_usage').insert({ user_id: userId, usage_date: usageDate, kind, count: 1 });
-    }
-    return { ok: true, limit, used: current + 1, remaining: Math.max(0, limit - current - 1) };
+/**
+ * Delegates to the canonical guard. The copy that lived here counted with a
+ * read-modify-write (raceable) and treated a query error as permission granted.
+ */
+async function enforceDailyLimit(supabase, userId, tier, kind, user = null) {
+    const subject = user?.id ? user : { id: userId };
+    return consumeQuota(supabase, subject, kind, { tier });
 }
 
 function parseDataUrl(dataUrl) {
@@ -72,7 +61,7 @@ async function getUser(supabase, userId) {
     if (!userId) return null;
     const { data } = await supabase
         .from('users')
-        .select('id, display_name, avatar_url, photos, subscription_tier, admin_approved, package_locked, is_banned, is_suspended, last_seen_at')
+        .select('id, display_name, avatar_url, photos, subscription_tier, admin_approved, package_locked, is_banned, is_suspended, account_deleted_at, last_seen_at, is_seed_profile')
         .eq('id', userId)
         .maybeSingle();
     return data || null;
@@ -114,9 +103,9 @@ async function conversationRows(supabase, userId) {
     if (error) return { error };
     const peers = [...new Set((data || []).map((row) => row.user_one_id === userId ? row.user_two_id : row.user_one_id).filter(Boolean))];
     const { data: users } = peers.length
-        ? await supabase.from('users').select('id, display_name, avatar_url, photos, verified, last_seen_at').in('id', peers)
+        ? await supabase.from('users').select('id, display_name, avatar_url, photos, verified, last_seen_at, is_banned, is_suspended, account_deleted_at').in('id', peers)
         : { data: [] };
-    const usersById = new Map((users || []).map((user) => [user.id, user]));
+    const usersById = new Map((users || []).filter((user) => !isAccountRestricted(user)).map((user) => [user.id, user]));
     const conversationIds = (data || []).map((row) => row.id);
     const { data: messages } = conversationIds.length
         ? await supabase.from('messages').select('id, conversation_id, sender_id, body, message_type, status, read_at, created_at').in('conversation_id', conversationIds).order('created_at', { ascending: false }).limit(200)
@@ -131,6 +120,7 @@ async function conversationRows(supabase, userId) {
         data: (data || []).map((row) => {
             const peerId = row.user_one_id === userId ? row.user_two_id : row.user_one_id;
             const peer = usersById.get(peerId) || {};
+            if (!peer.id) return null;
             return {
                 ...row,
                 peer,
@@ -138,7 +128,7 @@ async function conversationRows(supabase, userId) {
                 latestMessage: latestByConversation.get(row.id) || null,
                 unreadCount: unreadByConversation.get(row.id) || 0,
             };
-        }),
+        }).filter(Boolean),
     };
 }
 
@@ -146,9 +136,15 @@ export async function GET(request) {
     const supabase = createServerSupabaseClient({ admin: true });
     if (!supabase) return jsonError('Supabase admin env missing.', 503);
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+    // Conversations are read as the signed-in member. Taking ?userId= from the
+    // query allowed anyone to read another member's full message history.
+    const { member, response } = await requireMember();
+    if (response) return response;
+    const userId = member.id;
     const peerId = searchParams.get('peerId');
-    if (!userId) return jsonError('Signed-in user id is required.', 400);
+    const viewer = await getUser(supabase, userId);
+    if (!viewer?.id) return jsonError('Signed-in user was not found.', 404);
+    if (isAccountRestricted(viewer)) return jsonError(accountRestrictionMessage(viewer), 403);
 
     if (!peerId) {
         const result = await conversationRows(supabase, userId);
@@ -156,8 +152,9 @@ export async function GET(request) {
         return NextResponse.json({ ok: true, conversations: result.data || [] });
     }
 
-    const [user, peer] = await Promise.all([getUser(supabase, userId), getUser(supabase, peerId)]);
+    const [user, peer] = await Promise.all([Promise.resolve(viewer), getUser(supabase, peerId)]);
     if (!user?.id || !peer?.id) return jsonError('User or member was not found.', 404);
+    if (isAccountRestricted(peer)) return jsonError('This member is unavailable.', 404);
     const conversation = await ensureConversation(supabase, userId, peerId);
     if (conversation.error) return jsonError(conversation.error.message);
     const { data: messages, error } = await supabase
@@ -185,12 +182,28 @@ export async function POST(request) {
     if (!supabase) return jsonError('Supabase admin env missing.', 503);
     const body = await request.json().catch(() => ({}));
     const action = body.action || 'send';
-    const userId = body.userId;
+    // Sender is the signed-in member. body.userId let a caller send messages that
+    // appeared to come from someone else.
+    const { member, response } = await requireMember();
+    if (response) return response;
+    const userId = member.id;
     const peerId = body.peerId;
-    if (!userId || !peerId) return jsonError('User and peer are required.', 400);
+    if (!peerId) return jsonError('Peer is required.', 400);
+    if (String(peerId) === String(userId)) return jsonError('You cannot message yourself.', 400);
     const [user, peer] = await Promise.all([getUser(supabase, userId), getUser(supabase, peerId)]);
     if (!user?.id || !peer?.id) return jsonError('User or member was not found.', 404);
-    if (user.is_banned || user.is_suspended) return jsonError('Your account cannot send messages.', 403);
+    if (isAccountRestricted(user)) return jsonError(accountRestrictionMessage(user) || 'Your account cannot send messages.', 403);
+    if (isAccountRestricted(peer)) return jsonError('This member is unavailable.', 404);
+    // Server-side half of the facilitation rule. The UI hides the composer for
+    // seeded and imported profiles, but the endpoint has to refuse as well —
+    // nobody is behind these accounts to read the message.
+    if (requiresFacilitation(profileKindFor(peer))) {
+        return NextResponse.json({
+            error: FACILITATION_NOTICE,
+            code: 'FACILITATION_REQUIRED',
+            requiresFacilitation: true,
+        }, { status: 403 });
+    }
 
     const conversation = await ensureConversation(supabase, userId, peerId);
     if (conversation.error) return jsonError(conversation.error.message);
@@ -240,11 +253,17 @@ export async function POST(request) {
     if (attachmentUrl && attachmentType === 'image' && !canUseFeature(access.tier, 'images')) {
         return NextResponse.json({ error: 'Image sharing requires Basic package or higher.', redirectTo: '/packages' }, { status: 402 });
     }
+    if (attachmentUrl && attachmentType === 'gif' && !canUseFeature(access.tier, 'gifs')) {
+        return NextResponse.json({ error: 'GIF sharing requires Silver package or higher.', redirectTo: '/packages' }, { status: 402 });
+    }
+    if (attachmentUrl && !['image', 'gif'].includes(attachmentType) && !canUseFeature(access.tier, 'voiceNotes')) {
+        return NextResponse.json({ error: 'Media sharing requires Silver package or higher.', redirectTo: '/packages' }, { status: 402 });
+    }
     if (voiceUrl && !canUseFeature(access.tier, 'voiceNotes')) {
         return NextResponse.json({ error: 'Voice notes require Silver package or higher.', redirectTo: '/packages' }, { status: 402 });
     }
     const quota = await enforceDailyLimit(supabase, userId, access.tier, 'messages');
-    if (!quota.ok) return NextResponse.json({ error: quota.message || LIMIT_NOTICE, ...quota }, { status: 402 });
+    if (!quota.ok) return NextResponse.json({ error: quota.message || LIMIT_NOTICE, ...quota }, { status: quota.httpStatus || 402 });
 
     const messageType = voiceUrl ? 'voice_note' : attachmentType || 'text';
     const finalBody = bodyText || (voiceUrl ? 'Voice note' : attachmentType === 'image' ? 'Image message' : attachmentType === 'gif' ? `GIF: ${attachmentName || 'reaction'}` : 'Media message');

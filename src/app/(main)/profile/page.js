@@ -1,7 +1,8 @@
-'use client';
+﻿'use client';
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     User, Mail, Camera, Trash2, Shield, ShieldCheck, LogOut,
@@ -9,12 +10,15 @@ import {
     MapPin, Edit3, Plus, X, Send, AlertTriangle, ExternalLink,
     Info, HelpCircle, Trash, Clock, Gem, Users, PackageCheck, Headphones,
     Eye, Lock, Phone, SlidersHorizontal, UserCog, Image as ImageIcon, Wallet,
-} from 'lucide-react';
+    ArrowLeft, Crown, CreditCard, Radio, FileText, BadgeCheck,
+} from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
+import { PRECISE_POSITION_OPTIONS, resolvePlaceName } from '@/lib/placeName';
 import UserAvatar from '@/components/UserAvatar';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import StoriesStrip from '@/components/StoriesStrip';
 import AccountActivityPanel from '@/components/AccountActivityPanel';
+import { unreadMessageValue } from '@/lib/inboxCounts';
 
 const PREFERENCE_LABELS = {
     sugar_mummy_looking_for_toyboy: 'Sugar Mummy seeking Sugar Guy / Toyboy',
@@ -22,6 +26,118 @@ const PREFERENCE_LABELS = {
     mistress_looking_for_sugar_daddy: 'Mistress seeking Sugar Daddy',
     toyboy_looking_for_sugar_mummy: 'Sugar Guy / Toyboy seeking Sugar Mummy',
 };
+
+const SECTION_TITLES = {
+    profile: 'Edit profile',
+    photos: 'My photos',
+    verification: 'Verification',
+    membership: 'My membership',
+    activity: 'Activity',
+    stories: 'My stories',
+    saved: 'Saved profiles',
+    settings: 'Settings',
+    status: 'Account status',
+    support: 'Help & support',
+};
+
+/**
+ * One tappable row.
+ *
+ * The account page previously navigated with a 4x4 grid of icon tiles labelled
+ * "Edit", "Prefs", "Pro", "Status" — abbreviations that need decoding, with no
+ * indication of what any of them would do. Rows carry a full label, a supporting
+ * value, and a chevron, which is the pattern every mainstream app settles on
+ * because it is legible at a glance and scales past a dozen entries.
+ */
+function MenuRow({ icon: Icon, label, value, badge, onClick, href, danger = false, last = false }) {
+    const body = (
+        <>
+            <span
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+                style={{ background: danger ? 'color-mix(in srgb, var(--color-danger-text) 10%, transparent)' : 'color-mix(in srgb, var(--color-primary) 10%, transparent)' }}
+            >
+                <Icon size={17} className={danger ? 'text-danger' : 'text-primary'} />
+            </span>
+            <span className="min-w-0 flex-1 text-left">
+                <span className={`block type-body-strong ${danger ? 'text-danger' : 'text-text-primary'}`}>{label}</span>
+                {value && <span className="block type-caption text-text-muted truncate">{value}</span>}
+            </span>
+            {badge > 0 && (
+                <span className="shrink-0 rounded-full px-2 py-0.5 type-micro text-white" style={{ background: 'var(--color-primary)' }}>
+                    {badge > 99 ? '99+' : badge}
+                </span>
+            )}
+            <ChevronRight size={16} className="shrink-0 text-text-muted" />
+        </>
+    );
+
+    const className = 'flex w-full min-h-[56px] items-center gap-3 px-4 py-2.5 text-left';
+    const style = last ? undefined : { borderBottom: '1px solid rgba(20,16,26,0.06)' };
+
+    if (href) return <Link href={href} className={className} style={style}>{body}</Link>;
+    return <button type="button" onClick={onClick} className={className} style={style}>{body}</button>;
+}
+
+function MenuGroup({ title, children }) {
+    return (
+        <section className="space-y-1.5">
+            <h2 className="px-1 type-micro text-text-muted">{title}</h2>
+            <div className="overflow-hidden rounded-2xl" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
+                {children}
+            </div>
+        </section>
+    );
+}
+
+/**
+ * The account menu.
+ *
+ * Grouped by what a member is trying to do, not by which component happens to
+ * render it. Each row either opens a section in place (via the `?section=` URL)
+ * or navigates to an existing page.
+ */
+function AccountMenu({
+    packageLabel, verificationLabel, verified, unreadMessages, savedCount,
+    photoCount, preferenceLabel, onOpen, onPreference, onSignOut,
+}) {
+    return (
+        <div className="space-y-4">
+            <MenuGroup title="Account">
+                <MenuRow icon={UserCog} label="Edit profile" value="Name, bio, age, location, phone" onClick={() => onOpen('profile')} />
+                <MenuRow icon={ImageIcon} label="My photos" value={`${photoCount} of 6 uploaded`} onClick={() => onOpen('photos')} />
+                <MenuRow icon={SlidersHorizontal} label="Dating preference" value={preferenceLabel} onClick={onPreference} />
+                <MenuRow icon={BadgeCheck} label="Verification" value={verificationLabel} onClick={() => onOpen('verification')} last />
+            </MenuGroup>
+
+            <MenuGroup title="Membership & premium">
+                <MenuRow icon={PackageCheck} label="My membership" value={packageLabel} onClick={() => onOpen('membership')} />
+                <MenuRow icon={Crown} label="Upgrade package" value="Compare Basic, Silver and Gold" href="/packages" />
+                <MenuRow icon={Wallet} label="Wallet & GS Credits" value="Balance, top-ups and gifts" href="/wallet" last />
+            </MenuGroup>
+
+            <MenuGroup title="Activity">
+                <MenuRow icon={MessageCircle} label="Messages" badge={unreadMessages} href="/messages" />
+                <MenuRow icon={Bell} label="Alerts" href="/alerts" />
+                <MenuRow icon={Heart} label="Likes, views & followers" onClick={() => onOpen('activity')} />
+                <MenuRow icon={Bookmark} label="Saved profiles" value={savedCount ? `${savedCount} saved` : 'Nothing saved yet'} onClick={() => onOpen('saved')} />
+                <MenuRow icon={Radio} label="My stories" value="24 hour updates" onClick={() => onOpen('stories')} last />
+            </MenuGroup>
+
+            <MenuGroup title="Privacy & safety">
+                <MenuRow icon={Settings} label="Settings" value="Notifications, theme, visibility" onClick={() => onOpen('settings')} />
+                <MenuRow icon={Eye} label="Account status" value={verified ? 'Verified account' : 'Not verified'} onClick={() => onOpen('status')} />
+                <MenuRow icon={Shield} label="Safety centre" href="/safety" />
+                <MenuRow icon={FileText} label="Community guidelines" href="/community-guidelines" last />
+            </MenuGroup>
+
+            <MenuGroup title="Support">
+                <MenuRow icon={Headphones} label="Help & support" value="Payments, accounts, reports" onClick={() => onOpen('support')} />
+                <MenuRow icon={Info} label="Terms & privacy" href="/terms" />
+                <MenuRow icon={LogOut} label="Sign out" onClick={onSignOut} danger last />
+            </MenuGroup>
+        </div>
+    );
+}
 
 export default function ProfilePage() {
     const {
@@ -31,7 +147,22 @@ export default function ProfilePage() {
         updateSettings, updatePreference, verifyProfile, clearVerification, deleteAccount, addMessage,
     } = useAuth();
 
-    const [activeSection, setActiveSection] = useState(null);
+    /**
+     * Which account area is open.
+     *
+     * Held in the URL (`/profile?section=privacy`) rather than component state so
+     * the browser back button leaves a section instead of leaving the app, and so
+     * a section can be linked to directly. The page previously stacked every area
+     * on one long scroll and navigated with `#anchor` links, which back does not
+     * track — and one of those anchors, `#verification`, pointed at an id that was
+     * never rendered, so the Verify button scrolled nowhere.
+     */
+    const router = useRouter();
+    const params = useSearchParams();
+    const section = params.get('section') || 'menu';
+    const inSection = section !== 'menu';
+    const show = (key) => section === key;
+    const openSection = (key) => router.push(key === 'menu' ? '/profile' : `/profile?section=${key}`, { scroll: true });
     const [editField, setEditField] = useState(null);
     const [editValue, setEditValue] = useState('');
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -47,6 +178,7 @@ export default function ProfilePage() {
     const [editBusy, setEditBusy] = useState(false);
     const [deleteBusy, setDeleteBusy] = useState(false);
     const [deleteStatus, setDeleteStatus] = useState('');
+    const [geoBusy, setGeoBusy] = useState(false);
     const fileInputRef = useRef(null);
     const selfieInputRef = useRef(null);
     const documentInputRef = useRef(null);
@@ -55,24 +187,30 @@ export default function ProfilePage() {
     const currentTier = String(profile?.subscription_tier || profile?.subscriptionTier || 'free').toLowerCase();
     const packageApproved = Boolean(!profile?.package_locked && ['basic', 'silver', 'gold', 'diamond'].includes(currentTier));
     const canRevealPhone = packageApproved && ['silver', 'gold', 'diamond'].includes(currentTier);
+    const canUseSilver = packageApproved && ['silver', 'gold', 'diamond'].includes(currentTier);
     const canUseBasic = packageApproved && ['basic', 'silver', 'gold', 'diamond'].includes(currentTier);
     const displayName = profile?.display_name || user?.email?.split('@')[0] || 'Guest';
     const username = String(displayName || 'member').trim().toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24) || 'member';
     const userPhotos = profile?.photos || [];
     const profilePhotoMissing = !(profile?.avatar_url || userPhotos[0]);
-    const profileComplete = Boolean((profile?.avatar_url || userPhotos[0]) && profile?.bio && profile?.age && profile?.location && (profile?.phone_number || profile?.phone));
+    const profileComplete = Boolean(profile?.bio && profile?.age && profile?.location && (profile?.phone_number || profile?.phone));
     const effectiveVerificationStatus = profile?.verification_status || verificationStatus;
-    const unreadMessages = messages.filter((item) => !item.read).length;
+    const unreadMessages = messages.reduce((total, item) => total + unreadMessageValue(item), 0);
     const accountStatus = profileComplete ? (profile?.show_in_public !== false && settings.isPublic ? 'Visible in Members' : 'Hidden by Privacy') : 'Profile incomplete';
     const verificationLabel = effectiveVerificationStatus === 'verified' ? 'Verified' : effectiveVerificationStatus === 'pending_admin' ? 'Under review' : effectiveVerificationStatus === 'reverify_required' ? 'Reverify needed' : 'Not verified';
     const packageLabel = packageApproved ? `${currentTier.toUpperCase()} active` : 'Free account';
     const missingFields = [
-        !(profile?.avatar_url || userPhotos[0]) && 'profile photo',
         !profile?.bio && 'bio',
         !profile?.age && 'age',
         !profile?.location && 'location',
         !profile?.phone_number && !profile?.phone && 'phone number',
     ].filter(Boolean);
+    const premiumStats = [
+        { value: profile?.total_profile_views ?? profile?.totalProfileViews ?? 0, label: 'Views', locked: !canUseSilver },
+        { value: likes.length, label: 'Likes', locked: !canUseSilver },
+        { value: profile?.followers_count ?? profile?.followersCount ?? 0, label: 'Followers', locked: !canUseSilver },
+        { value: profile?.following_count ?? profile?.followingCount ?? 0, label: 'Following', locked: !canUseSilver },
+    ];
 
     // Moderation countdown timer
     useEffect(() => {
@@ -278,7 +416,25 @@ export default function ProfilePage() {
 
     return (
         <div className="px-4 py-4 pb-28 space-y-4">
+            {/* Inside a section: a back row instead of the profile header, so the
+                screen reads as a place you navigated to rather than a scroll target. */}
+            {isLoggedIn && inSection && (
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => openSection('menu')}
+                        aria-label="Back to account"
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
+                        style={{ background: 'var(--color-surface)' }}
+                    >
+                        <ArrowLeft size={18} className="text-text-primary" />
+                    </button>
+                    <h1 className="type-heading text-text-primary">{SECTION_TITLES[section] || 'Account'}</h1>
+                </div>
+            )}
+
             {/* ===== PROFILE HEADER ===== */}
+            {(!isLoggedIn || !inSection) && (
             <div className="rounded-2xl p-5 text-center space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                 <div className="relative inline-block">
                     <UserAvatar name={displayName} src={profile?.avatar_url} size={80} />
@@ -289,6 +445,7 @@ export default function ProfilePage() {
                         {effectiveVerificationStatus === 'verified' && <VerifiedBadge size={18} />}
                     </h2>
                     {isLoggedIn && <p className="text-xs text-text-muted">@{username} - {profile?.location || 'Location not set'}</p>}
+                    {isLoggedIn && user?.email && <p className="text-[11px] text-text-muted/70">{user.email}</p>}
                     {guest && <p className="text-xs text-primary font-medium">Guest Mode</p>}
                     {/* Preference badge */}
                     {isLoggedIn && preference && (
@@ -297,87 +454,73 @@ export default function ProfilePage() {
                             className="mt-1 inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold text-primary"
                             style={{ background: 'rgba(124,58,237,0.08)' }}
                         >
-                            {PREFERENCE_LABELS[preference] || preference} {profile?.preference_locked ? '(locked)' : <Edit3 size={10} />}
+                            {PREFERENCE_LABELS[preference] || preference} <Edit3 size={10} />
                         </button>
                     )}
                 </div>
 
                 {/* Stats */}
                 <div className="grid grid-cols-4 gap-2 pt-2">
-                    {[
-                        { value: likes.length, label: 'Likes' },
-                        { value: matches.length, label: 'Matches' },
-                        { value: saved.length, label: 'Saved' },
-                        { value: unreadMessages > 0 ? `${unreadMessages}/${messages.length}` : messages.length, label: 'Messages' },
-                    ].map(s => (
-                        <div key={s.label} className="text-center rounded-xl p-2" style={{ background: 'var(--color-surface)' }}>
-                            <p className="text-lg font-black text-primary">{s.value}</p>
-                            <p className="text-[10px] text-text-muted font-medium">{s.label}</p>
-                        </div>
-                    ))}
+                    {premiumStats.map((s) => {
+                        const content = (
+                            <>
+                                {/* A mask, not a stand-in number. A blurred "999" still
+                                    asserts a magnitude the account may not have — this is
+                                    the same placeholder removed from the member detail
+                                    page, in its second location. */}
+                                <p className={`text-lg font-black ${s.locked ? 'text-text-muted select-none' : 'text-primary'}`}>{s.locked ? '•••' : s.value}</p>
+                                <p className="text-[10px] text-text-muted font-medium flex items-center justify-center gap-1">
+                                    {s.locked && <Lock size={9} />} {s.label}
+                                </p>
+                            </>
+                        );
+                        return s.locked ? (
+                            <Link key={s.label} href="/packages" className="text-center rounded-xl p-2" style={{ background: 'var(--color-surface)' }} aria-label={`${s.label} requires Silver package`}>
+                                {content}
+                            </Link>
+                        ) : (
+                            <div key={s.label} className="text-center rounded-xl p-2" style={{ background: 'var(--color-surface)' }}>
+                                {content}
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
+            )}
 
-            {isLoggedIn && profilePhotoMissing && (
+            {isLoggedIn && show('menu') && profilePhotoMissing && (
                 <div className="rounded-2xl p-4 space-y-3" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.20)' }}>
                     <div className="flex items-start gap-3">
                         <div className="w-11 h-11 rounded-2xl bg-danger/10 text-danger flex items-center justify-center shrink-0"><Camera size={21} /></div>
                         <div className="min-w-0">
-                            <p className="text-sm font-black text-danger">Profile photo required</p>
+                            <p className="text-sm font-bold text-danger">Profile photo required</p>
                             <p className="text-xs text-text-secondary leading-relaxed">Your account stays off the Members page until you upload a clear profile picture. This protects real members and keeps the site clean.</p>
                         </div>
                     </div>
-                    <button disabled={photoBusy} onClick={() => fileInputRef.current?.click()} className="w-full rounded-2xl py-3 text-sm font-black text-white bg-danger flex items-center justify-center gap-2 disabled:opacity-60"><Camera size={16} /> {photoBusy ? 'Saving Photo...' : 'Upload Profile Photo'}</button>
+                    <button disabled={photoBusy} onClick={() => fileInputRef.current?.click()} className="w-full rounded-2xl py-3 text-sm font-bold text-white bg-danger flex items-center justify-center gap-2 disabled:opacity-60"><Camera size={16} /> {photoBusy ? 'Saving Photo...' : 'Upload Profile Photo'}</button>
                     {photoStatus && <p className="text-xs font-bold text-danger">{photoStatus}</p>}
                 </div>
             )}
 
-            {isLoggedIn && (
-                <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                    <div className="flex items-center justify-between gap-3">
-                        <div>
-                            <h3 className="text-sm font-black text-text-primary">Account Center</h3>
-                            <p className="text-xs text-text-muted">Manage your profile, membership, privacy, messages, saves, support, and verification.</p>
-                        </div>
-                        <span className="px-2.5 py-1 rounded-full text-[10px] font-black text-primary bg-primary/10">{packageLabel}</span>
-                    </div>
-                    <div className="grid grid-cols-4 gap-2">
-                        {[
-                            { label: 'Edit', icon: UserCog, href: '#profile-info' },
-                            { label: 'Photos', icon: ImageIcon, href: '#photos' },
-                            { label: 'Messages', icon: MessageCircle, href: '/messages', count: unreadMessages },
-                            { label: 'Alerts', icon: Bell, href: '/alerts', count: unreadMessages },
-                            { label: 'Saved', icon: Bookmark, href: '#saved' },
-                            { label: 'Pro', icon: Gem, href: '/packages' },
-                            { label: 'Verify', icon: ShieldCheck, href: '#verification' },
-                            { label: 'Privacy', icon: Lock, href: '#privacy' },
-                            { label: 'Status', icon: Eye, href: '#status' },
-                            { label: 'Prefs', icon: SlidersHorizontal, action: () => setShowPreferencePicker(true) },
-                            { label: 'Phone', icon: Phone, href: '#profile-info' },
-                            { label: 'Support', icon: Headphones, href: '#support' },
-                            { label: 'Wallet', icon: Wallet, href: '/wallet' },
-                        ].map((item) => {
-                            const Icon = item.icon;
-                            const content = (
-                                <>
-                                    <span className="relative mx-auto w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
-                                        <Icon size={18} />
-                                        {item.count > 0 && <span className="absolute -right-1 -top-1 min-w-4 h-4 rounded-full bg-secondary text-white text-[9px] leading-4 px-1">{item.count > 99 ? '99+' : item.count}</span>}
-                                    </span>
-                                    <span className="text-[10px] font-black text-text-secondary">{item.label}</span>
-                                </>
-                            );
-                            if (item.action) return <button key={item.label} type="button" onClick={item.action} className="rounded-2xl p-2 space-y-1.5 text-center" style={{ background: 'var(--color-surface)' }}>{content}</button>;
-                            return <Link key={item.label} href={item.href} className="rounded-2xl p-2 space-y-1.5 text-center" style={{ background: 'var(--color-surface)' }}>{content}</Link>;
-                        })}
-                    </div>
-                </div>
+            {isLoggedIn && show('menu') && (
+                <AccountMenu
+                    packageLabel={packageLabel}
+                    verificationLabel={verificationLabel}
+                    verified={effectiveVerificationStatus === 'verified'}
+                    unreadMessages={unreadMessages}
+                    savedCount={saved.length}
+                    photoCount={userPhotos.length}
+                    preferenceLabel={PREFERENCE_LABELS[preference] || 'Not set'}
+                    onOpen={openSection}
+                    onPreference={() => setShowPreferencePicker(true)}
+                    onSignOut={signOut}
+                />
             )}
 
-            {isLoggedIn && <StoriesStrip title="My 24 Hour Stories" />}
-            {isLoggedIn && <AccountActivityPanel />}
+            {isLoggedIn && show('stories') && <StoriesStrip title="My 24 Hour Stories" />}
+            {isLoggedIn && show('activity') && <AccountActivityPanel />}
 
-            {isLoggedIn && (
+            {isLoggedIn && show('status') && (
                 <section id="status" className="grid grid-cols-3 gap-2">
                     <StatusTile icon={Eye} label="Public Status" value={accountStatus} tone={profileComplete && settings.isPublic ? 'success' : 'gold'} />
                     <StatusTile icon={ShieldCheck} label="Verification" value={verificationLabel} tone={effectiveVerificationStatus === 'verified' ? 'success' : 'gold'} />
@@ -385,27 +528,27 @@ export default function ProfilePage() {
                 </section>
             )}
 
-            {isLoggedIn && !profileComplete && (
+            {isLoggedIn && show('menu') && !profileComplete && (
                 <div className="rounded-2xl p-4 space-y-2" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.22)' }}>
-                    <p className="text-sm font-black text-amber-700">Complete your profile to unlock the app</p>
-                    <p className="text-xs text-text-secondary">Add: {missingFields.join(', ')}. Your profile is listed in Members after the required details are saved.</p>
+                    <p className="text-sm font-bold text-amber-700">Almost there! Complete your profile</p>
+                    <p className="text-xs text-text-secondary">Add: {missingFields.join(', ')}. A complete profile gets more views and matches from real members.</p>
                 </div>
             )}
 
-            {isLoggedIn && (
+            {isLoggedIn && show('membership') && (
                 <div id="package-access" className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                     <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5"><PackageCheck size={16} className="text-primary" /> Package Access</h3>
                     <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className="rounded-xl p-3 bg-primary/10"><p className="text-[10px] text-text-muted">Tier</p><p className="text-sm font-black text-primary">{currentTier.toUpperCase()}</p></div>
-                        <div className="rounded-xl p-3 bg-secondary/10"><p className="text-[10px] text-text-muted">Basic</p><p className="text-sm font-black text-secondary">{canUseBasic ? 'ON' : 'OFF'}</p></div>
-                        <div className="rounded-xl p-3 bg-amber-100"><p className="text-[10px] text-text-muted">Numbers</p><p className="text-sm font-black text-gold">{canRevealPhone ? 'ON' : 'LOCKED'}</p></div>
+                        <div className="rounded-xl p-3 bg-primary/10"><p className="text-[10px] text-text-muted">Tier</p><p className="text-sm font-bold text-primary">{currentTier.toUpperCase()}</p></div>
+                        <div className="rounded-xl p-3 bg-secondary/10"><p className="text-[10px] text-text-muted">Basic</p><p className="text-sm font-bold text-secondary">{canUseBasic ? 'ON' : 'OFF'}</p></div>
+                        <div className="rounded-xl p-3 bg-amber-100"><p className="text-[10px] text-text-muted">Numbers</p><p className="text-sm font-bold text-gold">{canRevealPhone ? 'ON' : 'LOCKED'}</p></div>
                     </div>
-                    <Link href="/packages" className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-black text-white gradient-primary"><Gem size={16} /> Manage Packages</Link>
+                    <Link href="/packages" className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white gradient-primary"><Gem size={16} /> Manage Packages</Link>
                 </div>
             )}
 
             {/* ===== PHOTOS (always-visible delete button) ===== */}
-            {isLoggedIn && (
+            {isLoggedIn && show('photos') && (
                 <div id="photos" className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                     <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
                         <Camera size={16} className="text-primary" /> My Photos
@@ -413,7 +556,7 @@ export default function ProfilePage() {
                     <div className="grid grid-cols-3 gap-2">
                         {userPhotos.map((photo, i) => (
                             <div key={i} className="relative aspect-square rounded-xl overflow-hidden">
-                                <img src={photo} alt="" className="w-full h-full object-cover" />
+                                <img src={photo} alt="" className="w-full h-full object-cover"  loading="lazy" decoding="async" />
                                 <button
                                     disabled={photoBusy}
                                     onClick={async () => {
@@ -456,17 +599,17 @@ export default function ProfilePage() {
                 </div>
             )}
 
-            {isLoggedIn && effectiveVerificationStatus === 'verified' && (
+            {isLoggedIn && show('verification') && effectiveVerificationStatus === 'verified' && (
                 <div className="rounded-2xl p-4 flex items-center gap-3" style={{ background: 'rgba(5,150,105,0.1)', border: '1px solid rgba(5,150,105,0.22)' }}>
                     <ShieldCheck size={24} className="text-success" />
                     <div>
-                        <p className="text-sm font-black text-success">Verification Approved</p>
+                        <p className="text-sm font-bold text-success">Verification Approved</p>
                         <p className="text-xs text-text-muted">Your blue badge was manually approved by admin.</p>
                     </div>
                 </div>
             )}
             {/* ===== MANUAL VERIFICATION ===== */}
-            {isLoggedIn && effectiveVerificationStatus !== 'verified' && (
+            {isLoggedIn && show('verification') && effectiveVerificationStatus !== 'verified' && (
                 <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                     <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
                         <Shield size={16} className="text-primary" /> Manual Verification
@@ -508,7 +651,7 @@ export default function ProfilePage() {
                 </div>
             )}
             {/* ===== PROFILE INFO (editable) ===== */}
-            {isLoggedIn && (
+            {isLoggedIn && show('profile') && (
                 <div id="profile-info" className="rounded-2xl overflow-hidden" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                     <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(124,58,237,0.08)' }}>
                         <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
@@ -542,7 +685,7 @@ export default function ProfilePage() {
             )}
 
             {/* ===== MESSAGES ===== */}
-            {isLoggedIn && messages.length > 0 && (
+            {isLoggedIn && show('activity') && messages.length > 0 && (
                 <div id="messages" className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                     <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
                         <MessageCircle size={16} className="text-primary" /> Messages ({messages.length})
@@ -558,15 +701,15 @@ export default function ProfilePage() {
                             </div>
                         </div>
                     ))}
-                    <Link href="/alerts" className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black bg-primary/10 text-primary">Open Full Inbox</Link>
+                    <Link href="/alerts" className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-semibold bg-primary/10 text-primary">Open Full Inbox</Link>
                 </div>
             )}
 
-            {isLoggedIn && (
+            {isLoggedIn && show('saved') && (
                 <div id="saved" className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                     <div className="flex items-center justify-between gap-3">
                         <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5"><Bookmark size={16} className="text-primary" /> Saved Profiles & Posts</h3>
-                        <Link href="/matches" className="text-xs font-black text-primary">Open</Link>
+                        <Link href="/matches" className="text-xs font-semibold text-primary">Open</Link>
                     </div>
                     {saved.length === 0 ? (
                         <p className="text-xs text-text-muted">Profiles and featured posts you save will appear here.</p>
@@ -575,7 +718,7 @@ export default function ProfilePage() {
                             {saved.slice(0, 6).map((item) => (
                                 <Link key={item.wpId || item.id} href={String(item.wpId || '').startsWith('member:') ? `/members/${String(item.wpId).slice(7)}` : (item.id ? `/members/${item.id}` : '/matches')} className="space-y-1">
                                     <div className="aspect-square rounded-xl overflow-hidden bg-primary/10">
-                                        {item.imageUrl || item.avatarUrl ? <img src={item.imageUrl || item.avatarUrl} alt="" className="w-full h-full object-cover" /> : <UserAvatar name={item.name || 'Saved'} size={52} />}
+                                        {item.imageUrl || item.avatarUrl ? <img src={item.imageUrl || item.avatarUrl} alt="" className="w-full h-full object-cover"  loading="lazy" decoding="async" /> : <UserAvatar name={item.name || 'Saved'} size={52} />}
                                     </div>
                                     <p className="text-[10px] font-bold text-text-secondary truncate">{item.name || 'Saved'}</p>
                                 </Link>
@@ -587,7 +730,7 @@ export default function ProfilePage() {
 
 
             {/* ===== SETTINGS ===== */}
-            {isLoggedIn && (
+            {isLoggedIn && show('settings') && (
                 <div id="privacy" className="rounded-2xl overflow-hidden" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                     <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(124,58,237,0.08)' }}>
                         <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
@@ -633,6 +776,7 @@ export default function ProfilePage() {
             )}
 
             {/* ===== SUPPORT & HELP ===== */}
+            {show('support') && (
             <div id="support" className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                 <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5"><Headphones size={16} className="text-primary" /> Support & Help</h3>
                 <select value={supportForm.service} onChange={(e) => setSupportForm({ ...supportForm, service: e.target.value })} className="w-full rounded-xl py-3 px-3 text-sm" style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }}>
@@ -651,24 +795,26 @@ export default function ProfilePage() {
                 {supportStatus && <p className="text-xs font-bold text-primary bg-primary/10 rounded-xl p-3">{supportStatus}</p>}
                 <a href="https://t.me/GSADMINMARYGAGENCY" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-bold text-primary"><ExternalLink size={15} /> Telegram Admin Support</a>
             </div>
-            {/* ===== SIGN OUT / DELETE ===== */}
-            <div className="space-y-2">
-                {isLoggedIn && (
+            )}
+
+            {/* Account termination lives at the foot of Settings, where destructive
+                options belong — not on the landing screen next to everyday actions.
+                Signing out is offered from the menu, so it is not repeated here. */}
+            {isLoggedIn && show('settings') && (
+                <div className="space-y-2 pt-2">
                     <button onClick={handleSignOut} disabled={signingOut}
-                        className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-text-primary transition-colors hover:bg-gray-100"
-                        style={{ border: '1px solid rgba(0,0,0,0.1)' }}
+                        className="w-full flex min-h-[48px] items-center justify-center gap-2 rounded-2xl type-body-strong text-text-primary"
+                        style={{ border: '1px solid rgba(20,16,26,0.10)' }}
                     >
-                        <LogOut size={18} /> {signingOut ? 'Signing Out...' : 'Sign Out'}
+                        <LogOut size={18} /> {signingOut ? 'Signing out…' : 'Sign out'}
                     </button>
-                )}
-                {isLoggedIn && (
                     <button onClick={() => setShowDeleteConfirm(true)}
-                        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-medium text-danger/60 transition-colors hover:text-danger hover:bg-danger/5"
+                        className="w-full flex min-h-[44px] items-center justify-center gap-2 rounded-2xl type-caption font-semibold text-danger/70 transition-colors hover:text-danger"
                     >
-                        <Trash size={16} /> Delete Account
+                        <Trash size={16} /> Delete account
                     </button>
-                )}
-            </div>
+                </div>
+            )}
 
             {/* ===== EDIT MODAL ===== */}
             <AnimatePresence>
@@ -683,7 +829,7 @@ export default function ProfilePage() {
                             onClick={(e) => e.stopPropagation()}
                         >
                             <h3 className="text-lg font-bold text-text-primary capitalize">Edit {editField.replace('_', ' ')}</h3>
-                            {editField === 'bio' ? (
+                            {editField === 'bio' || editField === 'wants' ? (
                                 <textarea value={editValue} onChange={(e) => setEditValue(e.target.value)} rows={4}
                                     className="w-full rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
                                     style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }} autoFocus
@@ -693,6 +839,39 @@ export default function ProfilePage() {
                                     className="w-full rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
                                     style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }} autoFocus
                                 />
+                            )}
+                            {editField === 'location' && (
+                                <button
+                                    type="button"
+                                    disabled={geoBusy}
+                                    onClick={() => {
+                                        if (!navigator.geolocation || geoBusy) return;
+                                        setGeoBusy(true);
+                                        setEditStatus('Detecting location...');
+                                        navigator.geolocation.getCurrentPosition(
+                                            async (pos) => {
+                                                const label = await resolvePlaceName(pos.coords.latitude, pos.coords.longitude);
+                                                if (label) {
+                                                    setEditValue(label);
+                                                    setEditStatus(`Detected: ${label}`);
+                                                } else {
+                                                    setEditStatus('We could not name your area. Type your city manually.');
+                                                }
+                                                setGeoBusy(false);
+                                            },
+                                            (err) => {
+                                                setEditStatus(err?.code === err.PERMISSION_DENIED ? 'Location permission denied. Type your city manually.' : 'Could not detect location. Type manually.');
+                                                setGeoBusy(false);
+                                            },
+                                            PRECISE_POSITION_OPTIONS
+                                        );
+                                    }}
+                                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+                                    style={{ color: '#059669', background: 'rgba(5,150,105,0.08)' }}
+                                >
+                                    <MapPin size={16} />
+                                    {geoBusy ? 'Detecting...' : 'Use my device location'}
+                                </button>
                             )}
                             {editStatus && <p className={`text-xs font-bold rounded-xl p-3 ${editStatus === 'Saved.' ? 'text-success bg-success/10' : 'text-danger bg-danger/10'}`}>{editStatus}</p>}
                             <div className="flex gap-3">
@@ -718,15 +897,11 @@ export default function ProfilePage() {
                             onClick={(e) => e.stopPropagation()}
                         >
                             <h3 className="text-lg font-bold text-text-primary text-center">Your Preference</h3>
-                            {profile?.preference_locked && (
-                                <div className="rounded-2xl p-3 text-xs leading-relaxed text-primary bg-primary/10">
-                                    Your account type is locked after registration so members see the right matches. Contact support if this was selected by mistake.
-                                </div>
-                            )}
+
                             {Object.entries(PREFERENCE_LABELS).map(([key, label]) => (
                                 <button key={key}
                                     onClick={() => {
-                                        if (!profile?.preference_locked) updatePreference(key);
+                                        updatePreference(key);
                                         setShowPreferencePicker(false);
                                     }}
                                     className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl transition-all"
@@ -792,7 +967,7 @@ function StatusTile({ icon: Icon, label, value, tone = 'primary' }) {
             </div>
             <div>
                 <p className="text-[10px] font-bold text-text-muted">{label}</p>
-                <p className="text-xs font-black text-text-primary leading-tight">{value}</p>
+                <p className="text-xs font-semibold text-text-primary leading-tight">{value}</p>
             </div>
         </div>
     );

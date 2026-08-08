@@ -11,6 +11,6 @@ export default function Logo({ size = 32, className = '' }) {
             height={size}
             className={`shrink-0 object-contain ${className}`}
             style={{ width, height: size, maxWidth: '82vw' }}
-        />
+         loading="lazy" decoding="async" />
     );
 }

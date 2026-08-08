@@ -1,6 +1,6 @@
 'use client';
 
-import { Send } from 'lucide-react';
+import { GsTrust, Send } from '@/components/icons';
 
 /**
  * Contact buttons for connecting with profiles via admin Mary G.
@@ -36,7 +36,7 @@ export default function ContactButtons({ profileName }) {
                     <div className="min-w-0">
                         <span className="block text-sm font-bold leading-tight">Telegram</span>
                         <span className="block text-[10px] opacity-80 font-medium flex items-center gap-0.5">
-                            <Star size={8} /> Recommended
+                            <GsTrust size={9} /> Recommended
                         </span>
                     </div>
                 </a>
@@ -53,7 +53,7 @@ export default function ContactButtons({ profileName }) {
                     <div className="min-w-0">
                         <span className="block text-sm font-bold leading-tight">SMS</span>
                         <span className="block text-[10px] opacity-80 font-medium flex items-center gap-0.5">
-                            <Star size={8} /> Recommended
+                            <GsTrust size={9} /> Recommended
                         </span>
                     </div>
                 </a>
@@ -112,10 +112,4 @@ export default function ContactButtons({ profileName }) {
     );
 }
 
-function Star({ size = 10 }) {
-    return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-        </svg>
-    );
-}
+

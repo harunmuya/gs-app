@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle, CreditCard, Gift, History, PackageOpen, Send, ShoppingBag, Wallet } from 'lucide-react';
+import { CheckCircle, CreditCard, Gift, History, PackageOpen, Send, ShoppingBag, Wallet } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import GiftVisual from '@/components/GiftVisual';
 
@@ -97,9 +97,9 @@ export default function WalletPage() {
             </section>
 
             <section className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                <h2 className="text-sm font-black text-text-primary">Request Wallet Top-up</h2>
+                <h2 className="text-sm font-bold text-text-primary">Request Wallet Top-up</h2>
                 <div className="grid grid-cols-3 gap-2">
-                    {[100, 250, 500].map((value) => <button key={value} onClick={() => setAmount(String(value))} className={`rounded-xl py-2 text-xs font-black ${amount === String(value) ? 'gradient-primary text-white' : 'bg-primary/10 text-primary'}`}>{value} cr</button>)}
+                    {[100, 250, 500].map((value) => <button key={value} onClick={() => setAmount(String(value))} className={`rounded-xl py-2 text-xs font-semibold ${amount === String(value) ? 'gradient-primary text-white' : 'bg-primary/10 text-primary'}`}>{value} cr</button>)}
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                     <select value={walletType} onChange={(e) => setWalletType(e.target.value)} className="rounded-xl p-3 text-sm" style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }}>
@@ -109,7 +109,7 @@ export default function WalletPage() {
                     <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} placeholder="Amount" className="rounded-xl p-3 text-sm" style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }} />
                 </div>
                 <input value={reference} onChange={(e) => setReference(e.target.value.toUpperCase())} placeholder="Payment reference / transaction ID" className="w-full rounded-xl p-3 text-sm" style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }} />
-                <button onClick={requestTopup} className="w-full rounded-xl py-3 text-sm font-black text-white gradient-primary flex items-center justify-center gap-2"><Send size={16} /> Send to Finance</button>
+                <button onClick={requestTopup} className="w-full rounded-xl py-3 text-sm font-bold text-white gradient-primary flex items-center justify-center gap-2"><Send size={16} /> Send to Finance</button>
                 <div className="rounded-2xl p-3 text-xs text-text-secondary space-y-1" style={{ background: 'var(--color-surface)' }}>
                     <p className="font-black text-text-primary">How purchase approval works</p>
                     <p>Send the amount, paste the transaction ID, then Finance approves the wallet top-up from the admin panel. Approved credits are real paid credits used for premium gifts inside member profiles and chat.</p>
@@ -119,8 +119,8 @@ export default function WalletPage() {
 
             <section className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                 <div className="flex items-center justify-between gap-2">
-                    <h2 className="text-sm font-black text-text-primary">Gift Catalog</h2>
-                    <Link href="/members" className="text-[11px] font-black text-primary">Choose member</Link>
+                    <h2 className="text-sm font-bold text-text-primary">Gift Catalog</h2>
+                    <Link href="/members" className="text-[11px] font-semibold text-primary">Choose member</Link>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                     {(data.giftCatalog || []).length === 0 ? <p className="col-span-2 text-xs text-text-muted">No gifts are active yet. Admin can activate gifts from the control panel.</p> : (data.giftCatalog || []).map((gift) => (
@@ -128,12 +128,12 @@ export default function WalletPage() {
                             <GiftVisual gift={gift} className="w-full h-24 rounded-xl" iconSize={28} />
                             <div className="flex items-center justify-between gap-2">
                                 <div>
-                                    <p className="text-sm font-black text-text-primary">{gift.name}</p>
+                                    <p className="text-sm font-bold text-text-primary">{gift.name}</p>
                                     <p className="text-[10px] text-text-muted">{gift.category} gift · Owned {inventoryByGift.get(gift.id)?.quantity || 0}</p>
                                 </div>
-                                <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-black text-primary">{gift.credit_cost} credits</span>
+                                <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">{gift.credit_cost} credits</span>
                             </div>
-                            <button onClick={() => purchaseGift(gift)} disabled={busyGiftId === gift.id} className="w-full rounded-xl py-2 text-xs font-black text-white gradient-primary inline-flex items-center justify-center gap-1 disabled:opacity-60"><ShoppingBag size={13} /> {busyGiftId === gift.id ? 'Adding...' : 'Add to Gift Wallet'}</button>
+                            <button onClick={() => purchaseGift(gift)} disabled={busyGiftId === gift.id} className="w-full rounded-xl py-2 text-xs font-semibold text-white gradient-primary inline-flex items-center justify-center gap-1 disabled:opacity-60"><ShoppingBag size={13} /> {busyGiftId === gift.id ? 'Adding...' : 'Add to Gift Wallet'}</button>
                         </div>
                     ))}
                 </div>
@@ -142,8 +142,8 @@ export default function WalletPage() {
 
             <section className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                 <div className="flex items-center justify-between gap-2">
-                    <h2 className="text-sm font-black text-text-primary flex items-center gap-2"><PackageOpen size={16} className="text-primary" /> My Gift Wallet</h2>
-                    <span className="text-[11px] font-black text-primary">{(data.giftInventory || []).reduce((sum, item) => sum + (item.quantity || 0), 0)} ready</span>
+                    <h2 className="text-sm font-bold text-text-primary flex items-center gap-2"><PackageOpen size={16} className="text-primary" /> My Gift Wallet</h2>
+                    <span className="text-[11px] font-semibold text-primary">{(data.giftInventory || []).reduce((sum, item) => sum + (item.quantity || 0), 0)} ready</span>
                 </div>
                 {(data.giftInventory || []).length === 0 ? <p className="text-xs text-text-muted">Gifts you buy or receive will appear here. You can keep them or send them to another member later.</p> : (
                     <div className="grid grid-cols-3 gap-2">
@@ -152,24 +152,24 @@ export default function WalletPage() {
                             return (
                                 <div key={item.id} className="rounded-2xl p-2 text-center" style={{ background: 'var(--color-surface)' }}>
                                     <GiftVisual gift={gift} className="mx-auto mb-1 h-16 w-full rounded-xl" />
-                                    <p className="truncate text-[10px] font-black text-text-primary">{gift.name || 'Gift'}</p>
-                                    <p className="text-[10px] font-black text-primary">x{item.quantity}</p>
+                                    <p className="truncate text-[10px] font-semibold text-text-primary">{gift.name || 'Gift'}</p>
+                                    <p className="text-[10px] font-semibold text-primary">x{item.quantity}</p>
                                 </div>
                             );
                         })}
                     </div>
                 )}
-                <Link href="/messages" className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-black text-white gradient-secondary"><Send size={13} /> Send from Chat</Link>
+                <Link href="/messages" className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold text-white gradient-secondary"><Send size={13} /> Send from Chat</Link>
             </section>
 
             <section className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                <h2 className="text-sm font-black text-text-primary">Gift Activity</h2>
+                <h2 className="text-sm font-bold text-text-primary">Gift Activity</h2>
                 <div className="grid gap-2">
                     {[...(data.giftsReceived || []).map((gift) => ({ ...gift, directionLabel: 'Received' })), ...(data.giftsSent || []).map((gift) => ({ ...gift, directionLabel: 'Sent' }))].slice(0, 12).map((gift) => (
                         <div key={`${gift.directionLabel}-${gift.id}`} className="rounded-xl p-3 flex items-center gap-3" style={{ background: 'var(--color-surface)' }}>
                             <GiftVisual gift={gift.gift_catalog || gift} className="w-12 h-12 rounded-xl shrink-0" />
                             <div className="min-w-0 flex-1">
-                                <p className="text-sm font-black text-text-primary truncate">{gift.directionLabel} {gift.gift_catalog?.name || 'gift'}</p>
+                                <p className="text-sm font-bold text-text-primary truncate">{gift.directionLabel} {gift.gift_catalog?.name || 'gift'}</p>
                                 <p className="text-xs text-text-muted">{gift.credits_spent || gift.gift_catalog?.credit_cost || 0} credits · {dateText(gift.created_at)}</p>
                             </div>
                         </div>
@@ -179,14 +179,14 @@ export default function WalletPage() {
             </section>
 
             <section className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                <h2 className="text-sm font-black text-text-primary flex items-center gap-2"><History size={16} className="text-primary" /> Wallet History</h2>
+                <h2 className="text-sm font-bold text-text-primary flex items-center gap-2"><History size={16} className="text-primary" /> Wallet History</h2>
                 {loading ? <p className="text-xs text-text-muted">Loading...</p> : (data.transactions || []).length === 0 ? <p className="text-xs text-text-muted">No wallet transactions yet.</p> : (
                     <div className="space-y-2">
                         {data.transactions.map((tx) => (
                             <div key={tx.id} className="rounded-xl p-3" style={{ background: 'var(--color-surface)' }}>
                                 <div className="flex items-center justify-between gap-2">
-                                    <p className="text-sm font-black text-text-primary">{tx.wallet_type} {tx.direction}</p>
-                                    <span className={`text-xs font-black ${tx.status === 'posted' ? 'text-success' : 'text-gold'}`}>{tx.status}</span>
+                                    <p className="text-sm font-bold text-text-primary">{tx.wallet_type} {tx.direction}</p>
+                                    <span className={`text-xs font-semibold ${tx.status === 'posted' ? 'text-success' : 'text-gold'}`}>{tx.status}</span>
                                 </div>
                                 <p className="text-xs text-text-secondary">Amount: {tx.amount} · Ref: {tx.reference || 'N/A'}</p>
                                 <p className="text-[10px] text-text-muted">{dateText(tx.created_at)}</p>

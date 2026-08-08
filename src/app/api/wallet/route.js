@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
-import { canUseFeature, dailyLimitForFeature, getUserPackageAccess } from '@/lib/packageAccess';
+import { requireMember } from '@/lib/authSession';
+import { consumeQuota } from '@/lib/entitlementGuard';
+import { accountRestrictionMessage, canUseFeature, dailyLimitForFeature, getUserPackageAccess, isAccountRestricted } from '@/lib/packageAccess';
 
 function jsonError(message, status = 500) {
     return NextResponse.json({ error: message }, { status });
@@ -143,7 +145,7 @@ async function getUser(supabase, userId) {
     if (!userId) return null;
     const { data } = await supabase
         .from('users')
-        .select('id, display_name, email, subscription_tier, admin_approved, package_locked')
+        .select('id, display_name, email, subscription_tier, admin_approved, package_locked, is_banned, is_suspended, account_deleted_at')
         .eq('id', userId)
         .maybeSingle();
     return data || null;
@@ -154,27 +156,13 @@ function canUseGifts(user) {
     return Boolean(!user?.package_locked && ['basic', 'silver', 'gold', 'diamond'].includes(tier));
 }
 
-async function enforceGiftLimit(supabase, userId, tier) {
-    const limit = dailyLimitForFeature(tier, 'gifts');
-    if (limit === null || limit === undefined) return { ok: true, limit: null, remaining: null };
-    if (limit <= 0) return { ok: false, limit, remaining: 0, message: 'Gift sending requires a paid package with gift access.', redirectTo: '/packages' };
-    const usageDate = new Date().toISOString().slice(0, 10);
-    const result = await supabase
-        .from('user_daily_usage')
-        .select('id, count')
-        .eq('user_id', userId)
-        .eq('usage_date', usageDate)
-        .eq('kind', 'gifts')
-        .maybeSingle();
-    if (result.error && result.error.code !== 'PGRST116') return { ok: true, limit, remaining: Math.max(0, limit - 1), skipped: true };
-    const current = result.data?.count || 0;
-    if (current >= limit) return { ok: false, limit, used: current, remaining: 0, message: 'Your daily gift limit is exhausted. Upgrade your package for more gift access.', redirectTo: '/packages' };
-    if (result.data?.id) {
-        await supabase.from('user_daily_usage').update({ count: current + 1, updated_at: new Date().toISOString() }).eq('id', result.data.id);
-    } else {
-        await supabase.from('user_daily_usage').insert({ user_id: userId, usage_date: usageDate, kind: 'gifts', count: 1 });
-    }
-    return { ok: true, limit, used: current + 1, remaining: Math.max(0, limit - current - 1) };
+/**
+ * Delegates to the canonical guard. The copy here shared the same race and
+ * fail-open error handling as the other two.
+ */
+async function enforceGiftLimit(supabase, userId, tier, user = null) {
+    const subject = user?.id ? user : { id: userId };
+    return consumeQuota(supabase, subject, 'gifts', { tier });
 }
 
 async function ensureConversation(supabase, userId, peerId) {
@@ -291,9 +279,15 @@ function uniqueGiftCatalog(rows = []) {
 export async function GET(request) {
     const supabase = createServerSupabaseClient({ admin: true });
     if (!supabase) return jsonError('Supabase admin env missing.', 503);
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-    if (!userId) return jsonError('User id is required.', 400);
+    // The wallet is always the caller's own. The ?userId= parameter is ignored:
+    // reading it let any caller enumerate another member's balances and history.
+    const { member, response } = await requireMember();
+    if (response) return response;
+    const userId = member.id;
+    const user = await getUser(supabase, userId);
+    if (!user?.id) return jsonError('Signed-in user was not found.', 404);
+    if (isAccountRestricted(user)) return jsonError(accountRestrictionMessage(user), 403);
+    const access = await getUserPackageAccess(supabase, user);
     await ensureWallets(supabase, userId);
     await ensureDefaultGiftCatalog(supabase);
 
@@ -314,7 +308,7 @@ export async function GET(request) {
         moneyWallet: money.data || { user_id: userId, balance_ksh: 0 },
         giftWallet: gift.data || { user_id: userId, credits: 0 },
         transactions: transactions.data || [],
-        giftCatalog: uniqueGiftCatalog(catalog.data || []),
+        giftCatalog: uniqueGiftCatalog(catalog.data || []).filter((giftRow) => canUseFeature(access.tier, 'gifts') && Number(giftRow.tier || 1) <= Number(access.tier.max_gift_tier || 0)),
         giftInventory: inventory || [],
         giftsSent: sent.data || [],
         giftsReceived: received.data || [],
@@ -326,8 +320,14 @@ export async function POST(request) {
     if (!supabase) return jsonError('Supabase admin env missing.', 503);
     const body = await request.json().catch(() => ({}));
     const action = body.action;
-    const userId = body.userId;
-    if (!userId) return jsonError('User id is required.', 400);
+    // Actor is the signed-in member, never body.userId — that allowed spending
+    // and topping up against another member's wallet.
+    const { member, response } = await requireMember();
+    if (response) return response;
+    const userId = member.id;
+    const user = await getUser(supabase, userId);
+    if (!user?.id) return jsonError('Signed-in user was not found.', 404);
+    if (isAccountRestricted(user)) return jsonError(accountRestrictionMessage(user), 403);
     await ensureWallets(supabase, userId);
     await ensureDefaultGiftCatalog(supabase);
 
@@ -362,7 +362,8 @@ export async function POST(request) {
         const receiverId = body.receiverId;
         if (!receiverId) return jsonError('Gift receiver is required.', 400);
         if (receiverId === userId) return jsonError('Choose another member before sending a gift.', 400);
-        const sender = await getUser(supabase, userId);
+        const [sender, receiver] = await Promise.all([getUser(supabase, userId), getUser(supabase, receiverId)]);
+        if (!receiver?.id || isAccountRestricted(receiver)) return jsonError('This member is unavailable.', 404);
         const access = await getUserPackageAccess(supabase, sender);
         if (!canUseFeature(access.tier, 'gifts')) return NextResponse.json({ error: 'Gifts require an approved Basic, Silver, or Gold package.', redirectTo: '/packages' }, { status: 402 });
         const gift = await findGift(supabase, body);
@@ -370,8 +371,6 @@ export async function POST(request) {
         if (Number(gift.tier || 1) > Number(access.tier.max_gift_tier || 0)) {
             return NextResponse.json({ error: `${gift.name} requires a higher package tier.`, redirectTo: '/packages' }, { status: 402 });
         }
-        const quota = await enforceGiftLimit(supabase, userId, access.tier);
-        if (!quota.ok) return NextResponse.json({ error: quota.message, ...quota }, { status: 402 });
         const senderInventory = await ensureGiftInventory(supabase, userId, gift.id);
         const useInventory = (senderInventory?.quantity || 0) > 0;
         const [{ data: creditWallet }, { data: giftWallet }] = await Promise.all([
@@ -383,6 +382,8 @@ export async function POST(request) {
         const currentCredits = creditCredits + giftCredits;
         const cost = useInventory ? 0 : (gift.credit_cost || 0);
         if (!useInventory && currentCredits < cost) return NextResponse.json({ error: 'Not enough credits. Top up your credit wallet or ask admin for help.', redirectTo: '/wallet' }, { status: 402 });
+        const quota = await enforceGiftLimit(supabase, userId, access.tier);
+        if (!quota.ok) return NextResponse.json({ error: quota.message, ...quota }, { status: 402 });
         const giftDebit = useInventory ? 0 : Math.min(giftCredits, cost);
         const creditDebit = useInventory ? 0 : cost - giftDebit;
         const nextGiftCredits = giftCredits - giftDebit;

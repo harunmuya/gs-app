@@ -2,14 +2,11 @@
 
 import { useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { unreadActivityValue, unreadMessageValue } from '@/lib/inboxCounts';
 
 function formatBadge(count) {
     if (!count) return '';
     return count > 99 ? '99+' : String(count);
-}
-
-function unreadValue(item) {
-    return Math.max(0, Number(item?.unreadCount || 0)) || (item?.read ? 0 : 1);
 }
 
 async function getNativeNotifications() {
@@ -29,10 +26,11 @@ export default function NotificationManager() {
     const { settings, user, guest, activity, messages, updateSettings } = useAuth();
     const permissionRef = useRef('default');
     const previousUnreadRef = useRef(0);
+    const nativePermissionAskedRef = useRef(false);
 
     const unreadCount = useMemo(() => {
-        const unreadAlerts = (activity || []).filter((item) => !item.read).length;
-        const unreadMessages = (messages || []).reduce((total, item) => total + unreadValue(item), 0);
+        const unreadAlerts = (activity || []).reduce((total, item) => total + unreadActivityValue(item), 0);
+        const unreadMessages = (messages || []).reduce((total, item) => total + unreadMessageValue(item), 0);
         return Math.min(99, unreadAlerts + unreadMessages);
     }, [activity, messages]);
 
@@ -41,6 +39,31 @@ export default function NotificationManager() {
         const browserPermission = 'Notification' in window ? Notification.permission : 'default';
         permissionRef.current = browserPermission;
     }, [user, guest, settings.notifications]);
+
+    useEffect(() => {
+        if (!user?.id || !settings.notifications || nativePermissionAskedRef.current) return;
+        nativePermissionAskedRef.current = true;
+        const key = `gsk_native_notification_permission_${user.id}`;
+        const last = Number(localStorage.getItem(key) || 0);
+        if (Date.now() - last < 24 * 60 * 60 * 1000) return;
+        localStorage.setItem(key, String(Date.now()));
+
+        getNativeNotifications()
+            .then(async (nativeNotifications) => {
+                if (!nativeNotifications) return;
+                const current = await nativeNotifications.checkPermissions().catch(() => ({ display: 'prompt' }));
+                if (current.display === 'granted') {
+                    permissionRef.current = 'granted';
+                    updateSettings?.({ notificationPermission: 'granted' });
+                    return;
+                }
+                const next = await nativeNotifications.requestPermissions().catch(() => ({ display: 'prompt' }));
+                const permission = next.display === 'granted' ? 'granted' : 'default';
+                permissionRef.current = permission;
+                updateSettings?.({ notificationPermission: permission });
+            })
+            .catch(() => {});
+    }, [settings.notifications, updateSettings, user?.id]);
 
     async function requestPermission() {
         if (typeof window === 'undefined') return;

@@ -1,23 +1,35 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
 import { emailHtml, sendAndLogEmail } from '@/lib/email';
+import { hashEmail } from '@/lib/security';
+import {
+    ADMIN_COOKIE,
+    adminAuthConfigured,
+    adminCookieOptions,
+    adminSessionFromRequest,
+    clearLoginFailures,
+    issueAdminSession,
+    loginThrottled,
+    recordLoginFailure,
+    verifyAdminCredentials,
+} from '@/lib/adminSession';
+import { allDefaultPackageTiers, getPackageTier, normalizeTierId } from '@/lib/packageAccess';
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@genuinesugarmummies.co.ke';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin@2026!';
-const PACKAGE_TIERS = {
-    free: { name: 'Free', price: 0, phoneReveal: false, dailyMessages: 2, likes: 3, swipes: 3, giftAccess: false, calls: false, priority: false },
-    basic: { name: 'Basic', price: 650, phoneReveal: false, dailyMessages: 10, likes: 10, swipes: 10, giftAccess: true, calls: false, priority: false },
-    silver: { name: 'Silver', price: 1200, phoneReveal: true, dailyMessages: 0, likes: 0, swipes: 0, giftAccess: true, calls: true, priority: true },
-    gold: { name: 'Gold International', price: 3550, phoneReveal: true, dailyMessages: 0, likes: 0, swipes: 0, giftAccess: true, calls: true, priority: true },
-};
-
-function tokenFor(email, password) {
-    return Buffer.from(`${email}:${password}`).toString('base64');
-}
+const PACKAGE_TIERS = Object.fromEntries(allDefaultPackageTiers().map((tier) => [tier.id, {
+    name: tier.name,
+    price: tier.price_ksh,
+    phoneReveal: Boolean(tier.phone_reveal),
+    startingCredits: Number(tier.starting_credits || 0),
+}]));
 
 function isAuthed(request) {
-    const token = request.headers.get('x-admin-token') || '';
-    return token === tokenFor(ADMIN_EMAIL, ADMIN_PASSWORD);
+    return Boolean(adminSessionFromRequest(request));
+}
+
+function clientKey(request) {
+    return (request.headers.get('x-forwarded-for') || '').split(',')[0].trim()
+        || request.headers.get('x-real-ip')
+        || 'unknown';
 }
 
 function jsonError(message, status = 500) {
@@ -29,7 +41,22 @@ function clean(value, fallback = '') {
 }
 
 function planName(tier) {
-    return PACKAGE_TIERS[String(tier || 'free').toLowerCase()]?.name || 'Free';
+    return PACKAGE_TIERS[normalizeTierId(tier)]?.name || 'Free';
+}
+
+function planFor(tier, fallback = 'free') {
+    const normalized = normalizeTierId(tier || fallback);
+    return { tier: normalized, plan: PACKAGE_TIERS[normalized] || PACKAGE_TIERS.free };
+}
+
+async function packagePlanDetails(supabase, tier, fallbackPlan = {}) {
+    const row = await getPackageTier(supabase, tier);
+    return {
+        name: row?.name || fallbackPlan.name || planName(tier),
+        price: Number(row?.price_ksh ?? fallbackPlan.price ?? 0),
+        phoneReveal: Boolean(row?.phone_reveal ?? fallbackPlan.phoneReveal),
+        startingCredits: Number(row?.starting_credits ?? fallbackPlan.startingCredits ?? 0),
+    };
 }
 
 async function safeSelect(supabase, table, select, options = {}) {
@@ -58,6 +85,54 @@ async function queueEmail(supabase, payload) {
     });
 }
 
+async function grantPackageStartingCredits(supabase, userId, tier, plan = {}) {
+    const normalizedTier = normalizeTierId(tier);
+    const amount = Math.max(0, Number(plan.startingCredits ?? plan.starting_credits ?? 0));
+    if (!userId || normalizedTier === 'free' || !amount) return { granted: false, amount: 0 };
+    const reference = `package:${normalizedTier}`;
+    const existing = await supabase
+        .from('wallet_transactions')
+        .select('id, balance_after')
+        .eq('user_id', userId)
+        .eq('wallet_type', 'credit')
+        .eq('source', 'package_starting_credits')
+        .eq('reference', reference)
+        .limit(1)
+        .maybeSingle();
+    if (existing.data?.id) return { granted: false, alreadyGranted: true, amount, balanceAfter: existing.data.balance_after ?? null };
+    if (existing.error && existing.error.code !== 'PGRST116') {
+        return { granted: false, amount, error: existing.error.message };
+    }
+
+    await supabase.from('credit_wallet').upsert({ user_id: userId }, { onConflict: 'user_id' });
+    const { data: wallet } = await supabase.from('credit_wallet').select('credits').eq('user_id', userId).maybeSingle();
+    const current = Number(wallet?.credits || 0);
+    const next = current + amount;
+    const walletUpdate = await supabase.from('credit_wallet').update({ credits: next, updated_at: new Date().toISOString() }).eq('user_id', userId);
+    if (walletUpdate.error) return { granted: false, amount, error: walletUpdate.error.message };
+
+    const payload = {
+        user_id: userId,
+        wallet_type: 'credit',
+        direction: 'credit',
+        amount,
+        balance_after: next,
+        source: 'package_starting_credits',
+        status: 'posted',
+        reference,
+        admin_note: `${plan.name || planName(normalizedTier)} starter credits`,
+        metadata: { tier: normalizedTier },
+    };
+    let tx = await supabase.from('wallet_transactions').insert(payload).select('id').maybeSingle();
+    if (tx.error && ['42703', 'PGRST204'].includes(tx.error.code)) {
+        const fallbackPayload = { ...payload };
+        delete fallbackPayload.metadata;
+        tx = await supabase.from('wallet_transactions').insert(fallbackPayload).select('id').maybeSingle();
+    }
+    if (tx.error) return { granted: false, amount, balanceAfter: next, error: tx.error.message };
+    return { granted: true, amount, balanceAfter: next, transactionId: tx.data?.id || null };
+}
+
 async function safeInsertMany(supabase, table, rows) {
     if (!rows?.length) return;
     try { await supabase.from(table).insert(rows); } catch {}
@@ -66,6 +141,47 @@ async function safeInsertMany(supabase, table, rows) {
 async function safeDeleteByColumn(supabase, table, column, value) {
     if (!value) return;
     try { await supabase.from(table).delete().eq(column, value); } catch {}
+}
+
+async function rememberDeletedAccount(supabase, { email, userId }) {
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    if (!cleanEmail) return false;
+    try {
+        const result = await supabase.from('account_deletions').upsert({
+            email_hash: hashEmail(cleanEmail),
+            user_id: userId || null,
+            deleted_at: new Date().toISOString(),
+        }, { onConflict: 'email_hash' });
+        return !result.error;
+    } catch {
+        return false;
+    }
+}
+
+async function findAuthUserByEmail(supabase, email) {
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    if (!cleanEmail) return null;
+    try {
+        for (let page = 1; page <= 20; page++) {
+            const result = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
+            if (result.error) return null;
+            const found = (result.data?.users || []).find((user) => String(user.email || '').trim().toLowerCase() === cleanEmail);
+            if (found) return found;
+            if ((result.data?.users || []).length < 1000) break;
+        }
+    } catch {}
+    return null;
+}
+
+async function deleteAuthUserForAccount(supabase, account = {}) {
+    if (account.auth_user_id) {
+        try { await supabase.auth.admin.deleteUser(account.auth_user_id); return account.auth_user_id; } catch {}
+    }
+    const authUser = await findAuthUserByEmail(supabase, account.email);
+    if (authUser?.id) {
+        try { await supabase.auth.admin.deleteUser(authUser.id); return authUser.id; } catch {}
+    }
+    return null;
 }
 
 async function getUserById(supabase, userId) {
@@ -122,10 +238,35 @@ export async function POST(request) {
     const body = await request.json().catch(() => ({}));
 
     if (body.action === 'login') {
-        if (body.email === ADMIN_EMAIL && body.password === ADMIN_PASSWORD) {
-            return NextResponse.json({ ok: true, token: tokenFor(ADMIN_EMAIL, ADMIN_PASSWORD) });
+        if (!adminAuthConfigured()) {
+            // Fail closed. Previously this fell back to a password committed to source.
+            return jsonError('Admin login is not configured on this deployment. Set ADMIN_EMAIL and ADMIN_PASSWORD_HASH.', 503);
         }
-        return jsonError('Invalid admin credentials.', 401);
+
+        const throttleKey = clientKey(request);
+        if (loginThrottled(throttleKey)) {
+            return jsonError('Too many failed attempts. Try again later.', 429);
+        }
+
+        if (!verifyAdminCredentials(body.email, body.password)) {
+            recordLoginFailure(throttleKey);
+            return jsonError('Invalid admin credentials.', 401);
+        }
+
+        const session = issueAdminSession();
+        if (!session) return jsonError('Admin session secret is not configured.', 503);
+
+        clearLoginFailures(throttleKey);
+        // Token goes in an httpOnly cookie so page scripts cannot read it.
+        const response = NextResponse.json({ ok: true, expiresIn: session.maxAge });
+        response.cookies.set(ADMIN_COOKIE, session.token, adminCookieOptions(session.maxAge));
+        return response;
+    }
+
+    if (body.action === 'logout') {
+        const response = NextResponse.json({ ok: true });
+        response.cookies.set(ADMIN_COOKIE, '', adminCookieOptions(0));
+        return response;
     }
 
     if (!isAuthed(request)) return jsonError('Unauthorized.', 401);
@@ -147,7 +288,8 @@ export async function POST(request) {
     }
 
     if (body.action === 'approve_user') {
-        const tier = String(body.subscriptionTier || body.tier || 'basic').toLowerCase();
+        const { tier, plan: fallbackPlan } = planFor(body.subscriptionTier || body.tier, 'basic');
+        const plan = await packagePlanDetails(supabase, tier, fallbackPlan);
         const result = await updateUser(supabase, userId, {
             verified: true,
             verification_status: 'verified',
@@ -160,13 +302,14 @@ export async function POST(request) {
             is_banned: false,
         });
         if (result.error) return jsonError(result.error.message);
+        const creditGrant = await grantPackageStartingCredits(supabase, userId, tier, plan);
         await notifyUser(supabase, userId, {
             type: 'verification',
             title: 'Profile approved',
-            body: `Your profile has been manually approved. Your ${planName(tier)} access is active after admin approval.`,
+            body: `Your profile has been manually approved. Your ${plan.name} access is active after admin approval. Paid package messages are unlimited.${creditGrant.granted ? ` ${creditGrant.amount} GS Credits were added to your wallet.` : ''}`,
         });
-        await writeLog(supabase, 'approve_user', { userId, tier });
-        return NextResponse.json({ ok: true, user: result.data });
+        await writeLog(supabase, 'approve_user', { userId, tier, creditGrant });
+        return NextResponse.json({ ok: true, user: result.data, plan, creditGrant });
     }
 
     if (body.action === 'approve_profile') {
@@ -232,33 +375,48 @@ export async function POST(request) {
     }
 
     if (body.action === 'set_package') {
-        const tier = String(body.tier || 'free').toLowerCase();
-        const plan = PACKAGE_TIERS[tier] || PACKAGE_TIERS.free;
-        const locked = tier === 'free' ? false : Boolean(body.locked);
+        const { tier, plan: fallbackPlan } = planFor(body.tier, 'free');
+        const plan = await packagePlanDetails(supabase, tier, fallbackPlan);
+        const locked = tier === 'free' ? false : body.locked === true;
         const result = await updateUser(supabase, userId, {
             subscription_tier: tier,
+            admin_approved: true,
             package_locked: locked,
             phone_reveal_plan: plan.phoneReveal ? tier : 'silver',
             package_expires_at: body.packageExpiresAt || null,
         });
         if (result.error) return jsonError(result.error.message);
         const isFree = tier === 'free';
+        const creditGrant = !locked ? await grantPackageStartingCredits(supabase, userId, tier, plan) : { granted: false, amount: 0 };
         await notifyUser(supabase, userId, {
             type: 'package',
             title: isFree ? 'Free account active' : `${plan.name} package ${locked ? 'locked' : 'updated'}`,
-            body: isFree ? 'Your free account is active and visible after your profile is complete.' : (locked ? 'Your package is locked by admin.' : `Your ${plan.name} package is now active. Features are unlocked based on this tier.`),
+            body: isFree
+                ? 'Your free account is active and visible after your profile is complete.'
+                : (locked
+                    ? 'Your package is locked by admin.'
+                    : `Your ${plan.name} package is now active. Messages are unlimited on paid packages.${creditGrant.granted ? ` ${creditGrant.amount} GS Credits were added to your wallet.` : ''}`),
         });
-        await writeLog(supabase, 'set_package', { userId, tier, locked });
-        return NextResponse.json({ ok: true, user: result.data, plan });
+        await writeLog(supabase, 'set_package', { userId, tier, locked, creditGrant });
+        return NextResponse.json({ ok: true, user: result.data, plan, creditGrant });
     }
 
     if (body.action === 'lock_package' || body.action === 'unlock_package') {
         const locked = body.action === 'lock_package';
         const result = await updateUser(supabase, userId, { package_locked: locked });
         if (result.error) return jsonError(result.error.message);
-        await notifyUser(supabase, userId, { type: 'package', title: locked ? 'Package locked' : 'Package unlocked', body: locked ? 'Admin has locked your package access.' : 'Admin has unlocked your package access.' });
-        await writeLog(supabase, body.action, { userId });
-        return NextResponse.json({ ok: true, user: result.data });
+        const tier = normalizeTierId(result.data?.subscription_tier);
+        const plan = await packagePlanDetails(supabase, tier, PACKAGE_TIERS[tier]);
+        const creditGrant = !locked ? await grantPackageStartingCredits(supabase, userId, tier, plan) : { granted: false, amount: 0 };
+        await notifyUser(supabase, userId, {
+            type: 'package',
+            title: locked ? 'Package locked' : 'Package unlocked',
+            body: locked
+                ? 'Admin has locked your package access.'
+                : `Admin has unlocked your package access. Paid package messages are unlimited.${creditGrant.granted ? ` ${creditGrant.amount} GS Credits were added to your wallet.` : ''}`,
+        });
+        await writeLog(supabase, body.action, { userId, tier, creditGrant });
+        return NextResponse.json({ ok: true, user: result.data, plan, creditGrant });
     }
 
     if (body.action === 'show_user' || body.action === 'hide_user') {
@@ -296,6 +454,7 @@ export async function POST(request) {
         if (!accountResult.data?.id) return NextResponse.json({ ok: true, deleted: false });
         const id = accountResult.data.id;
         const email = accountResult.data.email || '';
+        await rememberDeletedAccount(supabase, { email, userId: id });
         await Promise.all([
             safeDeleteByColumn(supabase, 'user_settings', 'user_id', id),
             safeDeleteByColumn(supabase, 'user_notifications', 'user_id', id),
@@ -336,18 +495,17 @@ export async function POST(request) {
         ]);
         const deleted = await supabase.from('users').delete().eq('id', id);
         if (deleted.error) return jsonError(deleted.error.message);
-        if (accountResult.data.auth_user_id) {
-            try { await supabase.auth.admin.deleteUser(accountResult.data.auth_user_id); } catch {}
-        }
-        await writeLog(supabase, 'delete_user_forever', { userId: id, email });
+        const deletedAuthUserId = await deleteAuthUserForAccount(supabase, { ...accountResult.data, email });
+        await writeLog(supabase, 'delete_user_forever', { userId: id, emailHash: hashEmail(email), deletedAuthUserId });
         return NextResponse.json({ ok: true, deleted: true });
     }
 
     if (body.action === 'approve_package_request') {
         const requestRow = await getPackageRequest(supabase, body.requestId);
-        const tier = String(body.tier || body.subscriptionTier || requestRow?.tier || 'silver').toLowerCase();
-        const plan = PACKAGE_TIERS[tier] || PACKAGE_TIERS.silver;
+        const { tier, plan: fallbackPlan } = planFor(body.tier || body.subscriptionTier || requestRow?.tier, 'silver');
+        const plan = await packagePlanDetails(supabase, tier, fallbackPlan);
         const targetUserId = userId || await resolveRequestUser(supabase, requestRow);
+        let creditGrant = { granted: false, amount: 0 };
         if (targetUserId) {
             const result = await updateUser(supabase, targetUserId, {
                 subscription_tier: tier,
@@ -357,13 +515,18 @@ export async function POST(request) {
                 package_expires_at: body.packageExpiresAt || null,
             });
             if (result.error) return jsonError(result.error.message);
-            await notifyUser(supabase, targetUserId, { type: 'package', title: `${plan.name} package approved`, body: `Your KSh ${plan.price} payment has been approved. ${plan.name} package features are active.` });
+            creditGrant = await grantPackageStartingCredits(supabase, targetUserId, tier, plan);
+            await notifyUser(supabase, targetUserId, {
+                type: 'package',
+                title: `${plan.name} package approved`,
+                body: `Your KSh ${plan.price} payment has been approved. ${plan.name} package features are active with unlimited messages.${creditGrant.granted ? ` ${creditGrant.amount} GS Credits were added to your wallet.` : ''}`,
+            });
         }
         if (body.requestId) {
             await supabase.from('package_requests').update({ status: 'approved', reviewed_at: new Date().toISOString(), admin_note: body.note || '' }).eq('id', body.requestId);
         }
-        await writeLog(supabase, 'approve_package_request', { userId: targetUserId, requestId: body.requestId, tier });
-        return NextResponse.json({ ok: true, userId: targetUserId, plan });
+        await writeLog(supabase, 'approve_package_request', { userId: targetUserId, requestId: body.requestId, tier, creditGrant });
+        return NextResponse.json({ ok: true, userId: targetUserId, plan, creditGrant });
     }
 
     if (body.action === 'approve_wallet_transaction') {
@@ -497,6 +660,7 @@ export async function POST(request) {
             user_id: userId || null,
             subject: clean(body.subject || 'Admin note').slice(0, 160),
             body: clean(body.body).slice(0, 1200),
+            message: clean(body.body).slice(0, 1200),
             status: body.status || 'open',
             priority: body.priority || 'normal',
         });
@@ -532,10 +696,65 @@ export async function POST(request) {
         return NextResponse.json({ ok: true });
     }
 
+    /**
+     * Edit a package tier. This writes to `package_tiers`, which is the table
+     * lib/packageAccess actually reads, so a change here takes effect on the next
+     * request — no deploy, no restart.
+     *
+     * The older `update_limits` action below writes to `app_limits`, a single
+     * global row that nothing in the entitlement path has ever consulted. It is
+     * kept only for the ads and photo-count settings that still live there.
+     */
+    if (body.action === 'update_package_tier') {
+        const tierId = normalizeTierId(body.tierId);
+        if (!tierId) return jsonError('A valid tier id is required.', 400);
+
+        const intOrNull = (value) => {
+            if (value === '' || value === null || value === undefined) return null;
+            const n = Number(value);
+            return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : null;
+        };
+
+        // Only these columns are writable. Anything else in the body is ignored,
+        // so a crafted request cannot set arbitrary fields.
+        const patch = {
+            name: clean(body.name).slice(0, 80) || undefined,
+            tagline: String(body.tagline ?? '').slice(0, 140),
+            price_ksh: intOrNull(body.priceKsh),
+            phone_reveal: Boolean(body.phoneReveal),
+            daily_message_limit: intOrNull(body.dailyMessageLimit),
+            daily_gift_limit: intOrNull(body.dailyGiftLimit),
+            daily_like_limit: intOrNull(body.dailyLikeLimit),
+            daily_super_like_limit: intOrNull(body.dailySuperLikeLimit),
+            daily_swipe_limit: intOrNull(body.dailySwipeLimit),
+            daily_profile_view_limit: intOrNull(body.dailyProfileViewLimit),
+            priority_visibility: Boolean(body.priorityVisibility),
+            international_access: Boolean(body.internationalAccess),
+            voice_video_access: Boolean(body.voiceVideoAccess),
+            can_see_who_liked: Boolean(body.canSeeWhoLiked),
+            can_see_who_viewed: Boolean(body.canSeeWhoViewed),
+            can_send_voice_notes: Boolean(body.canSendVoiceNotes),
+            can_send_images: Boolean(body.canSendImages),
+            can_go_live: Boolean(body.canGoLive),
+            can_send_gifts: Boolean(body.canSendGifts),
+            can_use_nearby: Boolean(body.canUseNearby),
+            max_gift_tier: intOrNull(body.maxGiftTier),
+            starting_credits: intOrNull(body.startingCredits),
+            is_active: body.isActive !== false,
+            updated_at: new Date().toISOString(),
+        };
+        Object.keys(patch).forEach((key) => patch[key] === undefined && delete patch[key]);
+
+        const { error } = await supabase.from('package_tiers').update(patch).eq('id', tierId);
+        if (error) return jsonError(error.message);
+        await writeLog(supabase, 'update_package_tier', { tierId, patch });
+        return NextResponse.json({ ok: true, tierId });
+    }
+
     if (body.action === 'update_limits') {
         const { error } = await supabase.from('app_limits').upsert({
             id: body.limitId || 'global',
-            daily_message_limit: Number(body.dailyMessageLimit || 30),
+            daily_message_limit: Number(body.dailyMessageLimit || 5),
             daily_gift_limit: Number(body.dailyGiftLimit || 20),
             max_photos_per_user: Number(body.maxPhotosPerUser || 6),
             require_manual_verification: body.requireManualVerification !== false,
@@ -611,6 +830,9 @@ export async function GET(request) {
         giftCatalog = await safeSelect(supabase, 'gift_catalog', 'id, name, category, gif_url, icon_url, credit_cost, money_cost_ksh, is_active, sort_order, created_at', { order: { column: 'sort_order', ascending: true }, limit: 150 });
     }
     const logs = await safeSelect(supabase, 'admin_logs', 'id, action, details, created_at', { order: { column: 'created_at', ascending: false }, limit: 150 });
+    // The live entitlement configuration that lib/packageAccess reads.
+    const packageTierResult = await safeSelect(supabase, 'package_tiers', '*', { order: { column: 'sort_order', ascending: true }, limit: 20 });
+    const packageTierRows = packageTierResult.data || [];
 
     const rows = users.data || [];
     const accountSummary = (user = {}) => ({
@@ -703,7 +925,13 @@ export async function GET(request) {
         users: rows,
         stats,
         attention,
+        // Built-in defaults, kept for the older read-only summaries below.
         packages: PACKAGE_TIERS,
+        // The live, editable configuration. This is what enforcement reads, so it
+        // is what the panel must show — the constant above is only a fallback and
+        // showing it was why the panel appeared to display settings that had no
+        // effect on the running product.
+        packageTiers: packageTierRows,
         verificationRequests: pendingVerificationRows.map((user) => ({ ...user, account: accountSummary(user) })),
         messages: messages.data,
         gifts: gifts.data,

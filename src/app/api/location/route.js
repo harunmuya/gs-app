@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
+import { requireMember } from '@/lib/authSession';
 import { labelFromCoordinates } from '@/lib/geo';
 
 function jsonError(message, status = 500) {
@@ -46,7 +47,12 @@ async function saveLocation(supabase, userId, location) {
     if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return { error: { message: 'Invalid coordinates.' } };
 
     const now = new Date().toISOString();
-    const label = String(location.city || location.location || labelFromCoordinates(latitude, longitude) || '').slice(0, 120);
+    // Prefer a name the caller already resolved; otherwise reverse geocode properly
+    // and only then fall back to the offline table.
+    const resolved = (location.city || location.location)
+        ? String(location.city || location.location)
+        : (await reverseGeocode(latitude, longitude))?.label || labelFromCoordinates(latitude, longitude) || '';
+    const label = String(resolved).slice(0, 120);
     const fullPatch = {
         latitude,
         longitude,
@@ -81,7 +87,83 @@ async function saveLocation(supabase, userId, location) {
     return result;
 }
 
+/**
+ * Turn coordinates into a real place name.
+ *
+ * The previous behaviour picked the nearest of 31 hardcoded towns, so anyone
+ * outside those was given a place that could be a hundred kilometres away. This
+ * calls a reverse-geocoding service that knows actual localities, and only falls
+ * back to the offline table when the service is unavailable.
+ *
+ * Runs server-side for three reasons: the browser's Content-Security-Policy does
+ * not need widening, the upstream host is not exposed to the client, and the
+ * result can be cached at the edge.
+ *
+ * Precision is deliberately limited to the locality/city level. A dating profile
+ * needs "Westlands, Nairobi", not a street address, and coarser data is the safer
+ * default for members.
+ */
+async function reverseGeocode(latitude, longitude) {
+    const url = 'https://api.bigdatacloud.net/data/reverse-geocode-client'
+        + `?latitude=${encodeURIComponent(latitude)}`
+        + `&longitude=${encodeURIComponent(longitude)}`
+        + '&localityLanguage=en';
+    try {
+        const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(4000) });
+        if (!res.ok) return null;
+        const data = await res.json().catch(() => null);
+        if (!data) return null;
+
+        // Prefer the most specific name available, then qualify it with the city
+        // when the two differ — "Kilimani, Nairobi" reads better than either alone.
+        const area = String(data.locality || '').trim();
+        const city = String(data.city || data.principalSubdivision || '').trim();
+        const country = String(data.countryName || '').trim();
+
+        const parts = [];
+        if (area) parts.push(area);
+        if (city && city.toLowerCase() !== area.toLowerCase()) parts.push(city);
+        const label = parts.join(', ');
+        if (!label) return null;
+
+        return { label, area, city, country, source: 'reverse-geocode' };
+    } catch {
+        return null;
+    }
+}
+
 export async function GET(request) {
+    const { searchParams } = new URL(request.url);
+
+    if (searchParams.get('action') === 'reverse') {
+        const latitude = Number(searchParams.get('lat'));
+        const longitude = Number(searchParams.get('lng'));
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)
+            || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+            return jsonError('Valid lat and lng are required.', 400);
+        }
+
+        // Deliberately unauthenticated: this is used during signup, before an
+        // account exists. It only transforms coordinates the caller already has
+        // and neither reads nor writes any member data.
+        const resolved = await reverseGeocode(latitude, longitude);
+        if (resolved) {
+            return NextResponse.json({ ok: true, ...resolved }, {
+                headers: { 'Cache-Control': 'public, max-age=86400' },
+            });
+        }
+
+        const fallbackLabel = labelFromCoordinates(latitude, longitude);
+        return NextResponse.json({
+            ok: true,
+            label: fallbackLabel,
+            area: '',
+            city: fallbackLabel,
+            country: '',
+            source: fallbackLabel ? 'offline-table' : 'unresolved',
+        });
+    }
+
     const fallback = await ipLocation(request);
     if (!fallback) return jsonError('IP location is unavailable.', 404);
     return NextResponse.json({ ok: true, location: fallback });
@@ -91,7 +173,11 @@ export async function POST(request) {
     const supabase = createServerSupabaseClient({ admin: true });
     if (!supabase) return jsonError('Supabase admin env missing.', 503);
     const body = await request.json().catch(() => ({}));
-    const userId = body.userId;
+    // A member may only write their own location. body.userId allowed overwriting
+    // another member's coordinates, which drives the nearby/distance features.
+    const { member, response } = await requireMember();
+    if (response) return response;
+    const userId = member.id;
     let location = body;
     if (body.action === 'ip_fallback') {
         const fallback = await ipLocation(request);

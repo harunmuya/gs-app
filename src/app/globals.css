@@ -1,57 +1,117 @@
 @import "tailwindcss";
 
 /* ---- GS clean social dating theme ---- */
+/* ---- Palette -----------------------------------------------------------
+   Reworked from the original plum + marigold scheme.
+   What changed and why:
+     - Primary moved to a deeper, cooler berry. The old #9B2C5E sat between
+       pink and purple and read closer to a template default than a brand.
+     - Gold demoted. It was a co-primary in gradients and on ordinary chrome,
+       which cheapens it. It is now reserved for premium tiers, so "gold"
+       actually signals something in the product.
+     - The three-hue gradient (pink -> gold -> blue) is gone. Multi-hue
+       gradients on ordinary UI are the strongest single "template" signal in
+       the old design. Gradients are now single-family depth ramps.
+     - Neutrals de-tinted. The old surfaces carried a heavy peach cast that
+       fought with the brand colour on every card.
+   All text pairings below clear WCAG AA (4.5:1) on their intended surface.
+   ---------------------------------------------------------------------- */
 :root {
-  --color-primary: #9B2C5E;
-  --color-primary-light: #E8A0BF;
-  --color-primary-dark: #6B1D42;
-  --color-secondary: #D4A03C;
-  --color-accent: #3B82F6;
-  --color-bg-dark: #FDFAF7;
+  --color-primary: #C21E56;
+  --color-primary-light: #F2A8C0;
+  --color-primary-dark: #8B1340;
+  /* Was #A67C2E — 3.79:1 on white, below AA for text. Still unmistakably gold. */
+  --color-secondary: #8A6620;
+  --color-accent: #2563EB;
+  --color-bg-dark: #FBF9FA;
   --color-bg-card: #ffffff;
-  --color-bg-input: #FAF3ED;
-  --color-surface: #F5EDE5;
-  --color-surface-light: #FDF2F8;
-  --color-text-primary: #1C1017;
-  --color-text-secondary: #4A3542;
-  --color-text-muted: #8B7A84;
-  --color-gold: #B8860B;
-  --color-success: #059669;
-  --color-danger: #DC2626;
-  --color-verified: #2563EB;
+  --color-bg-input: #F7F2F4;
+  --color-surface: #F3EEF0;
+  --color-surface-light: #FCF4F7;
+  --color-text-primary: #14101A;
+  --color-text-secondary: #4B4350;
+  /* Was #7D7488 — 4.44:1 on white, just under AA. */
+  --color-text-muted: #756C80;
+  --color-gold: #8A6620;
+  --color-success: #047857;
+  --color-danger: #C81E1E;
+  /* Semantic colours have two jobs that pull in opposite directions: a fill
+     carrying white text wants to be dark, and text on a dark surface wants to be
+     light. One token cannot do both — in the dark theme #047857 gave 3.43:1 as
+     text, and lifting it far enough to read would have broken every button that
+     puts white on it. So the fill keeps the base token and text uses the -text
+     variant. In this theme they coincide; in dark they do not. */
+  --color-success-text: #047857;
+  --color-danger-text: #C81E1E;
+  /* Same split for the brand colour: .text-primary may be lifted in dark mode,
+     .bg-primary must stay dark enough to carry white text. */
+  --color-primary-fill: #C21E56;
+  --color-verified: #1D4ED8;
+  /* Alert category accents.
+     These were literal hexes in the alerts KIND map, so they could not change
+     with the theme: #1D4ED8 gave 2.80:1 on the dark card and #0EA5E9 gave 2.77:1
+     on the light one — both below the 3:1 an icon needs (SC 1.4.11). Tokenised
+     so each theme gets a value that reads on its own surface. */
+  --accent-match: #C2185B;
+  --accent-social: #7C3AED;
+  --accent-gift: #8A6620;
+  --accent-verify: #1D4ED8;
+  --accent-support: #0F766E;
+  --accent-call: #0369A1;
   --radius-lg: 16px;
   --radius-xl: 24px;
-  --shadow-card: 0 4px 24px rgba(155, 44, 94, 0.08), 0 1px 3px rgba(0,0,0,0.04);
-  --shadow-lg: 0 20px 50px rgba(155, 44, 94, 0.14);
-  --gradient-primary: linear-gradient(135deg, #9B2C5E 0%, #D4A03C 100%);
-  --gradient-secondary: linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%);
-  --gradient-accent: linear-gradient(135deg, #D4A03C 0%, #9B2C5E 100%);
-  --gradient-gold: linear-gradient(135deg, #F5D77A 0%, #D4A03C 52%, #B8860B 100%);
-  --gradient-growth-orange: linear-gradient(135deg, #9B2C5E 0%, #D4A03C 50%, #3B82F6 100%);
+  --shadow-card: 0 4px 24px rgba(20, 16, 26, 0.06), 0 1px 3px rgba(20, 16, 26, 0.04);
+  --shadow-lg: 0 20px 50px rgba(139, 19, 64, 0.13);
+  /* Single-family depth ramp rather than a hue journey. */
+  --gradient-primary: linear-gradient(135deg, #C21E56 0%, #8B1340 100%);
+  --gradient-secondary: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+  --gradient-accent: linear-gradient(135deg, #8B1340 0%, #C21E56 100%);
+  /* Reserved for premium tiers only. */
+  --gradient-gold: linear-gradient(135deg, #D9B45F 0%, #A67C2E 100%);
+  --gradient-growth-orange: linear-gradient(135deg, #C21E56 0%, #8B1340 100%);
   --app-bg:
-    radial-gradient(ellipse at 10% 0%, rgba(155,44,94,0.06), transparent 40%),
-    radial-gradient(ellipse at 85% 5%, rgba(212,160,60,0.08), transparent 35%),
-    linear-gradient(180deg, #FDFAF7 0%, #FFFFFF 50%, #FDF2F8 100%);
-  --card-border: 1px solid rgba(155, 44, 94, 0.09);
+    radial-gradient(ellipse at 12% -5%, rgba(194, 30, 86, 0.05), transparent 45%),
+    linear-gradient(180deg, #FBF9FA 0%, #FFFFFF 55%, #FCF4F7 100%);
+  --card-border: 1px solid rgba(20, 16, 26, 0.07);
 }
 
 
 :root[data-theme="dark"] {
-  --color-bg-dark: #0C0710;
-  --color-bg-card: #160E18;
-  --color-bg-input: #1E1422;
-  --color-surface: #1E1422;
-  --color-surface-light: #2A1C30;
-  --color-text-primary: #F8F4FA;
-  --color-text-secondary: #DBC8E0;
-  --color-text-muted: #9484A0;
+  /* Near-neutral ink base. The old dark theme was heavily purple-tinted, which
+     left the brand colour with nowhere to stand out against. */
+  --color-bg-dark: #0B0910;
+  --color-bg-card: #141019;
+  --color-bg-input: #1B1622;
+  --color-surface: #1B1622;
+  --color-surface-light: #251E2E;
+  --color-text-primary: #F7F4F9;
+  --color-text-secondary: #D3CBDA;
+  --color-text-muted: #948CA0;
+  /* Lifted so it keeps AA contrast against the dark surface — but that makes it
+     too light to carry white text, so .bg-primary uses the fill token below.
+     White on #E8477C is 3.73:1; on the fill it is 5.81:1. */
+  --color-primary: #E8477C;
+  --color-primary-fill: #C21E56;
+  --color-primary-light: #F7B9CE;
+  --color-secondary: #D2A758;
+  --color-gold: #D2A758;
+  /* Lifted for the same reason as --color-primary above. The fill tokens stay
+     dark so white text on a success or danger button still reads. */
+  --color-success-text: #34D399;
+  --color-danger-text: #F87171;
+  /* Lifted to clear 3:1 on #141019. */
+  --accent-match: #F472B6;
+  --accent-social: #A78BFA;
+  --accent-gift: #D2A758;
+  --accent-verify: #7EA6FF;
+  --accent-support: #2DD4BF;
+  --accent-call: #38BDF8;
   --app-bg:
-    radial-gradient(ellipse at 15% 0%, rgba(155,44,94,0.15), transparent 35%),
-    radial-gradient(ellipse at 90% 10%, rgba(212,160,60,0.10), transparent 30%),
-    linear-gradient(180deg, #0C0710 0%, #160E18 60%, #0C0710 100%);
-  --card-border: 1px solid rgba(232,160,191,0.12);
-  --shadow-card: 0 2px 16px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
+    radial-gradient(ellipse at 15% -5%, rgba(232, 71, 124, 0.10), transparent 40%),
+    linear-gradient(180deg, #0B0910 0%, #141019 60%, #0B0910 100%);
+  --card-border: 1px solid rgba(247, 244, 249, 0.10);
+  --shadow-card: 0 2px 16px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.55);
 }
 
 :root[data-theme="dark"] .glass {
@@ -60,7 +120,8 @@
 /* ---- Theme utility classes ---- */
 @layer utilities {
   .bg-primary {
-    background-color: var(--color-primary);
+    /* Fill token, not the text token — see the palette note. */
+    background-color: var(--color-primary-fill);
   }
 
   .bg-primary-light {
@@ -140,11 +201,33 @@
   }
 
   .text-success {
-    color: var(--color-success);
+    /* The -text variant, not the fill token — see the palette note above. */
+    color: var(--color-success-text);
   }
 
   .text-danger {
-    color: var(--color-danger);
+    color: var(--color-danger-text);
+  }
+  /* Soft tinted panels.
+     These were written inline as rgba(200,30,30,0.08) and similar — a literal
+     light-mode red at 8% opacity, which over the dark theme's #141019 is
+     effectively invisible, so every warning panel lost its background in dark
+     mode while keeping its red text. color-mix against the theme's own token
+     keeps the tint proportional in both. */
+  .tint-danger {
+    background-color: color-mix(in srgb, var(--color-danger-text) 10%, transparent);
+  }
+  .tint-danger-strong {
+    background-color: color-mix(in srgb, var(--color-danger-text) 16%, transparent);
+  }
+  .border-danger-soft {
+    border: 1px solid color-mix(in srgb, var(--color-danger-text) 30%, transparent);
+  }
+  .tint-success {
+    background-color: color-mix(in srgb, var(--color-success-text) 10%, transparent);
+  }
+  .tint-primary {
+    background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);
   }
 
   .text-gold {
@@ -854,5 +937,192 @@ video,
   .profile-photo,
   [data-protected-media="true"] {
     visibility: hidden !important;
+  }
+}
+
+/* =====================================================================
+   Design system — typography, focus, motion, tap targets
+   =====================================================================
+   Added in the Phase 7 pass. The interface read as "generic" and
+   "template-based" for a measurable reason: font-black (weight 900) was
+   used 305 times against 113 bold and 26 medium. When almost everything
+   is the heaviest weight there is no hierarchy, and a reader's eye has
+   nothing to follow — which is precisely what makes a UI feel machine
+   generated.
+
+   The scale below reserves 900 for display text only and gives the rest
+   of the interface a deliberate ladder. Semantic classes let pages adopt
+   it incrementally; the global rules further down apply immediately.
+   ===================================================================== */
+
+:root {
+  /* Type scale — 1.25 ratio, clamped so it holds from 360px to ultra-wide */
+  --font-display: clamp(1.75rem, 1.4rem + 1.6vw, 2.5rem);
+  --font-title: clamp(1.375rem, 1.2rem + 0.8vw, 1.75rem);
+  --font-heading: clamp(1.0625rem, 1rem + 0.35vw, 1.25rem);
+  --font-body: 0.9375rem;
+  --font-caption: 0.8125rem;
+  --font-micro: 0.6875rem;
+
+  /* Weights. 900 is for display only. */
+  --weight-display: 800;
+  --weight-heading: 700;
+  --weight-emphasis: 600;
+  --weight-body: 400;
+
+  /* Line heights — tighter as size increases */
+  --leading-display: 1.1;
+  --leading-heading: 1.25;
+  --leading-body: 1.55;
+
+  /* Letter spacing — large text needs negative tracking to look intentional */
+  --tracking-display: -0.02em;
+  --tracking-heading: -0.01em;
+  --tracking-micro: 0.02em;
+
+  /* Elevation ladder. Cards were all on one shadow, which flattened depth. */
+  --elevation-1: 0 1px 2px rgba(28, 16, 23, 0.06);
+  --elevation-2: 0 2px 8px rgba(28, 16, 23, 0.07), 0 1px 2px rgba(28, 16, 23, 0.04);
+  --elevation-3: 0 8px 24px rgba(155, 44, 94, 0.10), 0 2px 6px rgba(28, 16, 23, 0.05);
+  --elevation-4: 0 20px 50px rgba(155, 44, 94, 0.16);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-pill: 999px;
+
+  /* Minimum comfortable touch target (WCAG 2.5.5 asks for 44x44) */
+  --tap-min: 44px;
+}
+
+:root[data-theme="dark"] {
+  --elevation-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --elevation-2: 0 2px 8px rgba(0, 0, 0, 0.45);
+  --elevation-3: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --elevation-4: 0 20px 50px rgba(0, 0, 0, 0.6);
+}
+
+@layer utilities {
+  .type-display {
+    font-size: var(--font-display);
+    font-weight: var(--weight-display);
+    line-height: var(--leading-display);
+    letter-spacing: var(--tracking-display);
+  }
+
+  .type-title {
+    font-size: var(--font-title);
+    font-weight: var(--weight-display);
+    line-height: var(--leading-heading);
+    letter-spacing: var(--tracking-display);
+  }
+
+  .type-heading {
+    font-size: var(--font-heading);
+    font-weight: var(--weight-heading);
+    line-height: var(--leading-heading);
+    letter-spacing: var(--tracking-heading);
+  }
+
+  .type-body {
+    font-size: var(--font-body);
+    font-weight: var(--weight-body);
+    line-height: var(--leading-body);
+  }
+
+  .type-body-strong {
+    font-size: var(--font-body);
+    font-weight: var(--weight-emphasis);
+    line-height: var(--leading-body);
+  }
+
+  .type-caption {
+    font-size: var(--font-caption);
+    font-weight: var(--weight-body);
+    line-height: 1.45;
+  }
+
+  .type-micro {
+    font-size: var(--font-micro);
+    font-weight: var(--weight-emphasis);
+    line-height: 1.4;
+    letter-spacing: var(--tracking-micro);
+    text-transform: uppercase;
+  }
+
+  .elevation-1 { box-shadow: var(--elevation-1); }
+  .elevation-2 { box-shadow: var(--elevation-2); }
+  .elevation-3 { box-shadow: var(--elevation-3); }
+  .elevation-4 { box-shadow: var(--elevation-4); }
+
+  /* Guarantees a comfortable hit area without changing visual size */
+  .tap-target {
+    position: relative;
+  }
+
+  .tap-target::after {
+    content: "";
+    position: absolute;
+    inset: 50% 50% 50% 50%;
+    width: var(--tap-min);
+    height: var(--tap-min);
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* ---- Focus visibility ------------------------------------------------
+   Keyboard users had almost no focus indication: five focus-visible rules
+   existed across the whole stylesheet. This gives every interactive
+   element a consistent, high-contrast ring without affecting mouse users.
+   -------------------------------------------------------------------- */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+:root[data-theme="dark"] a:focus-visible,
+:root[data-theme="dark"] button:focus-visible,
+:root[data-theme="dark"] input:focus-visible,
+:root[data-theme="dark"] textarea:focus-visible {
+  outline-color: var(--color-primary-light);
+}
+
+/* Never remove focus rings wholesale; only suppress for pointer input. */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ---- Reduced motion --------------------------------------------------
+   framer-motion drives card swipes, gift effects, and page transitions
+   throughout the app, and none of it honoured prefers-reduced-motion.
+   For users with vestibular sensitivity that is not cosmetic. Motion is
+   reduced to near-instant rather than removed, so state changes are
+   still perceivable.
+   -------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---- Ultra-wide ------------------------------------------------------
+   The shell was fluid to any width, so on a wide monitor content stretched
+   into unreadable line lengths. Caps the reading measure and centres it.
+   -------------------------------------------------------------------- */
+@media (min-width: 1440px) {
+  .app-main {
+    max-width: 1280px;
+    margin-inline: auto;
   }
 }

@@ -2,6 +2,8 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { createBrowserSupabaseClient, isSupabaseConfigured } from '@/lib/supabaseClient';
+import { clearEntitlements } from '@/lib/useEntitlements';
+import { POLL } from '@/lib/usePolling';
 
 const AuthContext = createContext({});
 
@@ -40,6 +42,10 @@ function cleanDisplayName(value, email = '') {
     }
     if (!name || name.includes('@')) name = 'GS Member';
     return name;
+}
+
+function normalizeResetCode(value) {
+    return String(value || '').replace(/\D/g, '').slice(0, 6);
 }
 
 function getStored(key, fallback = null) {
@@ -341,8 +347,31 @@ export function AuthProvider({ children }) {
                     body: JSON.stringify({ action: 'refresh_account', memberId: user.id, email: user.email }),
                 });
                 const data = await res.json().catch(() => ({}));
-                if (!alive || !res.ok || !data.member) return;
+                if (!alive) return;
+                if (!res.ok || !data.member) {
+                    if ([403, 404, 410].includes(res.status)) {
+                        setUser(null);
+                        setGuest(false);
+                        setVerificationStatus(null);
+                        setStored(STORAGE_KEYS.USER, null);
+                        setStored(STORAGE_KEYS.GUEST, false);
+                        setStored(STORAGE_KEYS.VERIFICATION, null);
+                        try {
+                            if (isSupabaseConfigured()) createBrowserSupabaseClient().auth.signOut({ scope: 'local' }).catch(() => {});
+                        } catch {}
+                    }
+                    return;
+                }
                 const account = { ...user, ...accountFromMember(data.member, user.email) };
+                if (account.access_blocked) {
+                    setUser(null);
+                    setGuest(false);
+                    setVerificationStatus(null);
+                    setStored(STORAGE_KEYS.USER, null);
+                    setStored(STORAGE_KEYS.GUEST, false);
+                    setStored(STORAGE_KEYS.VERIFICATION, null);
+                    return;
+                }
                 setUser(account);
                 setVerificationStatus(account.verification_status || null);
                 setStored(STORAGE_KEYS.USER, account);
@@ -355,7 +384,7 @@ export function AuthProvider({ children }) {
             } catch {}
         }
         refreshAccount();
-        const timer = setInterval(refreshAccount, 10000);
+        const timer = setInterval(refreshAccount, POLL.account);
         return () => { alive = false; clearInterval(timer); };
     }, [user?.email, loading]);
 
@@ -367,11 +396,19 @@ export function AuthProvider({ children }) {
         async function heartbeat() {
             if (stopped || document.visibilityState === 'hidden') return;
             try {
-                await fetch('/api/members', {
+                const res = await fetch('/api/members', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'heartbeat', memberId: user.id, email: user.email }),
+                    body: JSON.stringify({ action: 'heartbeat' }),
                 });
+                // The server now derives identity from a session cookie. Locally
+                // stored user state can outlive that session — notably for members
+                // who were signed in before the Supabase Auth cutover, who have
+                // local state but no cookie. Rather than leaving them in an app
+                // where every request 401s, drop the stale state and re-authenticate.
+                if (res.status === 401 && !stopped) {
+                    signOut?.();
+                }
             } catch {}
         }
 
@@ -430,11 +467,13 @@ export function AuthProvider({ children }) {
 
     // ---- Activity Logger (with notification dispatch) ----
     const logActivity = useCallback((type, data) => {
+        const countsAsUnread = data?.countsAsUnread === true || data?.badgeCount === true;
         const entry = {
             id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             type, ...data,
             timestamp: new Date().toISOString(),
-            read: false,
+            countsAsUnread,
+            read: data?.read ?? !countsAsUnread,
         };
         setActivity(prev => {
             const updated = [entry, ...prev].slice(0, 100);
@@ -442,16 +481,26 @@ export function AuthProvider({ children }) {
             return updated;
         });
         // Dispatch for NotificationManager
-        if (typeof window !== 'undefined' && data?.title) {
+        if (typeof window !== 'undefined' && data?.title && countsAsUnread) {
             window.dispatchEvent(new CustomEvent('gs-notification', {
                 detail: { title: data.title, body: data.message || '', image: data.image || '', type }
             }));
         }
     }, []);
 
-    const markActivityRead = useCallback(() => {
+    /**
+     * Mark activity read. Pass an id to mark one item; omit it to mark all.
+     *
+     * Previously this only ever marked everything, and the alerts page called it
+     * whenever any single item was opened — so reading one notification silently
+     * cleared the unread state of every other, and a member had no way to tell
+     * what they had actually seen.
+     */
+    const markActivityRead = useCallback((id) => {
         setActivity(prev => {
-            const updated = prev.map(a => ({ ...a, read: true }));
+            const updated = id
+                ? prev.map(a => (String(a.id) === String(id) ? { ...a, read: true } : a))
+                : prev.map(a => ({ ...a, read: true }));
             setStored(STORAGE_KEYS.ACTIVITY, updated);
             return updated;
         });
@@ -459,9 +508,14 @@ export function AuthProvider({ children }) {
 
     // ---- Messages ----
     const addMessage = useCallback((msg) => {
+        const countsAsUnread = msg?.countsAsUnread === true || msg?.badgeCount === true;
         const entry = {
             id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            ...msg, timestamp: new Date().toISOString(), read: false,
+            ...msg,
+            timestamp: msg?.timestamp || new Date().toISOString(),
+            countsAsUnread,
+            read: msg?.read ?? !countsAsUnread,
+            unreadCount: countsAsUnread ? Math.max(1, Number(msg?.unreadCount || 0)) : 0,
         };
         setMessages(prev => {
             const updated = [entry, ...prev].slice(0, 200);
@@ -470,26 +524,29 @@ export function AuthProvider({ children }) {
         });
     }, []);
 
-    const markMessagesRead = useCallback(() => {
+    /** Pass an id to mark one message read; omit it to mark all. */
+    const markMessagesRead = useCallback((id) => {
         setMessages(prev => {
-            const updated = prev.map(m => ({ ...m, read: true, unreadCount: 0 }));
+            const updated = id
+                ? prev.map(m => (String(m.id) === String(id) ? { ...m, read: true, unreadCount: 0 } : m))
+                : prev.map(m => ({ ...m, read: true, unreadCount: 0 }));
             setStored(STORAGE_KEYS.MESSAGES, updated);
             return updated;
         });
     }, []);
 
     async function syncAccountToServer(account, auth = {}) {
-        if (!account?.email) return null;
+        if (!account?.email) return { error: 'Email is required' };
         try {
             const res = await fetch('/api/members', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'upsert_account', ...account, password: auth.password }),
             });
-            const data = await res.json();
+            const data = await res.json().catch(() => ({}));
             if (!res.ok || !data.member) {
                 console.error('[syncAccountToServer] failed:', res.status, data?.error || 'no member returned');
-                return null;
+                return { error: data?.error || 'Could not save account details.' };
             }
             const synced = {
                 ...account,
@@ -520,16 +577,22 @@ export function AuthProvider({ children }) {
                 subscription_tier: data.member.subscriptionTier || account.subscription_tier,
                 admin_approved: data.member.adminApproved ?? account.admin_approved,
                 package_locked: data.member.packageLocked ?? account.package_locked,
+                package_expires_at: data.member.packageExpiresAt || account.package_expires_at || null,
+                is_banned: Boolean(data.member.isBanned ?? account.is_banned),
+                is_suspended: Boolean(data.member.isSuspended ?? account.is_suspended),
+                account_deleted_at: data.member.accountDeletedAt || account.account_deleted_at || null,
+                account_status: data.member.accountStatus || account.account_status || 'active',
+                access_blocked: Boolean(data.member.accessBlocked ?? account.access_blocked),
                 show_in_public: data.member.showInPublic ?? account.show_in_public,
                 verification_status: data.member.verified ? 'verified' : (data.member.verificationStatus || account.verification_status),
                 verified: Boolean(data.member.verified),
             };
             setUser(synced);
             setStored(STORAGE_KEYS.USER, synced);
-            return synced;
+            return { member: synced };
         } catch (err) {
             console.error('[syncAccountToServer] error:', err?.message || err);
-            return null;
+            return { error: err.message || 'Network error, please try again.' };
         }
     }
 
@@ -568,10 +631,24 @@ export function AuthProvider({ children }) {
             subscription_tier: member.subscriptionTier || 'free',
             admin_approved: Boolean(member.adminApproved),
             package_locked: Boolean(member.packageLocked),
+            package_expires_at: member.packageExpiresAt || member.package_expires_at || null,
+            is_banned: Boolean(member.isBanned ?? member.is_banned),
+            is_suspended: Boolean(member.isSuspended ?? member.is_suspended),
+            account_deleted_at: member.accountDeletedAt || member.account_deleted_at || null,
+            total_profile_views: member.totalProfileViews ?? member.total_profile_views ?? 0,
+            followers_count: member.followersCount ?? member.followers_count ?? 0,
+            following_count: member.followingCount ?? member.following_count ?? 0,
+            account_status: member.accountStatus || member.account_status || (
+                member.accountDeletedAt || member.account_deleted_at ? 'deleted'
+                    : member.isBanned || member.is_banned ? 'banned'
+                        : member.isSuspended || member.is_suspended ? 'suspended'
+                            : 'active'
+            ),
+            access_blocked: Boolean(member.accessBlocked || member.isBanned || member.is_banned || member.isSuspended || member.is_suspended || member.accountDeletedAt || member.account_deleted_at),
             show_in_public: member.showInPublic !== false,
             verification_status: member.verified ? 'verified' : (member.verificationStatus || null),
             verified: Boolean(member.verified),
-            preference_locked: true,
+            preference_locked: false,
         };
     }
 
@@ -585,15 +662,39 @@ export function AuthProvider({ children }) {
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !Array.isArray(data.notifications)) return;
-            const inboxItems = data.notifications.map((item) => ({
-                id: `admin-${item.id}`,
-                type: item.type || 'admin',
-                sender: item.metadata?.senderLabel || item.metadata?.team || 'GS Admin',
-                title: item.title,
-                body: item.body,
-                timestamp: item.created_at,
-                read: Boolean(item.read),
-            }));
+            /**
+             * Chat activity is excluded here.
+             *
+             * Sending a message creates a notification row *and* updates the
+             * conversation, so it arrived twice: once from this endpoint as
+             * "New message from Franc" and once from loadChatInbox as "Message
+             * from Franc" — same body, timestamps milliseconds apart, different
+             * ids, so no id-based dedupe could see it. Around a quarter of the
+             * inbox was the same event listed twice.
+             *
+             * `/api/chat` is the authoritative source for conversations: it
+             * carries the peer, the avatar, the unread count and the id needed to
+             * open the thread. The notification copy has none of that, so this is
+             * the one to drop.
+             */
+            const CHAT_DUPLICATE_TYPES = new Set(['message', 'member_message', 'chat']);
+
+            const inboxItems = data.notifications
+                .filter((item) => !CHAT_DUPLICATE_TYPES.has(String(item.type || '')))
+                .map((item) => ({
+                    id: `admin-${item.id}`,
+                    type: item.type || 'admin',
+                    sender: item.metadata?.senderLabel || item.metadata?.team || 'GS Admin',
+                    title: item.title,
+                    body: item.body,
+                    timestamp: item.created_at,
+                    read: Boolean(item.read),
+                    // Where the alert should take you. Every notification the
+                    // server writes carries this, but it was dropped here, so
+                    // "X is live now" and an incoming call both dead-ended on a
+                    // detail card with nothing to act on.
+                    actionLink: item.metadata?.actionLink || '',
+                }));
             setMessages((prev) => {
                 const seen = new Set(prev.map((item) => item.id));
                 const merged = [...inboxItems.filter((item) => !seen.has(item.id)), ...prev].slice(0, 250);
@@ -785,12 +886,13 @@ export function AuthProvider({ children }) {
         setStored(STORAGE_KEYS.SIGNED_OUT_UNTIL, null);
         const cleanEmail = String(email || '').trim().toLowerCase();
         if (!cleanEmail || !cleanEmail.includes('@')) throw new Error('Enter the email on your account.');
-        if (!/^\d{6}$/.test(String(code || '').trim())) throw new Error('Enter the 6-digit reset code.');
+        const cleanCode = normalizeResetCode(code);
+        if (!/^\d{6}$/.test(cleanCode)) throw new Error('Enter the 6-digit reset code.');
         if (String(password || '').length < 6) throw new Error('New password must be at least 6 characters.');
         const res = await fetch('/api/members', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'reset_password', email: cleanEmail, code: String(code).trim(), password }),
+            body: JSON.stringify({ action: 'reset_password', email: cleanEmail, code: cleanCode, password }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.member) throw new Error(data.error || 'Could not reset password.');
@@ -849,6 +951,7 @@ export function AuthProvider({ children }) {
             preference: userPreference || 'sugar_mummy_looking_for_toyboy',
             ...selectedIntent,
             subscription_tier: 'free', admin_approved: true, package_locked: false, preference_locked: true,
+            is_banned: false, is_suspended: false, account_status: 'active', access_blocked: false,
             created_at: new Date().toISOString(),
         };
         const existing = getStored(STORAGE_KEYS.USER);
@@ -863,12 +966,13 @@ export function AuthProvider({ children }) {
         setStored(STORAGE_KEYS.GUEST, false);
         setStored(STORAGE_KEYS.PREFERENCE, merged.preference);
         logActivity('login', { title: 'Signed in', message: `Welcome back, ${merged.display_name}!` });
-        const synced = await syncAccountToServer(merged, { password });
-        if (!synced) {
+        const result = await syncAccountToServer(merged, { password });
+        if (result.error || !result.member) {
             setUser(null);
             setStored(STORAGE_KEYS.USER, null);
-            throw new Error('Could not create account. Check your email and password, then try again.');
+            throw new Error(result.error || 'Could not create account. Check your email and password, then try again.');
         }
+        const synced = result.member;
         loadAccountInbox(synced);
         loadChatInbox(synced);
         loadRemoteSettings(synced);
@@ -882,7 +986,8 @@ export function AuthProvider({ children }) {
                 addMessage({
                     type: 'gs_support', sender: 'GS Support', senderImage: '',
                     title: 'Welcome to Genuine Sugar Mummies!',
-                    body: `Hi ${merged.display_name}! Welcome to Genuine Sugar Mummies, your premium connection platform. Browse profiles, like and match, then request hookup connections. Admin Mary G on Telegram @GSADMINMARYGAGENCY facilitates all connections. Enjoy!`,
+                    body: `Hi ${merged.display_name}! Your free account is ready. Basic unlocks unlimited messages, photo chat, 50 GS Credits, and one direct connection request after admin approval. Silver unlocks phone reveal, calls, GIFs, voice notes, activity insights, and stronger visibility.`,
+                    countsAsUnread: false,
                 });
             }, 2000);
         }
@@ -896,6 +1001,10 @@ export function AuthProvider({ children }) {
 
     async function signOut() {
         setStored(STORAGE_KEYS.SIGNED_OUT_UNTIL, Date.now() + 2 * 60 * 1000);
+        // Entitlements are cached in a module, outside React state. Without this
+        // the next member to sign in on the same tab inherits the previous
+        // member's package until their first refetch.
+        clearEntitlements();
         try {
             if (isSupabaseConfigured()) {
                 const supabase = createBrowserSupabaseClient();
@@ -970,7 +1079,7 @@ export function AuthProvider({ children }) {
             ...user,
             ...accountFromMember(data.member, user.email),
             preference: user.preference || preference,
-            preference_locked: true,
+            preference_locked: false,
         };
         setUser(synced);
         setStored(STORAGE_KEYS.USER, synced);
@@ -1011,7 +1120,7 @@ export function AuthProvider({ children }) {
             ...user,
             ...accountFromMember(data.member, user.email),
             preference: nextPreference,
-            preference_locked: true,
+            preference_locked: false,
         };
         if (updates.preference) {
             setPreference(updates.preference);
@@ -1315,12 +1424,28 @@ export function AuthProvider({ children }) {
 
     // ---- Preference ----
     function updatePreference(pref) {
+        const LABEL_MAP = {
+            sugar_mummy_looking_for_toyboy: { profile_label: 'sugar_mummy', looking_for: 'Sugar Guy / Toyboy' },
+            sugar_daddy_looking_for_mistress: { profile_label: 'sugar_daddy', looking_for: 'Mistress' },
+            mistress_looking_for_sugar_daddy: { profile_label: 'mistress', looking_for: 'Sugar Daddy' },
+            toyboy_looking_for_sugar_mummy: { profile_label: 'toyboy', looking_for: 'Sugar Mummy' },
+        };
         setPreference(pref);
         setStored(STORAGE_KEYS.PREFERENCE, pref);
         if (user) {
-            const updated = { ...user, preference: pref };
+            const labels = LABEL_MAP[pref] || {};
+            const updated = { ...user, preference: pref, profile_label: labels.profile_label, looking_for: labels.looking_for };
             setUser(updated);
             setStored(STORAGE_KEYS.USER, updated);
+            // Sync to database
+            if (labels.profile_label) {
+                updateProfile({
+                    preference: pref,
+                    profile_label: labels.profile_label,
+                    member_category: labels.profile_label,
+                    looking_for: labels.looking_for,
+                }).catch(() => {});
+            }
         }
     }
 

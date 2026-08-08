@@ -1,16 +1,20 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
-import { canUseFeature, getUserPackageAccess } from '@/lib/packageAccess';
+import { accountRestrictionMessage, canUseFeature, getUserPackageAccess, isAccountRestricted } from '@/lib/packageAccess';
+import { requireMember } from '@/lib/authSession';
 
 const LIVE_CALL_STATUSES = ['ringing', 'accepted', 'active'];
 const CLOSED_CALL_STATUSES = ['ended', 'rejected', 'declined', 'missed'];
+
+/** Longest a call may sit unanswered before the server calls it missed. */
+const RINGING_TIMEOUT_MS = 75 * 1000;
 
 function jsonError(message, status = 500) {
     return NextResponse.json({ error: message }, { status });
 }
 
 async function getUser(supabase, userId) {
-    const { data } = await supabase.from('users').select('id, display_name, avatar_url, photos, subscription_tier, admin_approved, package_locked').eq('id', userId).maybeSingle();
+    const { data } = await supabase.from('users').select('id, display_name, avatar_url, photos, subscription_tier, admin_approved, package_locked, is_banned, is_suspended').eq('id', userId).maybeSingle();
     return data || null;
 }
 
@@ -32,16 +36,22 @@ function formatCallDuration(seconds) {
     return `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
+/**
+ * Append to the call audit trail.
+ *
+ * The column is `user_id`; this wrote `actor_id`, which does not exist, so
+ * every insert failed and the swallowed error hid it. call_events held zero
+ * rows despite the app having placed calls.
+ */
 async function logCallEvent(supabase, sessionId, actorId, eventType, metadata = {}) {
     if (!sessionId || !eventType) return;
-    try {
-        await supabase.from('call_events').insert({
-            call_session_id: sessionId,
-            actor_id: actorId || null,
-            event_type: eventType,
-            metadata,
-        });
-    } catch {}
+    const { error } = await supabase.from('call_events').insert({
+        call_session_id: sessionId,
+        user_id: actorId || null,
+        event_type: eventType,
+        metadata,
+    });
+    if (error) console.error('[calls] call_events insert failed:', error.message);
 }
 
 async function ensureConversation(supabase, userId, peerId) {
@@ -119,9 +129,14 @@ export async function GET(request) {
     if (!supabase) return jsonError('Supabase admin env missing.', 503);
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get('sessionId');
-    const userId = searchParams.get('userId');
     if (!sessionId) {
-        if (!userId) return jsonError('Call session id or user id is required.', 400);
+        // Call history belongs to the signed-in member; ?userId= is not trusted.
+        const { member, response } = await requireMember();
+        if (response) return response;
+        const userId = member.id;
+        const viewer = await getUser(supabase, userId);
+        if (!viewer?.id) return jsonError('Signed-in user was not found.', 404);
+        if (isAccountRestricted(viewer)) return jsonError(accountRestrictionMessage(viewer), 403);
         const { data, error } = await supabase
             .from('call_sessions')
             .select('*')
@@ -135,8 +150,13 @@ export async function GET(request) {
         if (invalidSelfCalls.length) {
             await supabase.from('call_sessions').update({ status: 'ended', ended_at: new Date().toISOString(), receiver_id: null }).in('id', invalidSelfCalls);
         }
+        // The caller's own page gives up at 60s and marks the call missed. This
+        // is the backstop for when it cannot — a crash, a killed tab, no network.
+        // It was 120s, so an abandoned call rang on the receiver's device for two
+        // minutes; 75s clears it shortly after the caller would have stopped
+        // ringing anyway, without cutting a legitimate ring short.
         const staleRingingIds = rows
-            .filter((row) => row.status === 'ringing' && Date.now() - new Date(row.created_at).getTime() > 120000)
+            .filter((row) => row.status === 'ringing' && Date.now() - new Date(row.created_at).getTime() > RINGING_TIMEOUT_MS)
             .map((row) => row.id);
         if (staleRingingIds.length) {
             await supabase.from('call_sessions').update({ status: 'missed', missed_at: new Date().toISOString() }).in('id', staleRingingIds);
@@ -166,6 +186,22 @@ export async function GET(request) {
         });
     }
 
+    // This branch is the WebRTC signalling channel: both peers poll it for the
+    // offer, answer and ICE candidates. It previously read a `userId` that was
+    // declared with `const` inside the block above, so every request threw
+    // ReferenceError and returned 500 — which is why call_signals held zero rows
+    // and no call ever connected.
+    //
+    // Identity now comes from the session, and membership of the call is
+    // mandatory rather than checked only "if (userId)". Signalling payloads
+    // describe a private conversation's network path; they are not public.
+    const { member, response } = await requireMember();
+    if (response) return response;
+    const userId = member.id;
+    const viewer = await getUser(supabase, userId);
+    if (!viewer?.id) return jsonError('Signed-in user was not found.', 404);
+    if (isAccountRestricted(viewer)) return jsonError(accountRestrictionMessage(viewer), 403);
+
     const [sessionResult, signalResult] = await Promise.all([
         supabase.from('call_sessions').select('*').eq('id', sessionId).maybeSingle(),
         supabase.from('call_signals').select('*').eq('call_session_id', sessionId).order('created_at', { ascending: true }).limit(200),
@@ -177,7 +213,7 @@ export async function GET(request) {
         await supabase.from('call_sessions').update({ status: 'ended', ended_at: new Date().toISOString(), receiver_id: null }).eq('id', session.id);
         return jsonError('Invalid self-call was closed.', 400);
     }
-    if (userId && ![session.caller_id, session.receiver_id].includes(userId)) return jsonError('You are not part of this call.', 403);
+    if (![session.caller_id, session.receiver_id].includes(userId)) return jsonError('You are not part of this call.', 403);
     return NextResponse.json({ ok: true, session, signals: signalResult.data || [] });
 }
 
@@ -186,15 +222,20 @@ export async function POST(request) {
     if (!supabase) return jsonError('Supabase admin env missing.', 503);
     const body = await request.json().catch(() => ({}));
     const action = body.action || 'start';
-    const userId = body.userId;
+    // Caller is the signed-in member; body.userId let calls be placed as someone else.
+    const { member, response } = await requireMember();
+    if (response) return response;
+    const userId = member.id;
 
     if (action === 'start') {
         const peerId = body.peerId;
         const callType = String(body.callType || 'voice').slice(0, 20);
-        if (!userId || !peerId) return jsonError('Caller and receiver are required.', 400);
+        if (!peerId) return jsonError('Receiver is required.', 400);
         if (userId === peerId) return jsonError('You cannot call yourself.', 400);
         const [caller, receiver] = await Promise.all([getUser(supabase, userId), getUser(supabase, peerId)]);
         if (!caller?.id || !receiver?.id) return jsonError('Caller or receiver was not found.', 404);
+        if (isAccountRestricted(caller)) return jsonError(accountRestrictionMessage(caller), 403);
+        if (isAccountRestricted(receiver)) return jsonError('This member is unavailable.', 404);
         const access = await getUserPackageAccess(supabase, caller);
         if (!canUseFeature(access.tier, 'calls')) return NextResponse.json({ error: 'Voice and video calls require an active Silver or Gold package.', redirectTo: '/packages' }, { status: 402 });
         const { data: existing } = await supabase
@@ -233,6 +274,9 @@ export async function POST(request) {
         const signalType = String(body.signalType || '').slice(0, 40);
         if (!sessionId || !userId || !receiverId || !signalType) return jsonError('Signal details are required.', 400);
         if (userId === receiverId) return jsonError('You cannot signal yourself.', 400);
+        const actor = await getUser(supabase, userId);
+        if (!actor?.id) return jsonError('Signed-in user was not found.', 404);
+        if (isAccountRestricted(actor)) return jsonError(accountRestrictionMessage(actor), 403);
         const sessionCheck = await supabase.from('call_sessions').select('*').eq('id', sessionId).maybeSingle();
         if (sessionCheck.error) return jsonError(sessionCheck.error.message);
         const session = sessionCheck.data;
@@ -240,10 +284,15 @@ export async function POST(request) {
         if (session.caller_id === session.receiver_id) return jsonError('Invalid self-call.', 400);
         if (![session.caller_id, session.receiver_id].includes(userId) || ![session.caller_id, session.receiver_id].includes(receiverId)) return jsonError('Signal user is not part of this call.', 403);
         if (CLOSED_CALL_STATUSES.includes(session.status)) return jsonError('This call is already closed.', 409);
+        // call_signals carries both `type` (NOT NULL, no default) and the newer
+        // `signal_type`. Only the latter was written, so every insert failed the
+        // not-null constraint and no offer, answer or ICE candidate ever reached
+        // the other peer. Both are set so readers of either column agree.
         const { data, error } = await supabase.from('call_signals').insert({
             call_session_id: sessionId,
             sender_id: userId,
             receiver_id: receiverId,
+            type: signalType,
             signal_type: signalType,
             payload: body.payload || {},
         }).select('*').maybeSingle();
@@ -255,6 +304,11 @@ export async function POST(request) {
         const sessionId = body.sessionId;
         const status = String(body.status || '').slice(0, 40);
         if (!sessionId || !status) return jsonError('Session and status are required.', 400);
+        if (userId) {
+            const actor = await getUser(supabase, userId);
+            if (!actor?.id) return jsonError('Signed-in user was not found.', 404);
+            if (isAccountRestricted(actor)) return jsonError(accountRestrictionMessage(actor), 403);
+        }
         const current = await supabase.from('call_sessions').select('*').eq('id', sessionId).maybeSingle();
         if (current.error) return jsonError(current.error.message);
         if (!current.data?.id) return jsonError('Call not found.', 404);
@@ -265,21 +319,21 @@ export async function POST(request) {
         if (userId && ![current.data.caller_id, current.data.receiver_id].includes(userId)) return jsonError('You are not part of this call.', 403);
         if (!['ringing', 'accepted', 'active', 'ended', 'rejected', 'declined', 'missed'].includes(status)) return jsonError('Unsupported call status.', 400);
         const now = new Date();
-        const patch = { status, updated_at: now.toISOString() };
+        // call_sessions has no `updated_at`. Writing it made PostgREST reject the
+        // whole patch, and the retry below only dropped `duration_seconds`, so the
+        // second attempt failed identically. The practical effect was that a call
+        // could never be accepted, declined or ended — the status stayed 'ringing'
+        // until the stale-call sweep marked it missed.
+        const patch = { status };
         if (['accepted', 'active'].includes(status) && !current.data.started_at) patch.started_at = now.toISOString();
+        if (status === 'accepted' && !current.data.accepted_at) patch.accepted_at = now.toISOString();
         const durationSeconds = ['ended', 'rejected', 'declined', 'missed'].includes(status) ? callDurationSeconds(current.data, now) : 0;
         if (['ended', 'rejected', 'declined'].includes(status)) {
             patch.ended_at = now.toISOString();
             patch.duration_seconds = durationSeconds;
         }
-        if (status === 'missed') patch.missed_at = new Date().toISOString();
-        let updateResult = await supabase.from('call_sessions').update(patch).eq('id', sessionId).select('*').maybeSingle();
-        if (updateResult.error && ['42703', 'PGRST204'].includes(updateResult.error.code)) {
-            const fallbackPatch = { ...patch };
-            delete fallbackPatch.duration_seconds;
-            updateResult = await supabase.from('call_sessions').update(fallbackPatch).eq('id', sessionId).select('*').maybeSingle();
-        }
-        const { data, error } = updateResult;
+        if (status === 'missed') patch.missed_at = now.toISOString();
+        const { data, error } = await supabase.from('call_sessions').update(patch).eq('id', sessionId).select('*').maybeSingle();
         if (error) return jsonError(error.message);
         await logCallEvent(supabase, sessionId, userId, status, { callType: data.call_type, durationSeconds });
         if (['ended', 'rejected', 'declined', 'missed'].includes(status)) {

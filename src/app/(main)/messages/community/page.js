@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, Bell, Camera, Gem, Megaphone, Rocket, ShieldCheck, Users } from 'lucide-react';
+import { ArrowLeft, Bell, Camera, Gem, Megaphone, Rocket, ShieldCheck, Users } from '@/components/icons';
 
 const UPDATES = [
     {
@@ -47,7 +47,7 @@ export default function CommunityPage() {
             <header className="flex items-center gap-3">
                 <Link href="/messages" className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center" aria-label="Back"><ArrowLeft size={18} /></Link>
                 <div>
-                    <p className="text-xs font-black uppercase text-primary">Official channel</p>
+                    <p className="text-xs font-semibold uppercase text-primary">Official channel</p>
                     <h1 className="text-xl font-black text-text-primary">GS App Community</h1>
                     <p className="text-xs text-text-muted">Updates, instructions, and safety notices for active members.</p>
                 </div>
@@ -68,9 +68,9 @@ export default function CommunityPage() {
                         <Link key={item.title} href={item.href} className="rounded-2xl p-4 flex gap-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                             <div className="h-11 w-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0"><Icon size={19} /></div>
                             <div className="min-w-0 flex-1">
-                                <p className="text-sm font-black text-text-primary">{item.title}</p>
+                                <p className="text-sm font-bold text-text-primary">{item.title}</p>
                                 <p className="mt-1 text-xs leading-relaxed text-text-muted">{item.body}</p>
-                                <span className="mt-2 inline-flex rounded-full bg-secondary/10 px-2.5 py-1 text-[10px] font-black text-secondary">{item.label}</span>
+                                <span className="mt-2 inline-flex rounded-full bg-secondary/10 px-2.5 py-1 text-[10px] font-semibold text-secondary">{item.label}</span>
                             </div>
                         </Link>
                     );
@@ -78,10 +78,10 @@ export default function CommunityPage() {
             </section>
 
             <section className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                <h2 className="text-sm font-black text-text-primary flex items-center gap-1.5"><Users size={16} className="text-primary" /> Member Instructions</h2>
+                <h2 className="text-sm font-bold text-text-primary flex items-center gap-1.5"><Users size={16} className="text-primary" /> Member Instructions</h2>
                 {GUIDES.map(([title, body]) => (
                     <div key={title} className="rounded-xl p-3" style={{ background: 'var(--color-surface)' }}>
-                        <p className="text-xs font-black text-text-primary flex items-center gap-1"><ShieldCheck size={13} className="text-success" /> {title}</p>
+                        <p className="text-xs font-semibold text-text-primary flex items-center gap-1"><ShieldCheck size={13} className="text-success" /> {title}</p>
                         <p className="mt-1 text-xs text-text-muted leading-relaxed">{body}</p>
                     </div>
                 ))}

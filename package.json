@@ -6,7 +6,8 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "node scripts/check-app.mjs"
+    "lint": "node scripts/check-app.mjs",
+    "icons": "node scripts/build-icons.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
@@ -19,7 +20,6 @@
     "@tailwindcss/postcss": "^4.1.18",
     "autoprefixer": "^10.4.24",
     "framer-motion": "^12.34.0",
-    "lucide-react": "^0.563.0",
     "next": "^16.2.10",
     "postcss": "8.5.15",
     "react": "^19.2.4",

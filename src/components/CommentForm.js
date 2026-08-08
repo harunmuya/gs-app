@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Send, CheckCircle, AlertTriangle, LogIn } from 'lucide-react';
+import { X, Send, CheckCircle, AlertTriangle, LogIn } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 

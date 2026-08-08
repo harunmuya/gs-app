@@ -1,7 +1,19 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
+import { adminSessionFromRequest } from '@/lib/adminSession';
 
-export async function GET() {
+/**
+ * Schema diagnostics.
+ *
+ * This endpoint runs writes against the live database with the service-role key
+ * and reports column-level schema detail. It was previously reachable by anyone,
+ * unauthenticated, which both leaked schema and inserted test rows into
+ * production `users`. It now requires an admin session.
+ */
+export async function GET(request) {
+    if (!adminSessionFromRequest(request)) {
+        return NextResponse.json({ error: 'Not found.' }, { status: 404 });
+    }
     const supabase = createServerSupabaseClient({ admin: true });
     if (!supabase) {
         return NextResponse.json({ error: 'No supabase client' }, { status: 503 });

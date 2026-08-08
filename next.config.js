@@ -51,6 +51,19 @@ const nextConfig = {
     }
     return [
       {
+        // Seed photography, gift art, and icons are immutable: filenames are
+        // content-specific and the files are replaced by name, never edited.
+        // Without this they are served with a revalidating cache policy, so every
+        // card view costs a request against ~51 MB of assets.
+        source: '/:dir(seed|gifts|icons)/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
         source: '/(.*)',
         headers: [
           {

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Eye, Heart, Loader2, Lock, Rocket, UserCheck, Users } from 'lucide-react';
+import { Eye, Heart, Loader2, Lock, Rocket, UserCheck, Users } from '@/components/icons';
 import UserAvatar from '@/components/UserAvatar';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -26,7 +26,7 @@ function PersonRow({ row, userKey, label }) {
         <Link href={user.id ? `/members/${user.id}` : '/members'} className="flex items-center gap-2 rounded-xl p-2" style={{ background: 'var(--color-surface)' }}>
             <UserAvatar name={user.display_name || label} src={photo} size={36} />
             <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-black text-text-primary">{user.display_name || 'Member'}</p>
+                <p className="truncate text-xs font-semibold text-text-primary">{user.display_name || 'Member'}</p>
                 <p className="truncate text-[10px] text-text-muted">{user.username ? `@${user.username} - ` : ''}{timeText(row.created_at)}</p>
             </div>
         </Link>
@@ -81,15 +81,15 @@ export default function AccountActivityPanel() {
         <section className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
             <div className="flex items-start justify-between gap-3">
                 <div>
-                    <h3 className="text-sm font-black text-text-primary flex items-center gap-1.5"><Rocket size={16} className="text-secondary" /> Silver Activity Center</h3>
+                    <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5"><Rocket size={16} className="text-secondary" /> Silver Activity Center</h3>
                     <p className="text-xs text-text-muted">See who likes, views, and follows you. Boost your profile for more attention.</p>
                 </div>
-                <button onClick={boostProfile} disabled={loading || locked} className="shrink-0 rounded-xl px-3 py-2 text-[10px] font-black text-white gradient-primary disabled:opacity-50">
+                <button onClick={boostProfile} disabled={loading || locked} className="shrink-0 rounded-xl px-3 py-2 text-[10px] font-semibold text-white gradient-primary disabled:opacity-50">
                     {activeBoost ? 'Boosted' : 'Boost'}
                 </button>
             </div>
 
-            {loading && <div className="rounded-xl bg-primary/10 p-3 text-xs font-black text-primary flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading activity...</div>}
+            {loading && <div className="rounded-xl bg-primary/10 p-3 text-xs font-semibold text-primary flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading activity...</div>}
             {status && <div className="rounded-xl bg-primary/10 p-3 text-xs font-bold text-primary">{status}</div>}
             {locked && (
                 <div className="rounded-xl bg-amber-100 p-3 text-xs font-bold text-gold flex items-center gap-2">
@@ -98,10 +98,10 @@ export default function AccountActivityPanel() {
             )}
 
             <div className="grid grid-cols-4 gap-2">
-                <Metric icon={Heart} label="Likes" value={data?.likes?.length || 0} />
-                <Metric icon={Eye} label="Views" value={data?.views?.length || 0} />
-                <Metric icon={Users} label="Followers" value={data?.followers?.length || 0} />
-                <Metric icon={UserCheck} label="Following" value={data?.following?.length || 0} />
+                <Metric icon={Heart} label="Likes" value={data?.likes?.length || 0} locked={locked} />
+                <Metric icon={Eye} label="Views" value={data?.views?.length || 0} locked={locked} />
+                <Metric icon={Users} label="Followers" value={data?.followers?.length || 0} locked={locked} />
+                <Metric icon={UserCheck} label="Following" value={data?.following?.length || 0} locked={locked} />
             </div>
 
             {!locked && (
@@ -116,12 +116,24 @@ export default function AccountActivityPanel() {
     );
 }
 
-function Metric({ icon: Icon, label, value }) {
+function Metric({ icon: Icon, label, value, locked = false }) {
+    const content = (
+        <>
+            <Icon size={15} className="mx-auto text-primary" />
+            <p className={`mt-1 text-base font-black ${locked ? 'text-text-muted blur-[2px] select-none' : 'text-primary'}`}>{locked ? '999' : value}</p>
+            <p className="text-[9px] font-bold text-text-muted">{label}</p>
+        </>
+    );
+    if (locked) {
+        return (
+            <Link href="/packages" className="rounded-xl p-2 text-center" style={{ background: 'var(--color-surface)' }} aria-label={`${label} requires Silver package`}>
+                {content}
+            </Link>
+        );
+    }
     return (
         <div className="rounded-xl p-2 text-center" style={{ background: 'var(--color-surface)' }}>
-            <Icon size={15} className="mx-auto text-primary" />
-            <p className="mt-1 text-base font-black text-primary">{value}</p>
-            <p className="text-[9px] font-bold text-text-muted">{label}</p>
+            {content}
         </div>
     );
 }
@@ -129,7 +141,7 @@ function Metric({ icon: Icon, label, value }) {
 function List({ title, rows, userKey, empty }) {
     return (
         <div className="space-y-2">
-            <p className="text-xs font-black text-text-primary">{title}</p>
+            <p className="text-xs font-semibold text-text-primary">{title}</p>
             {rows.length === 0 ? <p className="rounded-xl p-3 text-xs text-text-muted" style={{ background: 'var(--color-surface)' }}>{empty}</p> : rows.slice(0, 5).map((row) => <PersonRow key={row.id} row={row} userKey={userKey} label={title} />)}
         </div>
     );

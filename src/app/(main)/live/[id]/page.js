@@ -2,7 +2,7 @@
 
 import { use, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Clock, Eye, Gift, Heart, MessageCircle, Send, Users, Wallet } from 'lucide-react';
+import { ArrowLeft, Clock, Eye, Gift, Heart, MessageCircle, Send, Users, Wallet } from '@/components/icons';
 import { createBrowserSupabaseClient, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthContext';
 import UserAvatar from '@/components/UserAvatar';
@@ -57,6 +57,14 @@ export default function WatchLivePage({ params }) {
         setSeconds(elapsedSeconds(data.stream?.started_at));
         setComments(data.comments || []);
         setGifts(data.gifts || []);
+        // A host who closed the tab sends no 'stream-ended' broadcast; the server
+        // sweeps the stream instead. This poll is the only way a viewer learns of
+        // it, so without this the room sat on a frozen frame indefinitely.
+        if (data.stream?.is_active === false) {
+            setStatus('This live stream has ended.');
+            try { pcRef.current?.close(); } catch {}
+            pcRef.current = null;
+        }
     }
 
     async function loadWallet() {
@@ -73,9 +81,9 @@ export default function WatchLivePage({ params }) {
 
     useEffect(() => {
         if (!user?.id) return;
-        fetch('/api/live', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'join_stream', streamId: id, userId: user.id }) }).catch(() => {});
+        fetch('/api/live', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'join_stream', streamId: id }) }).catch(() => {});
         return () => {
-            fetch('/api/live', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'leave_stream', streamId: id, userId: user.id }) }).catch(() => {});
+            fetch('/api/live', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'leave_stream', streamId: id }) }).catch(() => {});
         };
     }, [id, user?.id]);
 
@@ -148,7 +156,15 @@ export default function WatchLivePage({ params }) {
                 }
             });
 
+        // Re-announce until the host answers. The host ignores a viewer it has
+        // already built a connection for, so this is safe to repeat — but it ran
+        // forever, re-announcing every 10 seconds for the whole stream even once
+        // video was flowing. Stop as soon as the peer connection is up.
         const retry = window.setInterval(() => {
+            if (pcRef.current?.connectionState === 'connected') {
+                window.clearInterval(retry);
+                return;
+            }
             sendSignal('viewer-ready', { streamId: stream.id, viewerId: user.id, hostId: stream.host_id });
         }, 10000);
 
@@ -162,8 +178,24 @@ export default function WatchLivePage({ params }) {
         };
     }, [stream?.id, stream?.host_id, user?.id]);
 
+    /*
+      Comments and gifts.
+
+      Realtime is not currently enabled on live_comments or live_gifts in this
+      project, so in practice everything arrives on the poll below. At the old
+      eight seconds a live chat was unusable — you spoke, and the room answered
+      the better part of a minute later. 2.5s while the stream is running is the
+      compromise: responsive enough to feel like a conversation, and it stops
+      entirely once the stream ends rather than polling a dead room forever.
+
+      The subscription stays because it costs nothing when the table is not
+      published, and it takes over the moment Realtime is switched on — see
+      supabase/migrations/20260808_090_realtime_calls_and_live.sql.
+    */
+    const streamEnded = stream?.is_active === false;
     useEffect(() => {
-        const poll = window.setInterval(loadLive, 8000);
+        if (streamEnded) return undefined;
+        const poll = window.setInterval(loadLive, 2500);
         let channel = null;
         try {
             if (isSupabaseConfigured()) {
@@ -171,16 +203,14 @@ export default function WatchLivePage({ params }) {
                 channel = supabase
                     .channel(`gs-live-${id}`)
                     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'live_comments', filter: `stream_id=eq.${id}` }, (payload) => {
-                        setComments((items) => [...items.slice(-80), payload.new]);
-                        setStream((current) => current ? { ...current, total_comments: Number(current.total_comments || 0) + 1 } : current);
+                        setComments((items) => (
+                            items.some((item) => item.id === payload.new?.id) ? items : [...items.slice(-80), payload.new]
+                        ));
                     })
                     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'live_gifts', filter: `stream_id=eq.${id}` }, (payload) => {
-                        setGifts((items) => [payload.new, ...items].slice(0, 80));
-                        setStream((current) => current ? {
-                            ...current,
-                            total_gifts: Number(current.total_gifts || 0) + 1,
-                            total_coins: Number(current.total_coins || 0) + Number(payload.new?.gift_cost || 0),
-                        } : current);
+                        setGifts((items) => (
+                            items.some((item) => item.id === payload.new?.id) ? items : [payload.new, ...items].slice(0, 80)
+                        ));
                     })
                     .subscribe();
             }
@@ -189,13 +219,15 @@ export default function WatchLivePage({ params }) {
             window.clearInterval(poll);
             try { if (channel) createBrowserSupabaseClient().removeChannel(channel); } catch {}
         };
-    }, [id]);
+    }, [id, streamEnded]);
 
     useEffect(() => {
         gifts.forEach((gift) => {
             if (!gift?.id || seenGiftIdsRef.current.has(gift.id)) return;
             seenGiftIdsRef.current.add(gift.id);
-            triggerGiftEffect({ name: gift.gift_name, icon_url: gift.gift_visual, credit_cost: gift.gift_cost });
+            // A gift arriving over Realtime is the raw row, which carries no
+            // artwork; one fetched through /api/live has been enriched. Handle both.
+            triggerGiftEffect({ name: gift.gift_name, icon_url: gift.gift_visual || '', credit_cost: gift.credit_cost ?? 0 });
         });
     }, [gifts]);
 
@@ -271,15 +303,15 @@ export default function WatchLivePage({ params }) {
                     <Link href="/live" className="flex h-10 w-10 items-center justify-center rounded-full bg-black/35"><ArrowLeft size={19} /></Link>
                     <UserAvatar name={host.display_name || 'Member'} src={hostPhoto} size={44} />
                     <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-black">{stream?.title || 'GS Live'}</p>
+                        <p className="truncate text-sm font-bold">{stream?.title || 'GS Live'}</p>
                         <p className="truncate text-xs text-white/70">{host.display_name || 'Member'} · {formatDuration(seconds)}</p>
                     </div>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-danger px-3 py-1 text-xs font-black"><Users size={12} /> {stream?.viewer_count || 0}</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-danger px-3 py-1 text-xs font-semibold"><Users size={12} /> {stream?.viewer_count || 0}</span>
                 </header>
 
                 <main className="relative z-10 flex min-h-[calc(100dvh-160px)] flex-col justify-end p-4">
                     {status && <p className="mb-3 rounded-2xl bg-white/15 p-3 text-xs font-bold">{status}</p>}
-                    <div className="mb-3 grid grid-cols-5 gap-2 text-center text-[10px] font-black">
+                    <div className="mb-3 grid grid-cols-5 gap-2 text-center text-[10px] font-semibold">
                         {[
                             [Clock, formatDuration(seconds), 'time'],
                             [Eye, stream?.total_views || 0, 'views'],
@@ -295,15 +327,15 @@ export default function WatchLivePage({ params }) {
                         ))}
                     </div>
                     <div className="max-h-64 space-y-2 overflow-auto pb-3">
-                        {comments.slice(-40).map((comment) => <p key={comment.id} className="w-fit max-w-[88%] rounded-2xl bg-black/35 px-3 py-2 text-xs backdrop-blur"><b>{comment.user?.display_name || 'Member'}:</b> {comment.content}</p>)}
+                        {comments.slice(-40).map((comment) => <p key={comment.id} className="w-fit max-w-[88%] rounded-2xl bg-black/35 px-3 py-2 text-xs backdrop-blur"><b>{comment.user?.display_name || 'Member'}:</b> {comment.body}</p>)}
                     </div>
                     {giftPanelOpen && <div className="mb-3 rounded-3xl bg-white p-3 text-text-primary shadow-2xl">
                         <div className="mb-2 flex items-center justify-between">
-                            <p className="text-sm font-black">Send Live Gift</p>
-                            <Link href="/wallet" className="text-xs font-black text-primary inline-flex items-center gap-1"><Wallet size={12} /> Credits</Link>
+                            <p className="text-sm font-bold">Send Live Gift</p>
+                            <Link href="/wallet" className="text-xs font-semibold text-primary inline-flex items-center gap-1"><Wallet size={12} /> Credits</Link>
                         </div>
                         <div className="grid max-h-60 grid-cols-3 gap-2 overflow-auto">
-                            {giftCatalog.length === 0 ? <p className="col-span-3 rounded-2xl bg-gray-50 p-3 text-xs font-bold text-text-muted">No active gifts yet. Add credits or ask admin to activate gifts.</p> : giftCatalog.map((gift) => <button key={gift.id} onClick={() => sendGift(gift)} className="rounded-2xl bg-gray-50 p-2 text-center"><GiftVisual gift={gift} className="mb-1 h-16 w-full rounded-xl" /><span className="block truncate text-[10px] font-black">{gift.name}</span><span className="text-[9px] font-black text-primary">{gift.credit_cost} cr</span></button>)}
+                            {giftCatalog.length === 0 ? <p className="col-span-3 rounded-2xl bg-gray-50 p-3 text-xs font-bold text-text-muted">No active gifts yet. Add credits or ask admin to activate gifts.</p> : giftCatalog.map((gift) => <button key={gift.id} onClick={() => sendGift(gift)} className="rounded-2xl bg-gray-50 p-2 text-center"><GiftVisual gift={gift} className="mb-1 h-16 w-full rounded-xl" /><span className="block truncate text-[10px] font-semibold">{gift.name}</span><span className="text-[9px] font-semibold text-primary">{gift.credit_cost} cr</span></button>)}
                         </div>
                     </div>}
                     <form onSubmit={sendComment} className="flex items-center gap-2">

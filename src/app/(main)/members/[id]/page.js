@@ -3,12 +3,14 @@
 import { use, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Calendar, Eye, Gift, Heart, ImagePlus, Lock, MapPin, MessageCircle, Mic, Phone, PhoneCall, Send, Shield, Smile, Sparkles, StopCircle, UserPlus, Video, X } from 'lucide-react';
+import { ArrowLeft, Ban, Calendar, Eye, Gift, GsMatch, Heart, ImagePlus, Lock, MapPin, MessageCircle, Mic, Phone, PhoneCall, Send, Shield, Smile, StopCircle, UserPlus, Video, X } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
+import FacilitationNotice from '@/components/FacilitationNotice';
+import PresenceDot from '@/components/PresenceDot';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import GiftVisual from '@/components/GiftVisual';
 import { triggerGiftEffect } from '@/components/GiftEffects';
-import { fallbackProfileImageSrc, useProfileImageFallback } from '@/lib/profileImages';
+import { getProfileImageSrc, useProfileImageFallback } from '@/lib/profileImages';
 import { distanceText as profileDistanceText } from '@/lib/geo';
 
 const GIFTS = [
@@ -73,13 +75,6 @@ function memberSince(date) {
     return new Intl.DateTimeFormat('en', { month: 'short', year: 'numeric' }).format(new Date(date));
 }
 
-function presenceTone(member) {
-    if (member?.isOnline) return 'bg-success';
-    const seen = member?.lastSeenAt ? Date.now() - new Date(member.lastSeenAt).getTime() : Infinity;
-    if (seen < 24 * 60 * 60 * 1000) return 'bg-amber-400';
-    return 'bg-gray-300';
-}
-
 function memberPath(member, suffix = '') {
     if (member?.detailPath) return `${member.detailPath}${suffix}`;
     return member?.id ? '/members/' + member.id + suffix : '/members';
@@ -99,7 +94,45 @@ function legacyMemberKey(searchParams, fallback) {
 
 function isLocalOnlyMember(member, key = '') {
     const id = String(member?.id || key || '');
-    return id.startsWith('seed-local-') || member?.source === 'wp';
+    // `requiresFacilitation` is set server-side for seeded and WordPress-imported
+    // profiles. There is no account behind them, so a direct message would never
+    // be delivered — the interaction is withheld rather than silently dropped.
+    return Boolean(member?.requiresFacilitation)
+        || id.startsWith('seed-local-')
+        || member?.source === 'wp';
+}
+
+/**
+ * An action that exists but cannot be used on this profile.
+ *
+ * Muted rather than hidden, with a red bar across the corner so the state is
+ * legible before the tap, and an accessible name that says why rather than just
+ * naming the action.
+ */
+function BlockedAction({ icon: ActionIcon, label, onClick }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            aria-label={label}
+            title={label}
+            className="relative flex h-12 items-center justify-center rounded-2xl text-text-muted shadow-sm"
+            style={{ background: 'var(--color-surface)', border: '1px solid color-mix(in srgb, var(--color-danger-text) 30%, transparent)' }}
+        >
+            <ActionIcon size={18} />
+            <span
+                className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full text-white"
+                style={{ background: 'var(--color-danger)' }}
+            >
+                <Ban size={9} strokeWidth={2.8} />
+            </span>
+        </button>
+    );
+}
+
+function facilitationMessage(member) {
+    return member?.facilitationNotice
+        || 'This profile is introduced through our facilitation service. Direct messaging is not available — contact support to arrange an introduction.';
 }
 
 function getActorKey() {
@@ -205,7 +238,7 @@ export default function MemberProfilePage({ params }) {
 
     async function postAction(payload, successText) {
         if (localOnlyMember) {
-            setStatus(member?.source === 'wp' ? 'This featured profile is view-only. Open a member account to start chat.' : 'This profile is not available for direct chat right now. Try another online member.');
+            setStatus(facilitationMessage(member));
             return { ok: true, localOnly: true };
         }
         setStatus('');
@@ -258,7 +291,7 @@ export default function MemberProfilePage({ params }) {
         event.preventDefault();
         if (!access.canMessage) { router.push('/packages'); return; }
         if (localOnlyMember) {
-            setStatus(member?.source === 'wp' ? 'This featured profile is view-only. Open a member account to start chat.' : 'This profile is not available for direct chat right now. Try another online member.');
+            setStatus(facilitationMessage(member));
             return;
         }
         const text = message.trim();
@@ -305,7 +338,7 @@ export default function MemberProfilePage({ params }) {
         }
         try {
             if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-                setStatus('Voice notes are not supported on this browser.');
+                setStatus('Voice notes are not supported on this device.');
                 return;
             }
             const stream = await navigator.mediaDevices.getUserMedia({ audio: VOICE_AUDIO_CONSTRAINTS });
@@ -324,7 +357,7 @@ export default function MemberProfilePage({ params }) {
             recorder.start();
             setRecording(true);
         } catch {
-            setStatus('Allow microphone permission to record a voice note.');
+            setStatus('Microphone is blocked. Open GS App permissions on your device and allow Microphone, then try again.');
         }
     }
 
@@ -378,50 +411,72 @@ export default function MemberProfilePage({ params }) {
             {giftBurst && <div className="fixed inset-x-0 top-20 z-50 mx-auto w-[min(92%,360px)] pointer-events-none">
                 <div className="gs-gift-burst rounded-[28px] p-4 shadow-2xl text-center" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                     <GiftVisual gift={giftBurst.gift} className="mx-auto h-28 w-28 rounded-3xl" />
-                    <p className="mt-2 text-sm font-black text-text-primary">{giftBurst.gift?.name || 'Gift'} delivered</p>
+                    <p className="mt-2 text-sm font-bold text-text-primary">{giftBurst.gift?.name || 'Gift'} delivered</p>
                     <p className="text-xs text-text-muted">Sent to {giftBurst.receiver}</p>
                 </div>
             </div>}
             <section className="relative min-h-[330px] bg-primary/5 overflow-hidden">
-                <img src={member.avatarUrl || fallbackProfileImageSrc(member.name)} alt={member.name} className="absolute inset-0 w-full h-full object-cover" onError={(event) => useProfileImageFallback(event, member.name)} />
+                <img src={getProfileImageSrc(member)} alt={member.name} className="absolute inset-0 w-full h-full object-cover" onError={(event) => useProfileImageFallback(event, member.name, member.profileLabel, member.isSeedProfile)} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/25 to-black/35" />
                 <button onClick={() => router.back()} className="absolute top-4 left-4 w-10 h-10 rounded-full flex items-center justify-center bg-black/55 text-white" aria-label="Back"><ArrowLeft size={21} /></button>
                 <div className="absolute bottom-0 left-0 right-0 p-5 text-white space-y-2">
-                    <div className="flex items-center gap-2"><span className={`w-3.5 h-3.5 rounded-full ring-2 ring-white/75 ${presenceTone(member)}`} /><h1 className="text-3xl font-black truncate">{member.name}</h1><VerifiedBadge verified={member.verified} size={22} /></div>
+                    <div className="flex items-center gap-2"><PresenceDot member={member} size={14} className="ring-2 ring-white/75" /><h1 className="text-3xl font-black truncate">{member.name}</h1><VerifiedBadge verified={member.verified} size={22} /></div>
                     <div className="flex flex-wrap items-center gap-2 text-sm opacity-90">{member.age && <span>{member.age}</span>}{member.location && <span className="inline-flex items-center gap-1"><MapPin size={14} /> {member.location}</span>}{memberDistanceText && <span className="inline-flex items-center gap-1"><MapPin size={14} /> {memberDistanceText}</span>}</div>
-                    <div className="flex flex-wrap gap-2"><span className="px-3 py-1 rounded-full text-xs font-bold bg-white/18 backdrop-blur-sm">{formatLabel(member.profileLabel)}</span>{member.lookingFor && <span className="px-3 py-1 rounded-full text-xs font-bold bg-white/18 backdrop-blur-sm">Looking for {member.lookingFor}</span>}</div>
+                    <div className="flex flex-wrap gap-2"><span className="px-3 py-1 rounded-full text-xs font-bold bg-white/18 backdrop-blur-sm">{formatLabel(member.profileLabel)}</span>{member.lookingFor && <span className="px-3 py-1 rounded-full text-xs font-bold bg-white/18 backdrop-blur-sm">Looking for {member.lookingFor}</span>}{localOnlyMember && <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-400 text-black inline-flex items-center gap-1"><Shield size={12} /> {member.facilitationLabel || 'Facilitation Required'}</span>}</div>
                 </div>
             </section>
 
             <div className="px-4 -mt-4 relative z-10 space-y-4">
                 <section className="grid grid-cols-6 gap-2">
                     <button onClick={toggleFollow} className={`h-12 rounded-2xl flex items-center justify-center text-white shadow-lg ${following ? 'bg-success' : 'gradient-primary'}`} aria-label="Follow"><UserPlus size={18} /></button>
-                    {localOnlyMember ? <button onClick={() => setStatus(member?.source === 'wp' ? 'This featured profile is view-only. Open a member account to start chat.' : 'This profile is not available for direct chat right now. Try another online member.')} className="h-12 rounded-2xl flex items-center justify-center bg-secondary text-white shadow-lg" aria-label="Message"><MessageCircle size={18} /></button> : <Link href={`/messages/${member.id}`} className="h-12 rounded-2xl flex items-center justify-center bg-secondary text-white shadow-lg" aria-label="Message"><MessageCircle size={18} /></Link>}
+                    {/*
+                      On a facilitation listing the message, call and video icons
+                      stay put but stop leading anywhere. Removing them would make
+                      these profiles look broken rather than different; keeping
+                      them live would send a member into a conversation nobody
+                      receives. They read as blocked — muted, with a small bar
+                      through the corner — and explain themselves on tap.
+                    */}
+                    {localOnlyMember
+                        ? <BlockedAction icon={MessageCircle} label={`Messaging ${member.name || 'this profile'} is unavailable`} onClick={() => setStatus(facilitationMessage(member))} />
+                        : <Link href={`/messages/${member.id}`} className="h-12 rounded-2xl flex items-center justify-center bg-secondary text-white shadow-lg" aria-label="Message"><MessageCircle size={18} /></Link>}
                     <button onClick={() => sendGift((wallet.giftCatalog || [])[0] || GIFTS[0])} className="h-12 rounded-2xl flex items-center justify-center bg-amber-500 text-white shadow-lg" aria-label="Send gift"><Gift size={18} /></button>
-                    {!isSelfProfile && <Link href={`/calls/${member.id}?type=voice`} className="h-12 rounded-2xl flex items-center justify-center bg-sky-600 text-white shadow-lg" aria-label="Voice call"><PhoneCall size={18} /></Link>}
-                    {!isSelfProfile && <Link href={`/calls/${member.id}?type=video`} className="h-12 rounded-2xl flex items-center justify-center bg-teal-600 text-white shadow-lg" aria-label="Video call"><Video size={18} /></Link>}
+                    {!isSelfProfile && (localOnlyMember
+                        ? <BlockedAction icon={PhoneCall} label="Voice calls are unavailable on this listing" onClick={() => setStatus(facilitationMessage(member))} />
+                        : <Link href={`/calls/${member.id}?type=voice`} className="h-12 rounded-2xl flex items-center justify-center bg-sky-600 text-white shadow-lg" aria-label="Voice call"><PhoneCall size={18} /></Link>)}
+                    {!isSelfProfile && (localOnlyMember
+                        ? <BlockedAction icon={Video} label="Video calls are unavailable on this listing" onClick={() => setStatus(facilitationMessage(member))} />
+                        : <Link href={`/calls/${member.id}?type=video`} className="h-12 rounded-2xl flex items-center justify-center bg-teal-600 text-white shadow-lg" aria-label="Video call"><Video size={18} /></Link>)}
                     <Link href="/packages" className="h-12 rounded-2xl flex items-center justify-center bg-gray-900 text-white shadow-lg" aria-label="Packages"><Lock size={18} /></Link>
                 </section>
 
+                {/* Directly under the actions, not at the foot of the page: the
+                    member needs this before they try, not after. */}
+                {localOnlyMember && <FacilitationNotice member={member} />}
+
                 {status && <div className="rounded-2xl p-3 text-sm font-bold text-primary bg-primary/10">{status}</div>}
-                <section className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}><h2 className="text-sm font-black text-text-primary flex items-center gap-2"><Sparkles size={16} className="text-primary" /> Match Intent</h2><p className="text-sm font-bold text-text-primary">{member.intentSummary || `I am a ${formatLabel(member.profileLabel)} looking for ${member.lookingFor || 'a genuine match'}.`}</p><div className="grid gap-2 text-sm text-text-secondary">{member.wants && <p><span className="font-black text-text-primary">What they want:</span> {member.wants}</p>}{member.neededQualities && <p><span className="font-black text-text-primary">Needed qualities:</span> {member.neededQualities}</p>}{member.ageRangePreference && <p><span className="font-black text-text-primary">Preferred age:</span> {member.ageRangePreference}</p>}</div></section>
+                <section className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}><h2 className="text-sm font-bold text-text-primary flex items-center gap-2"><GsMatch size={16} className="text-primary" /> Match Intent</h2><p className="text-sm font-bold text-text-primary">{member.intentSummary || `I am a ${formatLabel(member.profileLabel)} looking for ${member.lookingFor || 'a genuine match'}.`}</p><div className="grid gap-2 text-sm text-text-secondary">{member.wants && <p><span className="font-black text-text-primary">What they want:</span> {member.wants}</p>}{member.neededQualities && <p><span className="font-black text-text-primary">Needed qualities:</span> {member.neededQualities}</p>}{member.ageRangePreference && <p><span className="font-black text-text-primary">Preferred age:</span> {member.ageRangePreference}</p>}</div></section>
 
-                <section className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}><h2 className="text-sm font-black text-text-primary">About</h2><p className="text-sm text-text-secondary leading-relaxed line-clamp-4">{member.bio || 'This member has not added a bio yet.'}</p><div className="flex flex-wrap gap-2">{[...(member.interests || []), ...(member.hobbies || [])].slice(0, 8).map((item) => <span key={item} className="px-2.5 py-1 rounded-full text-[11px] font-bold text-primary bg-primary/10">{item}</span>)}</div></section>
+                <section className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}><h2 className="text-sm font-bold text-text-primary">About</h2><p className="text-sm text-text-secondary leading-relaxed line-clamp-4">{member.bio || 'This member has not added a bio yet.'}</p><div className="flex flex-wrap gap-2">{[...(member.interests || []), ...(member.hobbies || [])].slice(0, 8).map((item) => <span key={item} className="px-2.5 py-1 rounded-full text-[11px] font-bold text-primary bg-primary/10">{item}</span>)}</div></section>
 
-                <section className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 min-w-0"><Phone size={17} className="text-primary shrink-0" /><div className="min-w-0"><p className="text-xs font-bold text-text-muted">Phone</p><p className="text-sm font-black text-text-primary truncate tracking-wide">{access.canRevealPhone ? (member.phone || member.phoneMasked || 'Hidden') : (member.phoneMasked || 'Hidden')}</p></div></div><span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-bold text-primary bg-primary/10">{access.canRevealPhone ? <Shield size={12} /> : <Lock size={12} />} {access.canRevealPhone ? 'Unlocked' : 'Silver+'}</span></div>{!access.canRevealPhone && <div className="space-y-2"><p className="text-xs text-text-muted">Silver or Gold packages reveal full phone numbers when the package is active.</p><Link href="/packages" className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-black text-white gradient-primary"><Lock size={13} /> View Packages</Link></div>}</section>
+                <section className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 min-w-0"><Phone size={17} className="text-primary shrink-0" /><div className="min-w-0"><p className="text-xs font-bold text-text-muted">Phone</p><p className={`text-sm font-bold text-text-primary truncate tracking-wide ${!access.canRevealPhone ? 'blur-[1.5px] select-none' : ''}`}>{access.canRevealPhone ? (member.phone || member.phoneMasked || 'Hidden') : (member.phoneMasked || 'Hidden')}</p></div></div><span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-bold text-primary bg-primary/10">{access.canRevealPhone ? <Shield size={12} /> : <Lock size={12} />} {access.canRevealPhone ? 'Unlocked' : 'Silver+'}</span></div>{!access.canRevealPhone && <div className="space-y-2"><p className="text-xs text-text-muted">Silver or Gold packages reveal full phone numbers when the package is active.</p><Link href="/packages" className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold text-white gradient-primary"><Lock size={13} /> View Packages</Link></div>}</section>
 
-                <section className="grid grid-cols-3 gap-2"><Stat icon={Heart} label="Followers" value={member.followersCount || 0} /><Stat icon={Eye} label="Views" value={member.totalProfileViews || 0} /><Stat icon={Calendar} label="Joined" value={memberSince(member.createdAt)} /></section>
+                <section className="grid grid-cols-3 gap-2"><Stat icon={Heart} label="Followers" value={member.followersCount || 0} locked={!access.canRevealPhone} /><Stat icon={Eye} label="Views" value={member.totalProfileViews || 0} locked={!access.canRevealPhone} /><Stat icon={Calendar} label="Joined" value={memberSince(member.createdAt)} /></section>
 
-                <section id="gift" className="rounded-2xl p-4 space-y-3 scroll-mt-24" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}><div className="flex items-center justify-between gap-2"><div><h2 className="text-sm font-black text-text-primary">Send a Gift</h2><p className="text-[10px] text-text-muted">Owned gifts send first. New gifts use approved paid credits.</p></div><Link href="/wallet" className="text-[11px] font-black text-primary">Credits: {(wallet.giftWallet?.credits || 0) + (wallet.creditWallet?.credits || 0)}</Link></div><div className="grid grid-cols-3 gap-2 max-h-80 overflow-auto">{((wallet.giftCatalog || []).length ? wallet.giftCatalog : GIFTS).map((gift) => <button key={gift.id || gift.name} onClick={() => sendGift(gift)} className="rounded-2xl p-2 text-center bg-white/80 text-primary font-black text-xs shadow-sm ring-1 ring-black/5"><GiftVisual gift={gift} className="mb-1 h-16 w-full rounded-xl" /><span className="block truncate text-text-primary">{gift.label || gift.name}</span>{gift.id && inventoryByGift.get(gift.id)?.quantity ? <span className="block text-[9px] text-primary">Owned x{inventoryByGift.get(gift.id)?.quantity}</span> : gift.credit_cost !== undefined && <span className="block text-[9px] text-primary">{gift.credit_cost} credits</span>}</button>)}</div></section>
+                <section id="gift" className="rounded-2xl p-4 space-y-3 scroll-mt-24" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}><div className="flex items-center justify-between gap-2"><div><h2 className="text-sm font-bold text-text-primary">Send a Gift</h2><p className="text-[10px] text-text-muted">Owned gifts send first. New gifts use approved paid credits.</p></div><Link href="/wallet" className="text-[11px] font-semibold text-primary">Credits: {(wallet.giftWallet?.credits || 0) + (wallet.creditWallet?.credits || 0)}</Link></div><div className="grid grid-cols-3 gap-2 max-h-80 overflow-auto">{((wallet.giftCatalog || []).length ? wallet.giftCatalog : GIFTS).map((gift) => <button key={gift.id || gift.name} onClick={() => sendGift(gift)} className="rounded-2xl p-2 text-center bg-white/80 text-primary font-semibold text-xs shadow-sm ring-1 ring-black/5"><GiftVisual gift={gift} className="mb-1 h-16 w-full rounded-xl" /><span className="block truncate text-text-primary">{gift.label || gift.name}</span>{gift.id && inventoryByGift.get(gift.id)?.quantity ? <span className="block text-[9px] text-primary">Owned x{inventoryByGift.get(gift.id)?.quantity}</span> : gift.credit_cost !== undefined && <span className="block text-[9px] text-primary">{gift.credit_cost} credits</span>}</button>)}</div></section>
 
+                {/* The duplicate amber panel that used to sit here has gone. It
+                    said the same thing as the red block above, 400px further
+                    down, in a colour that read as a hint rather than a limit. */}
+                {localOnlyMember ? null : (
                 <section id="message" className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                    <h2 className="text-sm font-black text-text-primary">Message</h2>
+                    <h2 className="text-sm font-bold text-text-primary">Message</h2>
                     <div className="flex flex-wrap gap-2">
-                        {QUICK_REPLIES.map((reply) => <button key={reply.label} type="button" onClick={() => setMessage(reply.text)} className="px-3 h-9 rounded-xl bg-primary/10 text-primary text-xs font-black">{reply.label}</button>)}
-                        {REACTION_REPLIES.map((reply) => <button key={reply.name} type="button" onClick={() => setMessage(reply.text)} className="px-3 h-9 rounded-xl bg-amber-100 text-gold text-xs font-black">{reply.name}</button>)}
+                        {QUICK_REPLIES.map((reply) => <button key={reply.label} type="button" onClick={() => setMessage(reply.text)} className="px-3 h-9 rounded-xl bg-primary/10 text-primary text-xs font-semibold">{reply.label}</button>)}
+                        {REACTION_REPLIES.map((reply) => <button key={reply.name} type="button" onClick={() => setMessage(reply.text)} className="px-3 h-9 rounded-xl bg-amber-100 text-gold text-xs font-semibold">{reply.name}</button>)}
                     </div>
-                    {attachment?.type === 'image' && <div className="relative w-24"><img src={attachment.url} alt="" className="w-24 h-24 rounded-xl object-cover" /><button type="button" onClick={() => setAttachment(null)} className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-danger text-white flex items-center justify-center"><X size={14} /></button></div>}
-                    {attachment?.type === 'gif' && <div className="inline-flex items-center gap-2 rounded-xl bg-amber-100 text-gold px-3 py-2 text-xs font-black">GIF {attachment.name}<button type="button" onClick={() => setAttachment(null)}><X size={13} /></button></div>}
+                    {attachment?.type === 'image' && <div className="relative w-24"><img src={attachment.url} alt="" className="w-24 h-24 rounded-xl object-cover"  loading="lazy" decoding="async" /><button type="button" onClick={() => setAttachment(null)} className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-danger text-white flex items-center justify-center"><X size={14} /></button></div>}
+                    {attachment?.type === 'gif' && <div className="inline-flex items-center gap-2 rounded-xl bg-amber-100 text-gold px-3 py-2 text-xs font-semibold">GIF {attachment.name}<button type="button" onClick={() => setAttachment(null)}><X size={13} /></button></div>}
                     {voiceNote && <div className="flex items-center gap-2 rounded-xl bg-sky-50 p-2"><audio src={voiceNote} controls className="min-w-0 flex-1" /><button type="button" onClick={() => setVoiceNote('')} className="w-8 h-8 rounded-full bg-danger text-white flex items-center justify-center"><X size={14} /></button></div>}
                     <form onSubmit={sendMessage} className="space-y-2">
                         <div className="flex gap-2">
@@ -434,6 +489,7 @@ export default function MemberProfilePage({ params }) {
                         <p className="text-[11px] text-text-muted flex items-center gap-1"><Smile size={12} /> Images, voice notes, emojis, and GIF reactions are saved with the message.</p>
                     </form>
                 </section>
+                )}
 
                 {member.verified && <section className="rounded-2xl p-4 flex items-center gap-3" style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.18)' }}><Shield size={20} className="text-sky-500" /><p className="text-sm font-bold text-text-primary">Verified adult member</p></section>}
             </div>
@@ -441,8 +497,12 @@ export default function MemberProfilePage({ params }) {
     );
 }
 
-function Stat({ icon: Icon, label, value }) {
-    return <div className="rounded-2xl p-3 text-center" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}><Icon size={16} className="mx-auto text-primary mb-1" /><p className="text-[10px] text-text-muted">{label}</p><p className="text-sm font-black text-text-primary">{value}</p></div>;
+function Stat({ icon: Icon, label, value, locked = false }) {
+    // Locked stats show a mask, not a stand-in number — a blurred "999" still
+    // implies a magnitude the account may not actually have.
+    const content = <><Icon size={16} className="mx-auto text-primary mb-1" /><p className="text-[10px] text-text-muted flex items-center justify-center gap-1">{locked && <Lock size={9} />} {label}</p><p className={`text-sm font-bold ${locked ? 'text-text-muted select-none' : 'text-text-primary'}`}>{locked ? '•••' : value}</p></>;
+    if (locked) return <Link href="/packages" className="rounded-2xl p-3 text-center" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>{content}</Link>;
+    return <div className="rounded-2xl p-3 text-center" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>{content}</div>;
 }
 
 

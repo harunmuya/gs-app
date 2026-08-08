@@ -4,17 +4,20 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion, useMotionValue, useTransform } from 'framer-motion';
-import { Eye, Heart, HeartHandshake, LocateFixed, MapPin, MessageCircle, Phone, Radio, RefreshCw, Sparkles, X } from 'lucide-react';
+import { Ban, Eye, GsMatch, Heart, HeartHandshake, LocateFixed, MapPin, MessageCircle, Phone, Radio, RefreshCw, X } from '@/components/icons';
+import UserAvatar from '@/components/UserAvatar';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import BoostedMembersStrip from '@/components/BoostedMembersStrip';
 import StoriesStrip from '@/components/StoriesStrip';
 import { useAuth } from '@/contexts/AuthContext';
-import { fallbackProfileImageSrc, useProfileImageFallback } from '@/lib/profileImages';
+import PresenceDot from '@/components/PresenceDot';
+import { POLL } from '@/lib/usePolling';
+import { getProfileImageSrc, useProfileImageFallback } from '@/lib/profileImages';
 import { displayDistanceKm, distanceText as profileDistanceText } from '@/lib/geo';
 
-const CACHE_KEY = 'gsk_app_discover_deck_v17';
-const CURRENT_CARD_KEY = 'gsk_app_discover_current_card_v2';
-const OLD_CACHE_KEYS = ['gscom_discover_deck_v3', 'gsk_app_discover_deck_v3', 'gsk_app_discover_deck_v4', 'gsk_app_discover_deck_v5', 'gsk_app_discover_deck_v6', 'gsk_app_discover_deck_v7', 'gsk_app_discover_deck_v8', 'gsk_app_discover_deck_v9', 'gsk_app_discover_deck_v10', 'gsk_app_discover_deck_v11', 'gsk_app_discover_deck_v12', 'gsk_app_discover_deck_v13', 'gsk_app_discover_deck_v14', 'gsk_app_discover_deck_v15', 'gsk_app_discover_deck_v16', 'gsk_app_discover_current_card_v1'];
+const CACHE_KEY = 'gsk_app_discover_deck_v20';
+const CURRENT_CARD_KEY = 'gsk_app_discover_current_card_v5';
+const OLD_CACHE_KEYS = ['gscom_discover_deck_v3', 'gsk_app_discover_deck_v3', 'gsk_app_discover_deck_v4', 'gsk_app_discover_deck_v5', 'gsk_app_discover_deck_v6', 'gsk_app_discover_deck_v7', 'gsk_app_discover_deck_v8', 'gsk_app_discover_deck_v9', 'gsk_app_discover_deck_v10', 'gsk_app_discover_deck_v11', 'gsk_app_discover_deck_v12', 'gsk_app_discover_deck_v13', 'gsk_app_discover_deck_v14', 'gsk_app_discover_deck_v15', 'gsk_app_discover_deck_v16', 'gsk_app_discover_deck_v17', 'gsk_app_discover_deck_v18', 'gsk_app_discover_deck_v19', 'gsk_app_discover_current_card_v1', 'gsk_app_discover_current_card_v2', 'gsk_app_discover_current_card_v3', 'gsk_app_discover_current_card_v4'];
 const CACHE_LIMIT = 80;
 const DECK_PAGE_SIZE = 20;
 const VALID_PROFILE_LABELS = new Set(['sugar_mummy', 'sugar_daddy', 'mistress', 'toyboy']);
@@ -25,14 +28,15 @@ function tier(user) {
 
 function packageAccess(user) {
     const current = tier(user);
-    const active = current !== 'free' && !user?.package_locked;
+    const approved = user?.admin_approved ?? user?.adminApproved;
+    const active = current !== 'free' && approved !== false && !user?.package_locked;
     return {
         active,
         tier: current,
         canBrowseDetails: true,
         canRevealPhone: active && ['silver', 'gold', 'diamond'].includes(current),
         swipeLimit: !active || current === 'free' ? 10 : current === 'basic' ? 30 : 999999,
-        likeLimit: !active || current === 'free' ? 5 : current === 'basic' ? 10 : current === 'silver' ? 50 : 999999,
+        likeLimit: !active || current === 'free' ? 5 : current === 'basic' ? 20 : current === 'silver' ? 50 : 999999,
         superLikeLimit: !active || current === 'free' ? 0 : current === 'basic' ? 5 : current === 'silver' ? 100 : 999999,
     };
 }
@@ -47,13 +51,6 @@ function formatLabel(value) {
 
 function compactText(member) {
     return [member.intentSummary, member.wants, member.neededQualities, member.excerpt].filter(Boolean)[0] || member.bio || 'Looking for a genuine, respectful connection.';
-}
-
-function presenceTone(member) {
-    if (member.isOnline) return 'bg-success';
-    const seen = member.lastSeenAt ? Date.now() - new Date(member.lastSeenAt).getTime() : Infinity;
-    if (seen < 24 * 60 * 60 * 1000) return 'bg-amber-400';
-    return 'bg-gray-300';
 }
 
 function distanceKm(a, b) {
@@ -111,7 +108,7 @@ function targetLabelsForUser(user) {
     const label = userProfileLabel(user);
     if (label === 'sugar_mummy') return new Set(['toyboy', 'sugar_daddy']);
     if (label === 'toyboy') return new Set(['sugar_mummy', 'mistress']);
-    if (label === 'sugar_daddy') return new Set(['sugar_mummy', 'mistress']);
+    if (label === 'sugar_daddy') return new Set(['mistress', 'sugar_mummy']);
     if (label === 'mistress') return new Set(['sugar_daddy', 'toyboy']);
     return null;
 }
@@ -123,14 +120,11 @@ function targetLabelArrayForUser(user) {
 
 function preferenceMixForUser(user) {
     const label = userProfileLabel(user);
-    // Toyboy: 80% Sugar Mummies, 20% Mistresses
-    if (label === 'toyboy') return { primary: 'sugar_mummy', secondary: 'mistress', pattern: ['primary', 'primary', 'primary', 'primary', 'secondary'] };
-    // Sugar Mummy: 80% Toyboys/SugarGuys, 20% Sugar Daddies
-    if (label === 'sugar_mummy') return { primary: 'toyboy', secondary: 'sugar_daddy', pattern: ['primary', 'primary', 'primary', 'primary', 'secondary'] };
-    // Sugar Daddy: 70% Mistresses, 30% Sugar Mummies
-    if (label === 'sugar_daddy') return { primary: 'mistress', secondary: 'sugar_mummy', pattern: ['primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'secondary', 'secondary', 'secondary'] };
-    // Mistress: 90% Sugar Daddies, 10% Toyboys/SugarGuys
-    if (label === 'mistress') return { primary: 'sugar_daddy', secondary: 'toyboy', pattern: ['primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'primary', 'secondary'] };
+    const pattern = ['primary', 'primary', 'primary', 'primary', 'secondary'];
+    if (label === 'toyboy') return { primary: 'sugar_mummy', secondary: 'mistress', pattern };
+    if (label === 'sugar_mummy') return { primary: 'toyboy', secondary: 'sugar_daddy', pattern };
+    if (label === 'sugar_daddy') return { primary: 'mistress', secondary: 'sugar_mummy', pattern };
+    if (label === 'mistress') return { primary: 'sugar_daddy', secondary: 'toyboy', pattern };
     return null;
 }
 
@@ -257,21 +251,30 @@ function profileFitsUser(member, user) {
     return targets.has(label);
 }
 
+/**
+ * Match percentage shown on a card.
+ *
+ * Prefers the server's figure, which comes from the same signals the deck was
+ * actually ranked on (lib/discoveryRanking.js). The local heuristic below is only
+ * a fallback for profiles that never went through ranking — WordPress imports and
+ * direct lookups.
+ *
+ * Two things were removed from the fallback deliberately:
+ *  - `+22 if isBoosted`, which let a paid boost inflate the *match* a member was
+ *    shown, not just the profile's placement.
+ *  - a hard floor of 50, which meant a poor match was never reported below 50%.
+ */
 function matchScore(member, user) {
-    let score = 54;
+    if (typeof member.matchPercent === 'number') return member.matchPercent;
+
+    let score = 40;
     const userLocation = String(user?.location || '').toLowerCase();
     const memberLocation = String(member.location || member.country || '').toLowerCase();
     if (userLocation && memberLocation && (memberLocation.includes(userLocation) || userLocation.includes(memberLocation))) score += 18;
     if (member.verified) score += 8;
-    if (member.isBoosted) score += 22;
     if (member.intentSummary || member.wants || member.excerpt) score += 6;
     if (profileFitsUser(member, user)) score += 14;
-    if (member.source === 'wp') score += 3;
-    const seed = `${member.swipeKey}-${user?.email || ''}`;
-    let hash = 0;
-    for (let i = 0; i < seed.length; i++) hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0;
-    score += Math.abs(hash) % 9;
-    return Math.max(50, Math.min(98, score));
+    return Math.max(5, Math.min(98, score));
 }
 
 export default function DiscoverPage() {
@@ -382,21 +385,51 @@ export default function DiscoverPage() {
             } catch {}
         }
         loadLiveStreams();
-        const timer = window.setInterval(loadLiveStreams, 15000);
+        const timer = window.setInterval(loadLiveStreams, POLL.liveStrip);
         return () => window.clearInterval(timer);
     }, []);
 
     async function requestNearby() {
         if (!user?.id) { router.push('/auth/login'); return; }
+        async function useApproximateLocation(reason = '') {
+            try {
+                setNotice(reason || 'Using approximate location for nearby matching...');
+                const res = await fetch('/api/location', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'ip_fallback', userId: user.id }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || 'Approximate location failed.');
+                const saved = data.location || {};
+                const next = {
+                    latitude: saved.latitude,
+                    longitude: saved.longitude,
+                    geo_updated_at: saved.geo_updated_at || new Date().toISOString(),
+                };
+                if (next.latitude && next.longitude) {
+                    const label = saved.city || saved.location || locationLabelFromCoords(Number(next.latitude), Number(next.longitude));
+                    setGeo(next);
+                    setFilter('nearby');
+                    updateProfile?.({ ...next, location: user.location || label, city: user.city || label });
+                    updateSettings?.({ locationEnabled: true, liveLocation: false });
+                    setNotice(`Nearby matching is using your approximate area: ${label}.`);
+                    window.dispatchEvent(new CustomEvent('gs-location-updated', { detail: { source: 'approximate', location: { ...saved, ...next } } }));
+                    return true;
+                }
+            } catch {}
+            setNotice('Location could not be detected. Turn on Location for GS App or add your town in Profile.');
+            return false;
+        }
         if (!navigator.geolocation) {
-            setNotice('Location is not supported on this device.');
+            await useApproximateLocation('Using approximate location for nearby matching...');
             return;
         }
         if (navigator.permissions?.query) {
             try {
                 const permission = await navigator.permissions.query({ name: 'geolocation' });
                 if (permission.state === 'denied') {
-                    setNotice('Location is blocked for this browser. Open site settings, allow Location, then tap Use Location again.');
+                    await useApproximateLocation('Precise location is off. Using approximate location instead...');
                     return;
                 }
             } catch {}
@@ -427,10 +460,10 @@ export default function DiscoverPage() {
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) setNotice(data.error || 'Location was found but could not be saved. Try again.');
             } catch {}
-        }, (error) => {
-            if (error?.code === error.PERMISSION_DENIED) setNotice('Location permission was denied. Allow Location for this site in your browser settings, then tap Use Location again.');
-            else if (error?.code === error.TIMEOUT) setNotice('Location timed out. Turn on GPS/location services and try again.');
-            else setNotice('Could not read this device location. Check location services and try again.');
+        }, async (error) => {
+            if (error?.code === error.PERMISSION_DENIED) await useApproximateLocation('Precise location is off. Using approximate location instead...');
+            else if (error?.code === error.TIMEOUT) await useApproximateLocation('GPS timed out. Using approximate location instead...');
+            else await useApproximateLocation('Could not read precise location. Using approximate location instead...');
         }, { enableHighAccuracy: true, maximumAge: 5 * 60 * 1000, timeout: 15000 });
     }
 
@@ -546,6 +579,15 @@ export default function DiscoverPage() {
         });
     }
 
+    function restoreSwipeKey(key) {
+        if (!key) return;
+        setDismissedSwipeKeys((items) => {
+            const next = new Set(items);
+            next.delete(key);
+            return next;
+        });
+    }
+
     function stopSwipeWithPackageNotice(result, fallback = 'Your daily quota has exhausted. Pay for a package to unlock unlimited access.') {
         setNotice(result?.error || fallback);
         x.set(0);
@@ -558,47 +600,50 @@ export default function DiscoverPage() {
         const target = current;
         if (!beginSwipe('right')) return;
         const profile = normalizedForAuth(target);
+        dismissSwipeKey(target.swipeKey);
+        finishSwipe();
         let result;
         try { result = await addLike(profile); } catch { result = { ok: false, error: 'Action failed. Choose a package or try again.', redirectTo: '/packages' }; }
         if (result && !result.ok) {
+            restoreSwipeKey(target.swipeKey);
             stopSwipeWithPackageNotice(result);
             return;
         }
-        dismissSwipeKey(target.swipeKey);
         const score = matchScore(target, user);
         if (score >= 93) addMatch(profile, score);
         addMessage?.({ type: 'like', sender: 'You', title: `You liked ${target.name}`, body: `${score}% compatibility. Keep interacting to turn this into a stronger match.`, memberId: target.id, senderImage: target.avatarUrl });
-        finishSwipe();
     }
 
     async function handleSuperLike() {
         const target = current;
         if (!beginSwipe('right')) return;
         const profile = normalizedForAuth(target);
+        dismissSwipeKey(target.swipeKey);
+        finishSwipe();
         let result;
         try { result = await addSuperLike(profile); } catch { result = { ok: false, error: 'Action failed. Choose a package or try again.', redirectTo: '/packages' }; }
         if (result && !result.ok) {
+            restoreSwipeKey(target.swipeKey);
             stopSwipeWithPackageNotice(result);
             return;
         }
-        dismissSwipeKey(target.swipeKey);
         const score = Math.min(99, matchScore(target, user) + 5);
         if (score >= 88) addMatch(profile, score);
         addMessage?.({ type: 'superlike', sender: 'You', title: `You super liked ${target.name}`, body: `${score}% compatibility. This profile was added to your priority interactions.`, memberId: target.id, senderImage: target.avatarUrl });
-        finishSwipe();
     }
 
     async function handlePass() {
         const target = current;
         if (!beginSwipe('left')) return;
+        dismissSwipeKey(target.swipeKey);
+        finishSwipe();
         let result;
         try { result = await addPass(target.swipeKey); } catch { result = { ok: false, error: 'Action failed. Choose a package or try again.', redirectTo: '/packages' }; }
         if (result && !result.ok) {
+            restoreSwipeKey(target.swipeKey);
             stopSwipeWithPackageNotice(result);
             return;
         }
-        dismissSwipeKey(target.swipeKey);
-        finishSwipe();
     }
 
     async function handleView() {
@@ -661,9 +706,9 @@ export default function DiscoverPage() {
 
     if (!current) {
         if (hasMoreProfiles || loadingMore) {
-            return <div className="px-4 py-12 text-center space-y-4"><div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center"><Sparkles size={30} className="text-primary" /></div><h2 className="text-xl font-black text-text-primary">Loading More Profiles</h2><p className="text-sm text-text-muted">Finding the next compatible members for your preference.</p><button onClick={() => loadDeckPage(nextPage)} className="mx-auto px-5 py-3 rounded-2xl font-black text-white gradient-primary flex items-center gap-2"><RefreshCw size={17} /> Load More</button></div>;
+            return <div className="px-4 py-12 text-center space-y-4"><div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center"><GsMatch size={30} className="text-primary" /></div><h2 className="text-xl font-black text-text-primary">Loading More Profiles</h2><p className="text-sm text-text-muted">Finding the next compatible members for your preference.</p><button onClick={() => loadDeckPage(nextPage)} className="mx-auto px-5 py-3 rounded-2xl font-black text-white gradient-primary flex items-center gap-2"><RefreshCw size={17} /> Load More</button></div>;
         }
-        return <div className="px-4 py-12 text-center space-y-4"><div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center"><Sparkles size={30} className="text-primary" /></div><h2 className="text-xl font-black text-text-primary">Today&apos;s Profiles Reviewed</h2><p className="text-sm text-text-muted">You have reviewed this batch. Load a fresh set or adjust filters.</p><button onClick={handleRefresh} className="mx-auto px-5 py-3 rounded-2xl font-black text-white gradient-primary flex items-center gap-2"><RefreshCw size={17} /> Load Fresh Profiles</button></div>;
+        return <div className="px-4 py-12 text-center space-y-4"><div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center"><GsMatch size={30} className="text-primary" /></div><h2 className="text-xl font-black text-text-primary">Today&apos;s Profiles Reviewed</h2><p className="text-sm text-text-muted">You have reviewed this batch. Load a fresh set or adjust filters.</p><button onClick={handleRefresh} className="mx-auto px-5 py-3 rounded-2xl font-black text-white gradient-primary flex items-center gap-2"><RefreshCw size={17} /> Load Fresh Profiles</button></div>;
     }
 
     const score = matchScore(current, user);
@@ -683,8 +728,8 @@ export default function DiscoverPage() {
                         const host = stream.host || {};
                         const photo = host.avatar_url || host.photos?.[0] || '';
                         return <Link key={stream.id} href={`/live/${stream.id}`} className="min-w-[148px] rounded-2xl p-2 text-white transition-all active:scale-[0.97]" style={{ background: '#1a1625' }}>
-                            <div className="relative h-24 rounded-xl overflow-hidden bg-primary/20">{photo ? <img src={photo} alt="" className="h-full w-full object-cover" onError={(event) => useProfileImageFallback(event, host.display_name || 'Live')} /> : <UserAvatar name={host.display_name || 'Live'} size={52} />}<span className="absolute left-2 top-2 rounded-full px-2.5 py-0.5 text-[9px] font-black pulse-glow" style={{ background: '#DC2626' }}>LIVE</span></div>
-                            <p className="mt-2 truncate text-[11px] font-black">{stream.title || 'GS Live'}</p>
+                            <div className="relative h-24 rounded-xl overflow-hidden bg-primary/20">{photo ? <img src={photo} alt="" className="h-full w-full object-cover" onError={(event) => useProfileImageFallback(event, host.display_name || 'Live')} /> : <UserAvatar name={host.display_name || 'Live'} size={52} />}<span className="absolute left-2 top-2 rounded-full px-2.5 py-0.5 text-[9px] font-semibold pulse-glow" style={{ background: '#DC2626' }}>LIVE</span></div>
+                            <p className="mt-2 truncate text-[11px] font-semibold">{stream.title || 'GS Live'}</p>
                             <p className="text-[10px] text-white/60">{stream.viewer_count || 0} watching · {liveDuration(stream.started_at)}</p>
                         </Link>;
                     })}
@@ -708,13 +753,13 @@ export default function DiscoverPage() {
             <div className="relative w-full max-w-sm mx-auto" style={{ aspectRatio: '3/4' }}>
                 <AnimatePresence mode="wait">
                     <motion.article key={current.swipeKey} className="absolute inset-0 rounded-[22px] overflow-hidden card-shadow bg-white touch-pan-y cursor-pointer" onTap={handleView} onDoubleClick={handleView} style={{ x, rotate }} drag="x" dragConstraints={{ left: 0, right: 0 }} dragElastic={0.32} onDragEnd={(_, info) => { if (Math.abs(info.offset.x) < 140) { x.set(0); return; } if (info.offset.x > 0) handleLike(); else handlePass(); }} initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ x: direction === 'right' ? 260 : direction === 'left' ? -260 : 0, opacity: 0, transition: { duration: 0.22 } }}>
-                        <img src={current.avatarUrl || fallbackProfileImageSrc(current.name)} alt={current.name} className="absolute inset-0 w-full h-full object-cover" onError={(event) => useProfileImageFallback(event, current.name)} />
+                        <img src={getProfileImageSrc(current)} alt={current.name} className="absolute inset-0 w-full h-full object-cover" onError={(event) => useProfileImageFallback(event, current.name, current.profileLabel, current.isSeedProfile)} />
                         <div className="absolute inset-0 swipe-card-gradient" />
                         <motion.div className="absolute top-7 left-5 px-5 py-2.5 rounded-2xl border-[3px] border-success text-success font-black text-2xl -rotate-12" style={{ opacity: likeOpacity, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(5,150,105,0.3)' }}>LIKE ✓</motion.div>
                         <motion.div className="absolute top-7 right-5 px-5 py-2.5 rounded-2xl border-[3px] border-danger text-danger font-black text-2xl rotate-12" style={{ opacity: nopeOpacity, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(220,38,38,0.3)' }}>PASS ✗</motion.div>
                         <div className="absolute bottom-0 left-0 right-0 p-4 text-white space-y-2">
                             <div className="flex items-center gap-2"><h2 className="text-2xl font-black truncate">{current.name}</h2>{current.age && <span className="text-lg opacity-85">{current.age}</span>}<VerifiedBadge verified={current.verified} size={19} /></div>
-                            <div className="flex flex-wrap items-center gap-2 text-xs"><span className={`w-3 h-3 rounded-full ring-2 ring-white/70 ${presenceTone(current)}`} /><span className="px-2 py-1 rounded-full bg-white/18 font-bold">{formatLabel(current.profileLabel)}</span>{current.lookingFor && <span className="px-2 py-1 rounded-full bg-white/18 font-bold">Looking for {current.lookingFor}</span>}<span className="px-2 py-1 rounded-full bg-white/18 font-bold">{score}% match</span>{current.source === 'wp' && <span className="px-2 py-1 rounded-full bg-white/18 font-bold">Featured</span>}</div>
+                            <div className="flex flex-wrap items-center gap-2 text-xs"><PresenceDot member={current} size={12} className="ring-2 ring-white/70" /><span className="px-2 py-1 rounded-full bg-white/18 font-bold">{formatLabel(current.profileLabel)}</span>{current.lookingFor && <span className="px-2 py-1 rounded-full bg-white/18 font-bold">Looking for {current.lookingFor}</span>}<span className="px-2 py-1 rounded-full bg-white/18 font-bold">{score}% match</span>{current.requiresFacilitation && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-white font-black" style={{ background: 'var(--color-danger)' }}><Ban size={11} strokeWidth={2.6} /> No direct messages</span>}</div>
                             {current.location && <p className="flex items-center gap-1 text-xs opacity-90"><MapPin size={13} /> {current.location}</p>}
                             {currentDistanceText && <p className="flex items-center gap-1 text-xs opacity-90"><LocateFixed size={13} /> {currentDistanceText}</p>}
                             <p className="text-sm leading-snug line-clamp-2 opacity-95">{compactText(current)}</p>

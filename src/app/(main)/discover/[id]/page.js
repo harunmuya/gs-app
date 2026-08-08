@@ -5,14 +5,15 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
     Heart, ArrowLeft, Share2, Bookmark, BookmarkCheck,
-    MapPin, Calendar, MessageCircle, Sparkles, ExternalLink,
+    MapPin, Calendar, MessageCircle, GsMatch, ExternalLink,
     Clock, Users, Tag,
-} from 'lucide-react';
+} from '@/components/icons';
 import BlurImage from '@/components/BlurImage';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import CommentForm from '@/components/CommentForm';
 import ContactButtons from '@/components/ContactButtons';
 import { useAuth } from '@/contexts/AuthContext';
+import FacilitationNotice from '@/components/FacilitationNotice';
 
 function legacyPostKey(searchParams, fallback) {
     return searchParams.get('id')
@@ -251,6 +252,15 @@ export default function ProfileDetailPage({ params }) {
                     </button>
                 </div>
 
+                {/*
+                  Every profile on this route is a WordPress listing, so the
+                  notice is unconditional. "Comment" above posts publicly on the
+                  listing and is not a private message — without this the two are
+                  easy to confuse, and a member could reasonably think they had
+                  sent something private.
+                */}
+                <FacilitationNotice member={{ facilitationLabel: 'Facilitation Required' }} />
+
                 {/* Profile Stats */}
                 <div className="grid grid-cols-3 gap-2">
                     <div className="rounded-xl p-3 text-center" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
@@ -273,7 +283,7 @@ export default function ProfileDetailPage({ params }) {
                 {aboutText && (
                     <div className="rounded-2xl p-4 space-y-2" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                         <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
-                            <Sparkles size={16} className="text-primary" /> About
+                            <GsMatch size={16} className="text-primary" /> About
                         </h3>
                         <p className="text-sm text-text-secondary leading-relaxed">{aboutText}</p>
                     </div>

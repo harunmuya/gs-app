@@ -1,10 +1,10 @@
-﻿'use client';
+'use client';
 
 import { useState, useRef } from 'react';
-import { fallbackProfileImageSrc } from '@/lib/profileImages';
+import { getProfileImageSrc, initialsFallbackDataUri } from '@/lib/profileImages';
 
 /**
- * BlurImage â€” lazy-loaded image with blur-up placeholder effect.
+ * BlurImage — lazy-loaded image with blur-up placeholder effect.
  * Uses purple-tinted placeholder for .com branding.
  */
 export default function BlurImage({
@@ -14,6 +14,8 @@ export default function BlurImage({
     style = {},
     fill = false,
     priority = false,
+    isSeed = false,
+    label = '',
     ...props
 }) {
     const [loaded, setLoaded] = useState(false);
@@ -24,6 +26,11 @@ export default function BlurImage({
     const placeholderBg = 'linear-gradient(135deg, #ede9fe 0%, #f3e8ff 50%, #fce7f3 100%)';
 
     if (error || !src) {
+        const member = { name: alt || 'Profile', avatarUrl: '', isSeedProfile: isSeed, profileLabel: label };
+        const fallbackSrc = isSeed
+            ? getProfileImageSrc(member)
+            : initialsFallbackDataUri(alt || 'Profile');
+
         return (
             <div
                 className={`blur-image-wrapper ${className}`}
@@ -37,7 +44,7 @@ export default function BlurImage({
                 {...props}
             >
                 <img
-                    src={fallbackProfileImageSrc(alt || 'Profile')}
+                    src={fallbackSrc}
                     alt={alt}
                     loading={priority ? 'eager' : 'lazy'}
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}

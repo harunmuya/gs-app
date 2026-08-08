@@ -1,20 +1,21 @@
-﻿'use client';
+'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import Logo from '@/components/Logo';
 
-function isProfileComplete(user) {
-    if (!user) return false;
-    const hasPhoto = Boolean(user.avatar_url || user.avatarUrl || user.photos?.[0]);
-    return Boolean(hasPhoto && user.bio && user.age && user.location && (user.phone_number || user.phone));
-}
-
 export default function AuthGuard({ children }) {
-    const { user, loading } = useAuth();
+    const { user, loading, signOut } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
+    const restricted = Boolean(
+        user?.access_blocked ||
+        user?.is_banned ||
+        user?.is_suspended ||
+        user?.account_deleted_at ||
+        ['banned', 'suspended', 'deleted'].includes(String(user?.account_status || '').toLowerCase())
+    );
 
     useEffect(() => {
         if (loading) return;
@@ -22,10 +23,13 @@ export default function AuthGuard({ children }) {
             router.replace('/auth/login');
             return;
         }
-        if (pathname !== '/profile' && !isProfileComplete(user)) {
-            router.replace('/profile?complete=1');
+        if (restricted) {
+            signOut?.().finally(() => router.replace('/auth/login'));
+            return;
         }
-    }, [user, loading, router, pathname]);
+        // No longer lock the app for incomplete profiles —
+        // ProfileCompletionModal handles this gracefully
+    }, [user, loading, restricted, router, pathname, signOut]);
 
     if (loading) {
         return (
@@ -38,8 +42,7 @@ export default function AuthGuard({ children }) {
         );
     }
 
-    if (!user) return null;
-    if (pathname !== '/profile' && !isProfileComplete(user)) return null;
+    if (!user || restricted) return null;
 
     return children;
 }

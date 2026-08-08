@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Mic, StopCircle, X } from 'lucide-react';
+import { Mic, StopCircle, X } from '@/components/icons';
 
 function supportedMimeType() {
     const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
@@ -52,7 +52,7 @@ export default function VoiceRecorder({ disabled = false, onRecorded, onError })
         event?.preventDefault?.();
         if (disabled || recording) return;
         if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-            onError?.('Voice notes are not supported on this browser.');
+            onError?.('Voice notes are not supported on this device.');
             return;
         }
         try {
@@ -91,7 +91,7 @@ export default function VoiceRecorder({ disabled = false, onRecorded, onError })
         } catch {
             stopTracks();
             setRecording(false);
-            onError?.('Allow microphone permission to record a voice note.');
+            onError?.('Microphone is blocked. Open GS App permissions on your device and allow Microphone, then try again.');
         }
     }
 
@@ -135,7 +135,7 @@ export default function VoiceRecorder({ disabled = false, onRecorded, onError })
             {recording && (
                 <div className="absolute bottom-12 right-0 z-40 w-56 rounded-2xl bg-white p-3 shadow-xl ring-1 ring-danger/15">
                     <div className="mb-2 flex items-center justify-between gap-2">
-                        <span className="inline-flex items-center gap-2 text-xs font-black text-danger">
+                        <span className="inline-flex items-center gap-2 text-xs font-semibold text-danger">
                             <span className="h-2.5 w-2.5 rounded-full bg-danger animate-pulse" />
                             Recording {secondsText(seconds)}
                         </span>

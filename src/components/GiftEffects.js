@@ -123,7 +123,7 @@ export function triggerGiftEffect(gift, origin) {
     item.style.top = `${startY}px`;
     const isImage = String(visual || '').startsWith('/') || String(visual || '').startsWith('http');
     item.innerHTML = isImage
-        ? `<img src="${visual}" alt="${gift?.name || 'Gift'}" />`
+        ? `<img src="${visual}" alt="${gift?.name || 'Gift'}"  loading="lazy" decoding="async" />`
         : `<span>${visual || 'Gift'}</span>`;
     overlay.appendChild(item);
     const count = tier >= 4 ? 60 : tier >= 3 ? 30 : tier >= 2 ? 14 : 6;

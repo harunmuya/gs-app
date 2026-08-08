@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { labelFromCoordinates } from '@/lib/geo';
+import { resolvePlaceName } from '@/lib/placeName';
 
 const ACTIVE_PATHS = ['/discover', '/matches', '/members', '/profile', '/live'];
 const LAST_REQUEST_KEY = 'gsk_location_request_last';
@@ -82,7 +82,8 @@ export default function LocationPermissionManager() {
         }
 
         navigator.geolocation.getCurrentPosition(async (position) => {
-            const label = labelFromCoordinates(position.coords.latitude, position.coords.longitude);
+            // Accurate reverse geocode, with the offline table only as fallback.
+            const label = await resolvePlaceName(position.coords.latitude, position.coords.longitude);
             const payload = {
                 userId: user.id,
                 source: 'device',

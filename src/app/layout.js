@@ -1,16 +1,21 @@
-import './globals.css';
+﻿import './globals.css';
 
 import { AuthProvider } from '@/contexts/AuthContext';
 import NotificationManager from '@/components/NotificationManager';
 import PrivacyProtection from '@/components/PrivacyProtection';
+import ConnectionStatus from '@/components/ConnectionStatus';
 
 export const viewport = {
     width: 'device-width',
     initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
+    // Pinch-zoom must stay available. `maximumScale: 1` with `userScalable: false`
+    // blocks it, which fails WCAG 2.1 SC 1.4.4 (Resize Text) and is a real problem
+    // for users reading profiles on a phone. Allowing zoom costs nothing here —
+    // the layout is responsive and does not rely on a locked viewport.
+    maximumScale: 5,
+    userScalable: true,
     viewportFit: 'cover',
-    themeColor: '#9B2C5E',
+    themeColor: '#C21E56',
 };
 
 export const metadata = {
@@ -63,6 +68,7 @@ export default function RootLayout({ children }) {
             </head>
             <body className="antialiased" suppressHydrationWarning>
                 <AuthProvider>
+                    <ConnectionStatus />
                     <NotificationManager />
                     <PrivacyProtection />
                     {children}
@@ -73,10 +79,24 @@ export default function RootLayout({ children }) {
                     dangerouslySetInnerHTML={{
                         __html: `
                             if ('serviceWorker' in navigator) {
-                                window.addEventListener('load', () => {
-                                    navigator.serviceWorker.getRegistrations?.().then((regs) => regs.forEach((reg) => reg.update?.())).catch(() => {});
-                                    navigator.serviceWorker.register('/sw.js?v=20260709-3', { updateViaCache: 'none' }).catch(() => {});
-                                });
+                                // Never run the worker on a dev host. It caches
+                                // /_next/static/ cache-first, which is right in
+                                // production where filenames are content-hashed, but
+                                // in development Next reuses chunk names — so the
+                                // worker serves stale JavaScript and code changes
+                                // silently do not appear. Any worker left over from a
+                                // previous session is removed too.
+                                var isDevHost = ['localhost', '127.0.0.1', '::1'].indexOf(location.hostname) !== -1;
+                                if (isDevHost) {
+                                    navigator.serviceWorker.getRegistrations?.()
+                                        .then((regs) => regs.forEach((reg) => reg.unregister?.()))
+                                        .catch(() => {});
+                                } else {
+                                    window.addEventListener('load', () => {
+                                        navigator.serviceWorker.getRegistrations?.().then((regs) => regs.forEach((reg) => reg.update?.())).catch(() => {});
+                                        navigator.serviceWorker.register('/sw.js?v=20260808-v14', { updateViaCache: 'none' }).catch(() => {});
+                                    });
+                                }
                             }
                         `,
                     }}

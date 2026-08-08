@@ -1,5 +1,6 @@
-import { readdirSync, writeFileSync } from 'node:fs';
+﻿import { readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { buildContent, buildJoinedAt, buildLocation, LOCATIONS } from './seed/content.mjs';
 
 const root = process.cwd();
 const seedRoot = join(root, 'public', 'seed');
@@ -107,10 +108,44 @@ const config = {
 };
 
 const locations = [
-  ['Nairobi', 'Kenya'], ['Westlands, Nairobi', 'Kenya'], ['Kilimani, Nairobi', 'Kenya'], ['Mombasa', 'Kenya'],
-  ['Kisumu', 'Kenya'], ['Nakuru', 'Kenya'], ['Eldoret', 'Kenya'], ['Thika', 'Kenya'], ['Kampala', 'Uganda'],
-  ['Dar es Salaam', 'Tanzania'], ['Arusha', 'Tanzania'], ['Kigali', 'Rwanda'], ['Nyali, Mombasa', 'Kenya'],
-  ['Kiambu', 'Kenya'], ['Machakos', 'Kenya'], ['Kisii', 'Kenya'],
+  ['Nairobi', 'Kenya'], ['Westlands, Nairobi', 'Kenya'], ['Kilimani, Nairobi', 'Kenya'], ['Karen, Nairobi', 'Kenya'],
+  ['Lavington, Nairobi', 'Kenya'], ['Kileleshwa, Nairobi', 'Kenya'], ['Runda, Nairobi', 'Kenya'], ['South B, Nairobi', 'Kenya'],
+  ['Mombasa', 'Kenya'], ['Nyali, Mombasa', 'Kenya'], ['Kisumu', 'Kenya'], ['Nakuru', 'Kenya'],
+  ['Eldoret', 'Kenya'], ['Thika', 'Kenya'], ['Kiambu', 'Kenya'], ['Machakos', 'Kenya'],
+  ['Kisii', 'Kenya'], ['Naivasha', 'Kenya'], ['Meru', 'Kenya'], ['Kitengela', 'Kenya'],
+];
+
+const femaleFirstNames = [
+  'Mary', 'Grace', 'Rose', 'Janet', 'Catherine', 'Naomi', 'Lilian', 'Tabitha', 'Priscilla', 'Sarah',
+  'Caroline', 'Esther', 'Lucy', 'Mercy', 'Stella', 'Ruth', 'Monica', 'Beatrice', 'Alice', 'Josephine',
+  'Margaret', 'Teresa', 'Eunice', 'Anne', 'Nancy', 'Gladys', 'Mildred', 'Pamela', 'Susan', 'Dorothy',
+  'Agnes', 'Hellen', 'Florence', 'Jemimah', 'Christine', 'Rebecca', 'Yvonne', 'Pauline', 'Angela', 'Roseline',
+  'Joyce', 'Elizabeth', 'Martha', 'Zipporah', 'Peninah', 'Damaris', 'Violet', 'Regina', 'Jacinta', 'Clara',
+  'Irene', 'Leah', 'Millicent', 'Nelly', 'Purity', 'Lydia', 'Vera', 'Edith', 'Jane', 'Maggie',
+  'Sally', 'Cecilia', 'Phoebe', 'Judith', 'Anita', 'Diana', 'Betty', 'Eva', 'Harriet', 'Selina',
+  'Rachael', 'Miriam', 'Nora', 'Vivian', 'Lorna', 'Ivy', 'Sandra', 'Caren', 'Aisha', 'Brenda',
+  'Cynthia', 'Evelyn', 'Faith', 'Norah', 'Patricia', 'Veronica', 'Sharon', 'Doreen', 'Gloria', 'Sheila',
+];
+
+const maleFirstNames = [
+  'James', 'Joseph', 'Peter', 'Samuel', 'David', 'Patrick', 'George', 'Daniel', 'Martin', 'Anthony',
+  'Robert', 'Michael', 'Charles', 'Vincent', 'Richard', 'Edward', 'Francis', 'Kenneth', 'Victor', 'Stephen',
+  'Alex', 'Collins', 'Moses', 'Isaac', 'Emmanuel', 'Fredrick', 'Caleb', 'Benard', 'Lawrence', 'Simon',
+  'Dennis', 'Albert', 'Phillip', 'Henry', 'Nelson', 'Brian', 'Arthur', 'Oscar', 'Leonard', 'Paul',
+  'Wilson', 'Evans', 'Gabriel', 'Nicholas', 'Raymond', 'Kevin', 'Kelvin', 'Elvis', 'Trevor', 'Ian',
+  'Felix', 'Ryan', 'Brandon', 'Lewis', 'John', 'Mark', 'Cyrus', 'Dominic', 'Andrew', 'Harrison',
+  'Morris', 'Gideon', 'Walter', 'Edwin', 'Allan', 'Julius', 'Stanley', 'Ronald', 'Clifford', 'Douglas',
+];
+
+const femaleSurnames = [
+  'Wanjiku', 'Achieng', 'Njeri', 'Atieno', 'Muthoni', 'Chebet', 'Nyambura', 'Okello', 'Wambui',
+  'Naliaka', 'Mwikali', 'Akinyi', 'Kerubo', 'Wairimu', 'Mbithe', 'Chepkorir', 'Moraa',
+];
+
+const maleSurnames = [
+  'Kimani', 'Mwangi', 'Otieno', 'Njoroge', 'Mutua', 'Wekesa', 'Kiplagat', 'Omondi', 'Barasa', 'Mwaura',
+  'Odhiambo', 'Kiptoo', 'Ndirangu', 'Onyango', 'Muriithi', 'Ochieng', 'Maina', 'Mboya', 'Mutiso', 'Njenga',
+      'Wambua', 'Kosgei', 'Myles', 'Kiprono', 'Mbugua', 'Gichuki', 'Okoth', 'Chege', 'Muthama', 'Njuguna',
 ];
 
 const interests = [
@@ -124,9 +159,23 @@ function slugify(value) {
   return String(value || 'member').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 }
 
+/**
+ * One image per profile, preferring the WebP.
+ *
+ * scripts/optimise-seed-images.mjs writes a .webp beside every .jpg and leaves
+ * the original in place, so a naive extension filter now matches both and would
+ * build 606 profiles from 303 photos — blowing through the name pools and
+ * tripping the duplicate guard. Pick the WebP where one exists, keep the JPEG
+ * where it does not, and never both.
+ */
 function filesFor(folder) {
-  return readdirSync(join(seedRoot, folder))
-    .filter((name) => /\.(jpe?g|png|webp)$/i.test(name))
+  const names = readdirSync(join(seedRoot, folder))
+    .filter((name) => /\.(jpe?g|png|webp)$/i.test(name));
+  const webpStems = new Set(
+    names.filter((n) => /\.webp$/i.test(n)).map((n) => n.replace(/\.webp$/i, ''))
+  );
+  return names
+    .filter((name) => /\.webp$/i.test(name) || !webpStems.has(name.replace(/\.(jpe?g|png)$/i, '')))
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 
@@ -142,21 +191,41 @@ function labelText(label) {
   return 'Member';
 }
 
-function profileBio(name, label, lookingFor) {
+function nameForLabel(label, index, offset = 0) {
+  const firstNames = label === 'sugar_daddy' || label === 'toyboy' ? maleFirstNames : femaleFirstNames;
+  const surnames = label === 'sugar_daddy' || label === 'toyboy' ? maleSurnames : femaleSurnames;
+  const first = firstNames[(index + offset) % firstNames.length];
+  const surname = surnames[(index * 7 + offset * 3) % surnames.length];
+  const name = `${first} ${surname}`;
+  return name === 'Gabriel Muchiri' ? 'Gabriel Myles' : name;
+}
+
+function seedTierForIndex(index) {
+  const bucket = (index * 7 + 3) % 20;
+  if (bucket < 14) return { tier: 'silver', verified: true };
+  if (bucket < 17) return { tier: 'basic', verified: false };
+  return { tier: 'free', verified: false };
+}
+
+function profileBio(name, label, lookingFor, verified = true) {
   const role = labelText(label);
-  return `${name} is a verified ${role} looking for ${lookingFor}. Values respect, privacy, and clear communication.`;
+  return `${name} is a ${verified ? 'verified ' : ''}${role} looking for ${lookingFor}. Values respect, privacy, and clear communication.`;
 }
 
 const profiles = [];
 Object.entries(config).forEach(([folder, group]) => {
   filesFor(folder).forEach((file, index) => {
-    const name = group.names[index] || `${group.label.replace(/_/g, ' ')} ${index + 1}`;
-    const [location, country] = locations[(profiles.length + index) % locations.length];
+    const name = nameForLabel(group.label, index, profiles.length);
     const photo = encodeURI(`/seed/${folder}/${file}`);
     const number = profiles.length + 1;
     const id = `seed-local-${String(number).padStart(3, '0')}`;
-    const username = `${slugify(name)}_seed_${String(number).padStart(3, '0')}`;
-    const bio = profileBio(name, group.label, group.lookingFor);
+    const username = `${slugify(name)}_${String(number).padStart(3, '0')}`;
+    const { tier, verified } = seedTierForIndex(number - 1);
+    // Written content, location and join date all come from scripts/seed/content
+    // keyed on the profile id — see that file for why the old single-template
+    // approach had to go.
+    const content = buildContent({ id, label: group.label, lookingFor: group.lookingFor, labelName: labelText(group.label) });
+    const place = buildLocation({ id, label: group.label });
     profiles.push({
       id,
       username,
@@ -165,42 +234,126 @@ Object.entries(config).forEach(([folder, group]) => {
       avatar_url: photo,
       photo_https: `${publicBaseUrl}${photo}`,
       age: ageFor(group, index),
-      location,
-      country,
-      city: location,
+      location: place.location,
+      country: place.country,
+      city: place.city,
       profile_label: group.label,
       member_category: group.label,
       looking_for: group.lookingFor,
-      bio,
-      description: bio,
-      wants: group.label === 'sugar_mummy'
-        ? 'A confident sugar guy or toyboy who is respectful, attentive, and serious.'
-        : group.label === 'sugar_daddy'
-          ? 'A confident mistress who values respect, privacy, and clear communication.'
-          : group.label === 'mistress'
-            ? 'A mature sugar daddy who is respectful, generous, and serious.'
-            : 'A genuine sugar mummy who values respect, attention, and clear communication.',
-      needed_qualities: 'respectful, honest, discreet, serious',
+      bio: content.bio,
+      description: content.bio,
+      wants: content.wants,
+      needed_qualities: content.needed_qualities,
+      intent_summary: content.intent_summary,
       age_range_preference: group.label === 'sugar_mummy' ? '21-34' : group.label === 'mistress' ? '45-68' : group.label === 'toyboy' ? '38-58' : '24-35',
-      hobbies: ['travel', 'fine dining', 'private dates'],
-      interests: interests[index % interests.length],
-      body_type: ['Elegant', 'Fit', 'Average', 'Curvy'][index % 4],
+      hobbies: content.hobbies,
+      interests: content.interests,
+      body_type: content.body_type,
+      education: content.education,
+      occupation: content.occupation,
+      created_at: buildJoinedAt({ id }),
+      subscription_tier: tier,
+      verified,
+      verification_status: verified ? 'verified' : 'unsubmitted',
+      admin_approved: verified,
+      phone_reveal_plan: tier === 'silver' ? 'silver' : tier === 'basic' ? 'basic' : 'free',
     });
   });
 });
+
+/**
+ * Refuse to write a roster with a repeated name or a repeated photo.
+ *
+ * Neither is true today, but nothing stopped it becoming true: names come from
+ * modular arithmetic over fixed lists, so adding photos to a category can start
+ * producing collisions with no warning. Two profiles sharing a face is the
+ * single most damaging thing this roster could do, so the generator fails
+ * instead of emitting it.
+ */
+function assertNoDuplicates(rows) {
+  const problems = [];
+  const seenName = new Map();
+  const seenPhoto = new Map();
+  for (const row of rows) {
+    if (seenName.has(row.display_name)) problems.push(`duplicate name "${row.display_name}" (${seenName.get(row.display_name)} and ${row.id})`);
+    else seenName.set(row.display_name, row.id);
+    if (seenPhoto.has(row.avatar_url)) problems.push(`duplicate photo "${row.avatar_url}" (${seenPhoto.get(row.avatar_url)} and ${row.id})`);
+    else seenPhoto.set(row.avatar_url, row.id);
+  }
+  if (problems.length) {
+    console.error(`\nRefusing to write the seed roster — ${problems.length} collision(s):`);
+    problems.slice(0, 20).forEach((p) => console.error(`  ${p}`));
+    console.error('\nAdd more first names or surnames in this file, or remove the duplicate image.');
+    process.exit(1);
+  }
+  console.log(`seed roster: ${rows.length} profiles, no duplicate names, no duplicate photos`);
+}
+
+assertNoDuplicates(profiles);
 
 function jsString(value) {
   return JSON.stringify(value);
 }
 
-const localSeedFile = `const LOCATIONS = ${JSON.stringify(locations, null, 4)};\n\nconst PROFILES = ${JSON.stringify(profiles.map((profile) => [
-  profile.display_name,
-  profile.profile_label,
-  profile.looking_for,
-  profile.age,
-  profile.avatar_url,
-  profile.username,
-]), null, 4)};\n\nfunction slugify(value) {\n    return String(value || 'member').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');\n}\n\nfunction labelText(label) {\n    if (label === 'sugar_mummy') return 'Sugar Mummy';\n    if (label === 'sugar_daddy') return 'Sugar Daddy';\n    if (label === 'mistress') return 'Mistress';\n    if (label === 'toyboy') return 'Sugar Guy / Toyboy';\n    return 'Member';\n}\n\nexport function localSeedRows() {\n    return PROFILES.map(([name, label, lookingFor, age, photo, username], index) => {\n        const [location, country] = LOCATIONS[index % LOCATIONS.length];\n        const id = \`seed-local-\${String(index + 1).padStart(3, '0')}\`;\n        const seen = new Date(Date.now() - ((index % 8) + 1) * 18 * 60 * 1000).toISOString();\n        const type = labelText(label);\n        return {\n            id,\n            username: username || slugify(name),\n            email: \`seed+app-\${String(index + 1).padStart(3, '0')}@genuinesugarmummies.co.ke\`,\n            display_name: name,\n            avatar_url: photo,\n            photos: [photo],\n            bio: \`\${name} is a verified \${type} looking for \${lookingFor}. Values respect, privacy, and clear communication.\`,\n            description: \`\${name} is a verified \${type} looking for \${lookingFor}. Values respect, privacy, and clear communication.\`,\n            age,\n            location,\n            country,\n            city: location,\n            phone: '',\n            phone_number: '',\n            profile_label: label,\n            member_category: label,\n            looking_for: lookingFor,\n            intent_summary: \`I am a \${type} looking for \${lookingFor}.\`,\n            wants: label === 'sugar_mummy'\n                ? 'A confident sugar guy or toyboy who is respectful, attentive, and serious.'\n                : label === 'sugar_daddy'\n                    ? 'A confident mistress who values respect, privacy, and clear communication.'\n                    : label === 'mistress'\n                        ? 'A mature sugar daddy who is respectful, generous, and serious.'\n                        : 'A genuine sugar mummy who values respect, attention, and clear communication.',\n            needed_qualities: 'respectful, honest, discreet, serious',\n            age_range_preference: label === 'sugar_mummy' ? '21-34' : label === 'mistress' ? '45-68' : label === 'toyboy' ? '38-58' : '24-35',\n            hobbies: ['travel', 'fine dining', 'private dates'],\n            interests: ['verified members', 'respectful companionship', 'lifestyle support'],\n            body_type: ['Elegant', 'Fit', 'Average', 'Curvy'][index % 4],\n            subscription_tier: 'silver',\n            verified: true,\n            verification_status: 'verified',\n            show_in_public: true,\n            is_banned: false,\n            is_suspended: false,\n            total_profile_views: 900 + index * 83,\n            followers_count: 35 + index * 4,\n            gifts_received_count: 4 + (index % 40),\n            admin_approved: true,\n            package_locked: false,\n            phone_reveal_plan: 'silver',\n            is_seed_profile: true,\n            boost_expires_at: null,\n            boost_score: index % 6 === 0 ? 25 : 0,\n            created_at: new Date(Date.now() - (index + 3) * 24 * 60 * 60 * 1000).toISOString(),\n            last_seen_at: seen,\n            last_seen: seen,\n        };\n    });\n}\n\nexport function getLocalSeedMember(key) {\n    const value = String(key || '').replace(/^@+/, '').toLowerCase();\n    if (!value) return null;\n    return localSeedRows().find((member) => member.id.toLowerCase() === value || member.username.toLowerCase() === value) || null;\n}\n`;
+/**
+ * The runtime seed roster.
+ *
+ * Each profile now carries its own written content, location and join date —
+ * they are no longer derived at read time from rotating lists, which is what
+ * made every profile read identically. The constant fields are still applied in
+ * the mapper below because repeating them 304 times would triple the file for
+ * nothing.
+ */
+const localSeedFile = `// Generated by scripts/generate-seed-members.mjs — do not edit by hand.
+//
+// Server-only. Importing this from a client component ships the whole roster to
+// every visitor; use lib/profileFallbackManifest for image fallbacks instead.
+
+const PROFILES = ${JSON.stringify(profiles.map((profile) => {
+  const row = {};
+  for (const key of ["id","username","display_name","avatar_url","age","location","country","city","profile_label","looking_for","bio","wants","needed_qualities","intent_summary","age_range_preference","hobbies","interests","body_type","education","occupation","created_at","subscription_tier","verified"]) row[key] = profile[key];
+  return row;
+}), null, 4)};
+
+export function localSeedRows() {
+    return PROFILES.map((profile, index) => ({
+        ...profile,
+        email: \`seed+app-\${String(index + 1).padStart(3, '0')}@genuinesugarmummies.co.ke\`,
+        photos: [profile.avatar_url],
+        description: profile.bio,
+        member_category: profile.profile_label,
+        phone: '',
+        phone_number: '',
+        verification_status: profile.verified ? 'verified' : 'unsubmitted',
+        admin_approved: profile.verified,
+        phone_reveal_plan: profile.subscription_tier === 'silver' ? 'silver' : profile.subscription_tier === 'basic' ? 'basic' : 'free',
+        show_in_public: true,
+        is_banned: false,
+        is_suspended: false,
+        // Engagement counters stay at zero. A seeded profile has not been viewed
+        // or followed by anyone, and inventing the numbers is the kind of claim
+        // the rest of the app had these removed for.
+        total_profile_views: 0,
+        followers_count: 0,
+        gifts_received_count: 0,
+        package_locked: false,
+        is_seed_profile: true,
+        boost_expires_at: null,
+        boost_score: 0,
+        // No presence. These profiles cannot be online, so they carry no
+        // last_seen_at and the UI must not draw a status dot for them.
+        last_seen_at: null,
+        last_seen: null,
+        is_online: false,
+    }));
+}
+
+export function getLocalSeedMember(key) {
+    const value = String(key || '').replace(/^@+/, '').toLowerCase();
+    if (!value) return null;
+    return localSeedRows().find((member) => member.id.toLowerCase() === value || member.username.toLowerCase() === value) || null;
+}
+`;
 
 function sqlValue(value) {
   if (Array.isArray(value)) return `ARRAY[${value.map(sqlValue).join(', ')}]::text[]`;
@@ -212,7 +365,9 @@ function sqlValue(value) {
 
 const rows = profiles.map((profile, index) => {
   const created = new Date(Date.UTC(2026, 5, 25, 12, 0, 0) - index * 37 * 60 * 1000).toISOString();
-  const lastSeen = new Date(Date.now() - ((index % 8) + 1) * 18 * 60 * 1000).toISOString();
+  // `lastSeen` was removed. It generated an offset from Date.now() at build time,
+  // so every regenerated seed batch arrived permanently "active in the last two
+  // hours". Seeded rows now insert NULL for last_seen_at / last_seen.
   const values = [
     profile.email,
     profile.username,
@@ -235,23 +390,31 @@ const rows = profiles.map((profile, index) => {
     profile.hobbies,
     profile.interests,
     profile.body_type,
-    'silver',
-    true,
-    'verified',
-    true,
+    profile.subscription_tier,
+    profile.verified,
+    profile.verification_status,
+    profile.admin_approved,
     false,
     false,
     true,
     false,
-    900 + index * 83,
-    35 + index * 4,
-    4 + (index % 40),
-    'silver',
+    // total_profile_views / followers_count / gifts_received_count.
+    // Zero, not invented figures. These previously emitted 900+, 35+, and 4+ per
+    // profile, which the API then reported to members as genuine popularity for
+    // accounts nobody has ever viewed, followed, or gifted.
+    0,
+    0,
+    0,
+    profile.phone_reveal_plan,
     true,
     index % 6 === 0 ? 25 : 0,
     created,
-    lastSeen,
-    lastSeen,
+    // last_seen_at / last_seen. Null: there is no one signed in behind a seeded
+    // profile, so any timestamp is a claim of activity that never happened — and
+    // a non-null value feeds the activity signal in discovery ranking, letting
+    // unattended profiles outrank real members.
+    null,
+    null,
   ];
   return `    (${values.map(sqlValue).join(', ')})`;
 });
@@ -301,7 +464,11 @@ delete from public.users
 where is_seed_profile = true
    or lower(coalesce(email, '')) like 'seed+%@genuinesugarmummies.co.ke'
    or lower(coalesce(email, '')) like 'seed+%@genuinesugarmummies.com'
-   or lower(coalesce(avatar_url, '') || ' ' || coalesce(array_to_string(photos, ' '), '')) like '%/seed-photos/%';
+   or lower(coalesce(username, '')) like '%_seed_%'
+   or lower(coalesce(avatar_url, '') || ' ' || coalesce(array_to_string(photos, ' '), '')) like '%/seed/%'
+   or lower(coalesce(avatar_url, '') || ' ' || coalesce(array_to_string(photos, ' '), '')) like '%/seed-photos/%'
+   or lower(coalesce(avatar_url, '') || ' ' || coalesce(array_to_string(photos, ' '), '')) like '%/pics/%'
+   or lower(coalesce(avatar_url, '') || ' ' || coalesce(array_to_string(photos, ' '), '')) like '%genuinesugarmummies.com%';
 
 insert into public.users (
     email, username, display_name, avatar_url, photos, bio, description, age, location, country, city,

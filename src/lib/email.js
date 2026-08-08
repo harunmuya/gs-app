@@ -132,7 +132,7 @@ export function emailHtml(title, body, options = {}) {
                         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border:1px solid #dbeafe;border-radius:22px;overflow:hidden;box-shadow:0 18px 48px rgba(15,118,110,0.16)">
                             <tr>
                                 <td style="padding:26px 24px 18px;background:linear-gradient(135deg,#042f2e,#0f766e 58%,#f59e0b);color:#ffffff">
-                                    <img src="${escapeHtml(LOGO_URL)}" alt="Genuine Sugar Mummies" width="92" style="display:block;width:92px;height:auto;margin:0 auto 12px" />
+                                    <img src="${escapeHtml(LOGO_URL)}" alt="Genuine Sugar Mummies" width="92" style="display:block;width:92px;height:auto;margin:0 auto 12px"  loading="lazy" decoding="async" />
                                     <p style="margin:0 0 7px;text-align:center;color:#ccfbf1;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.12em">Genuine Sugar Mummies</p>
                                     <h1 style="font-size:25px;line-height:1.2;margin:0;text-align:center;color:#ffffff;font-weight:900">${safeTitle}</h1>
                                 </td>

@@ -2,7 +2,7 @@
 
 import { use, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { MessageCircle, Mic, MicOff, PhoneOff, RefreshCw, Video, VideoOff } from 'lucide-react';
+import { MessageCircle, Mic, MicOff, PhoneOff, RefreshCw, Video, VideoOff } from '@/components/icons';
 import { createBrowserSupabaseClient, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -74,7 +74,7 @@ export default function CallRoomPage({ params }) {
                 }
                 let activeSession = null;
                 if (sessionIdFromUrl) {
-                    const res = await fetch(`/api/calls?sessionId=${encodeURIComponent(sessionIdFromUrl)}&userId=${encodeURIComponent(user.id)}`);
+                    const res = await fetch(`/api/calls?sessionId=${encodeURIComponent(sessionIdFromUrl)}`);
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) throw new Error(data.error || 'Could not open call.');
                     activeSession = data.session;
@@ -88,7 +88,7 @@ export default function CallRoomPage({ params }) {
                     const res = await fetch('/api/calls', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'start', userId: user.id, peerId, callType }),
+                        body: JSON.stringify({ action: 'start', peerId, callType }),
                     });
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) throw new Error(data.error || 'Could not start call.');
@@ -128,6 +128,29 @@ export default function CallRoomPage({ params }) {
         return () => window.clearTimeout(timer);
     }, [role, session?.id, session?.status]);
 
+    /*
+      Close the call if this tab goes away.
+
+      Without this, a caller who navigates away or closes the tab leaves the row
+      at 'ringing'. The receiver's device keeps showing the incoming-call sheet
+      and keeps ringing until the stale sweep catches it — up to two minutes of
+      a phone ringing for a caller who is no longer there. A keepalive beacon
+      ends it at once; the sweep remains as the backstop for a crash or a lost
+      network.
+    */
+    useEffect(() => {
+        if (!session?.id || ['ended', 'declined', 'rejected', 'missed'].includes(session.status)) return undefined;
+        function onLeave() {
+            try {
+                const status = session.status === 'ringing' && role === 'caller' ? 'missed' : 'ended';
+                const payload = JSON.stringify({ action: 'status', sessionId: session.id, status });
+                navigator.sendBeacon?.('/api/calls', new Blob([payload], { type: 'application/json' }));
+            } catch {}
+        }
+        window.addEventListener('pagehide', onLeave);
+        return () => window.removeEventListener('pagehide', onLeave);
+    }, [session?.id, session?.status, role]);
+
     async function inspectMediaDevices() {
         if (!navigator.mediaDevices?.enumerateDevices) return { checked: false, audioInputs: 0, videoInputs: 0 };
         try {
@@ -148,11 +171,12 @@ export default function CallRoomPage({ params }) {
 
     async function requestLocalMedia(wantsVideo) {
         if (!navigator.mediaDevices?.getUserMedia) {
-            setMediaWarning('This browser cannot open camera or microphone. Use the Android app, Chrome, or another browser that supports secure calls.');
+            setMediaWarning('This device cannot open camera or microphone for secure calls.');
             return null;
         }
         const beforeDevices = await inspectMediaDevices();
         try {
+            window.dispatchEvent(new CustomEvent('gs-media-permission-requested', { detail: { source: 'call', video: wantsVideo } }));
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: AUDIO_CONSTRAINTS,
                 video: wantsVideo ? VIDEO_CONSTRAINTS : false,
@@ -173,9 +197,9 @@ export default function CallRoomPage({ params }) {
             setMuted(true);
             setCameraOff(true);
             if (errorName === 'NotAllowedError' || errorName === 'PermissionDeniedError') {
-                setMediaWarning('Camera or microphone permission is blocked. Allow camera/microphone permission for GS App, then tap Retry.');
+                setMediaWarning('Camera or microphone is blocked. Open GS App permissions on your device and allow Camera and Microphone, then tap Retry.');
             } else if (beforeDevices.checked && beforeDevices.audioInputs === 0 && (!wantsVideo || beforeDevices.videoInputs === 0)) {
-                setMediaWarning('No microphone or camera is visible to this device. On Android, update the APK with camera and microphone permissions, then allow them in App info.');
+                setMediaWarning('No microphone or camera is visible to this device. Check your device permissions and connected accessories, then try again.');
             } else {
                 setMediaWarning('Camera or microphone could not open. Close other apps using the device, allow permissions, then tap Retry.');
             }
@@ -285,10 +309,25 @@ export default function CallRoomPage({ params }) {
     }
 
     function subscribeSignals(activeSession) {
+        // Signals must be applied in the order they were written: an ICE
+        // candidate added before setRemoteDescription has resolved is discarded.
+        // `.forEach(handleSignal)` fired them all concurrently, so candidates
+        // routinely raced ahead of the offer and were dropped.
+        let draining = false;
+        async function drain(signals) {
+            if (draining) return;
+            draining = true;
+            try {
+                for (const signal of signals) await handleSignal(signal);
+            } finally {
+                draining = false;
+            }
+        }
+
         async function poll() {
-            const res = await fetch(`/api/calls?sessionId=${encodeURIComponent(activeSession.id)}&userId=${encodeURIComponent(user.id)}`);
+            const res = await fetch(`/api/calls?sessionId=${encodeURIComponent(activeSession.id)}`);
             const data = await res.json().catch(() => ({}));
-            (data.signals || []).forEach(handleSignal);
+            await drain(data.signals || []);
             if (data.session?.status) {
                 setSession(data.session);
                 if (role === 'caller' && ['declined', 'rejected', 'missed', 'ended'].includes(data.session.status)) {
@@ -298,7 +337,15 @@ export default function CallRoomPage({ params }) {
             }
         }
         poll();
-        const interval = window.setInterval(poll, 8000);
+        // Poll hard while the handshake is outstanding, then back off. At the old
+        // flat 8s a call took the better part of a minute to negotiate, which
+        // reads as a call that simply does not work. Realtime usually beats the
+        // poll to it; this is the fallback when Realtime is unavailable.
+        let interval = window.setInterval(poll, 1200);
+        const backoff = window.setTimeout(() => {
+            window.clearInterval(interval);
+            interval = window.setInterval(poll, 5000);
+        }, 30000);
         let channel = null;
         try {
             if (isSupabaseConfigured()) {
@@ -311,6 +358,7 @@ export default function CallRoomPage({ params }) {
         } catch {}
         pcRef.current.__cleanupSignals = () => {
             window.clearInterval(interval);
+            window.clearTimeout(backoff);
             try { if (channel) createBrowserSupabaseClient().removeChannel(channel); } catch {}
         };
     }
@@ -320,7 +368,7 @@ export default function CallRoomPage({ params }) {
         const res = await fetch('/api/calls', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'status', sessionId, userId: user.id, status: nextStatus }),
+            body: JSON.stringify({ action: 'status', sessionId, status: nextStatus }),
         });
         const data = await res.json().catch(() => ({}));
         if (data.session) setSession(data.session);
@@ -380,7 +428,7 @@ export default function CallRoomPage({ params }) {
                     <h1 className="text-xl font-black">GS Call</h1>
                     <p className="text-sm text-white/75">{status}{['accepted', 'active'].includes(session?.status) ? ` · ${formatDuration(duration)}` : ''}</p>
                     {role === 'receiver' && session?.status === 'ringing' && <div className="mt-4 max-w-sm rounded-3xl bg-white/10 p-4 backdrop-blur-xl border border-white/15">
-                        <p className="text-sm font-black">Incoming {callType === 'video' ? 'video' : 'voice'} call</p>
+                        <p className="text-sm font-bold">Incoming {callType === 'video' ? 'video' : 'voice'} call</p>
                         <p className="mt-1 text-xs text-white/70">Answer inside GS App or decline the call. This call is handled through your app account and Supabase call records.</p>
                         <div className="mt-4 flex gap-3">
                             <button onClick={declineIncoming} className="h-12 flex-1 rounded-2xl bg-danger font-black text-white">Decline</button>

@@ -1,11 +1,18 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
 import { emailHtml, sendAndLogEmail } from '@/lib/email';
-import { hashPassword, verifyPassword, createResetCode, hashResetCode } from '@/lib/security';
-import { activeTierId, dailyLimitForFeature, getPackageTier } from '@/lib/packageAccess';
+// hashPassword is intentionally not imported: this route no longer writes password
+// hashes. verifyPassword remains only to authenticate legacy accounts during the
+// one-time migration in `login_account`.
+import { verifyPassword, createResetCode, hashResetCode, hashEmail } from '@/lib/security';
+import { accountRestrictionMessage, accountStatus, activeTierId, canUseFeature, dailyLimitForFeature, getPackageTier, isAccountRestricted } from '@/lib/packageAccess';
 import { getLocalSeedMember, localSeedRows } from '@/lib/localSeedMembers';
-import { coordinatesForProfile, displayDistanceKm } from '@/lib/geo';
+import { coordinatesForProfile, displayDistanceKm, distanceKm } from '@/lib/geo';
 import { fallbackProfileImageSrc } from '@/lib/profileImages';
+import { facilitationFields, profileKindFor } from '@/lib/profileKind';
+import { getSessionMember, provisionAuthUser, signInWithPassword } from '@/lib/authSession';
+import { displayMatchPercent, interleave, scoreMember } from '@/lib/discoveryRanking';
+import { consumeQuota } from '@/lib/entitlementGuard';
 
 const FULL_MEMBER_FIELDS = `
     id,
@@ -25,6 +32,7 @@ const FULL_MEMBER_FIELDS = `
     geo_updated_at,
     phone,
     phone_number,
+    preference,
     profile_label,
     member_category,
     looking_for,
@@ -41,6 +49,7 @@ const FULL_MEMBER_FIELDS = `
     show_in_public,
     is_banned,
     is_suspended,
+    account_deleted_at,
     total_profile_views,
     followers_count,
     gifts_received_count,
@@ -77,6 +86,7 @@ const BASIC_MEMBER_FIELDS = `
     city,
     phone,
     phone_number,
+    preference,
     profile_label,
     subscription_tier,
     verified,
@@ -90,10 +100,24 @@ const BASIC_MEMBER_FIELDS = `
     last_seen
 `;
 
+/**
+ * Page size for the members listing.
+ *
+ * The default was 240 — the same as the maximum — so any caller that omitted
+ * `per_page` received the entire pool in one response: full profile rows for 240
+ * members, plus 240 image URLs the browser then fetched. The grid asks for 12,
+ * but every other caller and every crawler got the full 240.
+ *
+ * 24 is two screens of the 12-card grid, so a caller that does not paginate
+ * still gets something sensible without pulling the whole roster.
+ */
+const DEFAULT_PER_PAGE = 24;
+const MAX_PER_PAGE = 240;
+
 const UNLOCKED_PLANS = new Set(['silver', 'gold', 'diamond']);
 const PAID_PLANS = new Set(['basic', 'silver', 'gold', 'diamond']);
 
-const LIMIT_NOTICE = 'Your daily quota has been exhausted. Pay for a package to unlock unlimited access.';
+const LIMIT_NOTICE = 'Daily quota reached. Subscribe to a package for more access, or recharge GS Credits for supported premium actions.';
 
 function booleanSetting(value, fallback) {
     if (typeof value === 'boolean') return value;
@@ -138,12 +162,21 @@ function normalizeSettings(row = {}) {
     };
 }
 
-async function resolveUserId(supabase, body) {
-    if (body.memberId || body.userId) return body.memberId || body.userId;
-    const email = String(body.email || '').trim().toLowerCase();
-    if (!email) return null;
-    const { data } = await supabase.from('users').select('id').eq('email', email).maybeSingle();
-    return data?.id || null;
+/**
+ * The acting member for this request.
+ *
+ * This previously returned `body.memberId || body.userId`, or resolved an account
+ * from a bare `body.email` — all attacker-controlled. Every caller of this function
+ * performs a member-scoped read or write (settings, inbox, profile edits, account
+ * deletion), so identity now comes from the verified session and the body is ignored.
+ *
+ * Returns null for anonymous callers; callers decide whether that is an error.
+ */
+async function resolveUserId() {
+    const member = await getSessionMember({ fields: 'id, auth_user_id, is_banned, is_suspended, account_deleted_at' });
+    if (!member) return null;
+    if (isAccountRestricted(member)) return null;
+    return member.id;
 }
 
 async function getUserSettings(supabase, userId) {
@@ -239,12 +272,20 @@ function buildSupportAutoResponse(service, { name = 'Member', subject = '' } = {
 
 function maskPhone(phone) {
     if (!phone) return null;
-    const digits = String(phone).replace(/\D/g, '');
+    const digits = String(phone).replace(/\D/g, '').replace(/^00/, '');
     if (digits.length < 7) return 'Hidden';
-    const normalized = digits.startsWith('0') && digits.length === 10 ? `254${digits.slice(1)}` : digits;
-    const start = normalized.slice(0, Math.min(4, normalized.length - 4));
-    const end = normalized.slice(-4);
-    return `${start}****${end}`;
+    const knownCodes = ['254', '255', '256', '250', '257', '260', '263', '234', '233', '243', '258', '265', '251', '237', '225', '221', '211', '27', '1', '44'];
+    const matchedCode = knownCodes.find((code) => digits.startsWith(code) && digits.length > code.length + 6);
+    const countryCode = matchedCode || '254';
+    let local = matchedCode ? digits.slice(matchedCode.length) : digits;
+    if (local.startsWith('0')) local = local.slice(1);
+    local = local.slice(-10);
+    if (local.length < 7) return 'Hidden';
+    return `+${countryCode} ${local.slice(0, 1)}** *** ${local.slice(-4)}`;
+}
+
+function normalizeResetCode(value) {
+    return String(value || '').replace(/\D/g, '').slice(0, 6);
 }
 
 function getDisplayName(member) {
@@ -328,20 +369,16 @@ function dedupeMemberRows(rows = []) {
 function inferProfileLabel(member = {}) {
     const raw = String(member.profile_label || member.member_category || '').toLowerCase().replace(/[\s-]+/g, '_');
     const valid = ['sugar_mummy', 'sugar_daddy', 'mistress', 'toyboy'];
-    // ALWAYS trust a valid profile_label from the database first — never override it from photo URLs
-    if (valid.includes(raw)) return raw;
     if (member.is_seed_profile) {
         const media = `${member.avatar_url || ''} ${Array.isArray(member.photos) ? member.photos.join(' ') : ''}`.toLowerCase();
-        const seedIdentity = `${member.email || ''} ${member.username || ''} ${member.display_name || ''}`.toLowerCase().replace(/[\s-]+/g, '_');
-        if (media.includes('sugarmums')) return 'sugar_mummy';
-        if (media.includes('sugar-dads')) return 'sugar_daddy';
-        if (media.includes('/seed-photos/seed-m-')) return 'sugar_daddy';
-        if (media.includes('mistresses')) return 'mistress';
-        if (media.includes('toboys') || media.includes('sugarguys') || media.includes('sugar-guys')) return 'toyboy';
-        if (seedIdentity.includes('sugar_mummy') || seedIdentity.includes('sugarmum')) return 'sugar_mummy';
-        if (seedIdentity.includes('sugar_daddy') || seedIdentity.includes('sugardad')) return 'sugar_daddy';
-        if (seedIdentity.includes('mistress')) return 'mistress';
+        if (media.includes('/seed/sugarmums/')) return 'sugar_mummy';
+        if (media.includes('/seed/sugar-dads/')) return 'sugar_daddy';
+        if (media.includes('/seed/mistresses/')) return 'mistress';
+        if (media.includes('/seed/toboys%20or%20sugarguys/') || media.includes('/seed/toboys or sugarguys/')) return 'toyboy';
+        if (valid.includes(raw)) return raw;
+        return '';
     }
+    if (valid.includes(raw)) return raw;
     if (raw.startsWith('sugar_mummy')) return 'sugar_mummy';
     if (raw.startsWith('sugar_daddy')) return 'sugar_daddy';
     if (raw.startsWith('mistress')) return 'mistress';
@@ -351,15 +388,15 @@ function inferProfileLabel(member = {}) {
     if (preference.startsWith('sugar_daddy')) return 'sugar_daddy';
     if (preference.startsWith('mistress')) return 'mistress';
     if (preference.startsWith('toyboy') || preference.startsWith('sugar_guy')) return 'toyboy';
-    const looking = String(member.looking_for || member.intent_summary || '').toLowerCase().replace(/[_-]+/g, ' ');
-    if (looking.includes('sugar mummy')) return 'toyboy';
-    if (looking.includes('mistress')) return 'sugar_daddy';
-    if (looking.includes('sugar daddy')) return 'mistress';
-    if (looking.includes('toyboy') || looking.includes('sugar guy')) return 'sugar_mummy';
-    // For real users, keep their stored label if present; never assume toyboy
     if (raw) return raw;
     return '';
 }
+
+// PREFERENCE_MIX_PATTERN / PROFILE_MIX_RULES / applyViewerPreferenceMix were removed
+// with the ranking rebuild. They interleaved primary and secondary matches on a fixed
+// 4:1 cadence regardless of profile strength, so a distant inactive primary always
+// outranked a nearby active secondary. The pairings now live in
+// lib/discoveryRanking.js#PREFERENCE_RULES and feed a weighted score instead.
 
 function defaultLookingFor(label) {
     if (label === 'sugar_mummy') return 'Sugar Guy / Toyboy';
@@ -409,45 +446,6 @@ function stableHash(value) {
     return Math.abs(hash);
 }
 
-const SEED_SUGAR_DADDY_NAMES = [
-    'James Kamau', 'Joseph Kimani', 'Peter Mwangi', 'Samuel Otieno', 'David Karanja', 'Patrick Njoroge',
-    'George Mutua', 'Daniel Wekesa', 'Martin Kariuki', 'Anthony Kiplagat', 'Robert Omondi', 'Michael Barasa',
-    'Charles Mwaura', 'Vincent Odhiambo', 'Richard Kiptoo', 'Edward Ndirangu', 'Francis Onyango', 'Kenneth Muriithi',
-    'Brian Ochieng', 'Eric Maina', 'Victor Mboya', 'Stephen Kariuki', 'Alex Muthomi', 'Collins Barasa',
-    'Moses Onyango', 'Isaac Mutiso', 'Emmanuel Wekesa', 'Fredrick Otieno', 'Caleb Mwangi', 'Benard Kiptoo',
-    'Dennis Karanja', 'John Njuguna', 'Paul Muriuki', 'Mark Ouma', 'Evans Kipchoge', 'Geoffrey Njoroge',
-    'Tony Makori', 'Cyrus Maina', 'Dominic Mwenda', 'Simon Barasa', 'Philip Kiplagat', 'Andrew Mutua',
-    'Nelson Kariuki', 'Oscar Omondi', 'Felix Wanyama', 'Lawrence Kimutai', 'Harrison Odhiambo', 'Morris Njenga',
-    'Gideon Wambua', 'Walter Kosgei', 'Edwin Muchiri', 'Allan Kiprono', 'Martin Mbugua', 'Kelvin Gichuki',
-    'Julius Okoth', 'Stanley Muriithi', 'Ronald Chege', 'Clifford Mwale', 'Douglas Njoroge', 'Albert Simiyu',
-    'Bernard Onyango', 'Leonard Karanja', 'Nicholas Mwangi', 'Dennis Kiptoo', 'Raymond Ochieng', 'Tom Muthomi',
-    'Gilbert Barasa', 'Arthur Kimani', 'Solomon Mutiso', 'Henry Wekesa', 'Godfrey Otieno', 'Wilson Kariuki',
-];
-
-function seedDisplayName(member, profileLabel) {
-    if (member.is_seed_profile && profileLabel === 'sugar_daddy') {
-        const firstNames = ['James', 'Joseph', 'Peter', 'Samuel', 'David', 'Patrick', 'George', 'Daniel', 'Martin', 'Anthony', 'Robert', 'Michael', 'Charles', 'Vincent', 'Richard', 'Edward', 'Francis', 'Kenneth', 'Brian', 'Eric', 'Victor', 'Stephen', 'Alex', 'Collins', 'Moses', 'Isaac', 'Emmanuel', 'Fredrick', 'Caleb', 'Benard', 'Dennis', 'John', 'Paul', 'Mark', 'Evans', 'Geoffrey', 'Tony', 'Cyrus', 'Dominic', 'Simon', 'Philip', 'Andrew', 'Nelson', 'Oscar', 'Felix', 'Lawrence', 'Harrison', 'Morris'];
-        const surnames = ['Kamau', 'Kimani', 'Mwangi', 'Otieno', 'Karanja', 'Njoroge', 'Mutua', 'Wekesa', 'Kariuki', 'Kiplagat', 'Omondi', 'Barasa', 'Mwaura', 'Odhiambo', 'Kiptoo', 'Ndirangu', 'Onyango', 'Muriithi', 'Ochieng', 'Maina', 'Mboya', 'Muthomi', 'Mutiso', 'Njenga', 'Wambua', 'Kosgei', 'Muchiri', 'Kiprono', 'Mbugua', 'Gichuki', 'Okoth', 'Chege'];
-        const hash = stableHash(member.id || member.email || member.avatar_url || member.display_name);
-        return `${firstNames[hash % firstNames.length]} ${surnames[Math.floor(hash / firstNames.length) % surnames.length]}`;
-    }
-    return getDisplayName(member);
-}
-
-function livelySeedTime(member) {
-    if (!member.is_seed_profile) return recentDisplayTime(member);
-    const hash = stableHash(member.id || member.email || member.display_name);
-    const bucket = hash % 8;
-    const minutesAgo = bucket <= 2
-        ? (hash % 4)
-        : bucket <= 4
-            ? 18 + (hash % 42)
-            : bucket <= 6
-                ? 2 * 60 + (hash % (5 * 60))
-                : 11 * 60 + (hash % (10 * 60));
-    return new Date(Date.now() - minutesAgo * 60 * 1000).toISOString();
-}
-
 function activeBoost(member) {
     const expires = member.boost_expires_at ? new Date(member.boost_expires_at).getTime() : 0;
     return Boolean(expires && !Number.isNaN(expires) && expires > Date.now());
@@ -455,62 +453,125 @@ function activeBoost(member) {
 
 function isUnlockedViewer(viewer) {
     if (!viewer) return false;
+    if (isAccountRestricted(viewer)) return false;
     const tier = String(viewer.subscription_tier || '').toLowerCase();
-    return Boolean(!viewer.package_locked && UNLOCKED_PLANS.has(tier));
+    const approved = viewer.admin_approved ?? true;
+    return Boolean(approved !== false && !viewer.package_locked && UNLOCKED_PLANS.has(tier));
 }
 
 async function getUserPlan(supabase, userId) {
     if (!userId) return 'free';
     const { data } = await supabase
         .from('users')
-        .select('subscription_tier, admin_approved, package_locked')
+        .select('subscription_tier, admin_approved, package_locked, is_banned, is_suspended, account_deleted_at')
         .eq('id', userId)
         .maybeSingle();
+    if (isAccountRestricted(data)) {
+        return {
+            restricted: true,
+            message: accountRestrictionMessage(data),
+            status: accountStatus(data),
+        };
+    }
     return activeTierId(data);
 }
 
+/**
+ * Thin wrapper over the canonical guard in lib/entitlementGuard.
+ *
+ * The implementation that lived here was one of three near-copies. It counted
+ * with a read-modify-write that two concurrent requests could both pass, and it
+ * returned "allowed" on any database error. Both are fixed centrally now.
+ */
 async function enforceDailyLimit(supabase, userId, kind) {
-    if (!userId || !kind) return { ok: true, plan: 'free', remaining: null };
-    const plan = await getUserPlan(supabase, userId);
-    const tier = await getPackageTier(supabase, plan);
-    const limit = dailyLimitForFeature(tier, kind);
-    if (limit === null || limit === undefined) return { ok: true, plan, limit: null, remaining: null };
-    const usageDate = new Date().toISOString().slice(0, 10);
-    let result = await supabase
-        .from('user_daily_usage')
-        .select('id, count')
-        .eq('user_id', userId)
-        .eq('usage_date', usageDate)
-        .eq('kind', kind)
+    if (!userId || !kind) return { ok: true, remaining: null };
+    const { data: user } = await supabase
+        .from('users')
+        .select('id, subscription_tier, package_expires_at, admin_approved, package_locked, is_banned, is_suspended, account_deleted_at')
+        .eq('id', userId)
         .maybeSingle();
-    if (result.error && result.error.code === 'PGRST205') return { ok: true, plan, limit, remaining: Math.max(0, limit - 1), skipped: true };
-    if (result.error && result.error.code !== 'PGRST116') return { ok: true, plan, limit, remaining: Math.max(0, limit - 1), skipped: true };
-    const current = result.data?.count || 0;
-    if (current >= limit) {
-        return { ok: false, plan, limit, used: current, remaining: 0, message: LIMIT_NOTICE, redirectTo: '/packages' };
-    }
-    if (result.data?.id) {
-        await supabase.from('user_daily_usage').update({ count: current + 1, updated_at: new Date().toISOString() }).eq('id', result.data.id);
-    } else {
-        await supabase.from('user_daily_usage').insert({ user_id: userId, usage_date: usageDate, kind, count: 1 });
-    }
-    return { ok: true, plan, limit, used: current + 1, remaining: Math.max(0, limit - current - 1) };
+    if (!user?.id) return { ok: true, remaining: null };
+    return consumeQuota(supabase, user, kind);
 }
 
+/**
+ * Record an interaction, and for likes between two real members also record the
+ * like itself so a match can form.
+ *
+ * The previous version wrote to `user_interactions` inside a try/catch. The
+ * Supabase client returns an error object rather than throwing, so the catch
+ * never fired and the returned error was never inspected — and the table did not
+ * exist in this database at all. Every like, super like, pass, save and view was
+ * discarded in silence while the member's daily quota was still spent on it.
+ *
+ * Failures are now logged. They remain non-fatal: losing the ledger entry should
+ * not fail the member's action, but it must not be invisible either.
+ */
 async function recordInteraction(supabase, userId, profileKey, action, details = {}) {
     if (!userId || !profileKey || !action) return;
-    try {
-        await supabase.from('user_interactions').upsert({
-            user_id: userId,
-            profile_key: String(profileKey).slice(0, 180),
-            action,
-            profile_name: String(details.profileName || details.name || '').slice(0, 120),
-            profile_image: String(details.profileImage || details.imageUrl || '').slice(0, 500),
-            is_super_like: Boolean(details.isSuperLike),
-            metadata: details.metadata || {},
-            updated_at: new Date().toISOString(),
-        }, { onConflict: 'user_id,profile_key,action' });
-    } catch {}
+
+    const { error } = await supabase.from('user_interactions').upsert({
+        user_id: userId,
+        profile_key: String(profileKey).slice(0, 180),
+        action,
+        profile_name: String(details.profileName || details.name || '').slice(0, 120),
+        profile_image: String(details.profileImage || details.imageUrl || '').slice(0, 500),
+        is_super_like: Boolean(details.isSuperLike),
+        metadata: details.metadata || {},
+        updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,profile_key,action' });
+
+    if (error) {
+        console.error('[recordInteraction] failed:', action, error.code, error.message);
+    }
+}
+
+/**
+ * Register a like between two real members.
+ *
+ * `member_likes` is the table that carries reciprocity, and a database trigger
+ * turns a returned like into a row in `member_matches` and notifies both people.
+ * Keeping that in the database means a match forms however the like was created.
+ *
+ * Only real accounts participate: a seeded or WordPress profile has nobody behind
+ * it to like you back, so recording one would manufacture a match that can never
+ * be reciprocated.
+ *
+ * Returns `{ matched }` so the caller can tell the member immediately.
+ */
+async function recordMemberLike(supabase, likerId, likedKey, { isSuperLike = false } = {}) {
+    const likedId = String(likedKey || '').replace(/^member:/, '');
+    if (!likerId || !likedId) return { matched: false };
+    if (likerId === likedId) return { matched: false };
+    if (!UUID_PATTERN.test(likedId)) return { matched: false };   // seed / wp profile
+
+    const { data: target } = await supabase
+        .from('users')
+        .select('id, is_seed_profile')
+        .eq('id', likedId)
+        .maybeSingle();
+    if (!target?.id || target.is_seed_profile) return { matched: false };
+
+    const { error } = await supabase
+        .from('member_likes')
+        .upsert({ liker_id: likerId, liked_id: likedId, is_super_like: Boolean(isSuperLike) },
+            { onConflict: 'liker_id,liked_id' });
+
+    if (error) {
+        console.error('[recordMemberLike] failed:', error.code, error.message);
+        return { matched: false };
+    }
+
+    // The trigger creates the match; ask whether one now exists.
+    const [low, high] = [likerId, likedId].sort();
+    const { data: match } = await supabase
+        .from('member_matches')
+        .select('id, created_at')
+        .eq('user_low', low)
+        .eq('user_high', high)
+        .maybeSingle();
+
+    return { matched: Boolean(match?.id) };
 }
 
 function parseDataUrl(dataUrl) {
@@ -557,7 +618,9 @@ async function uploadMessageAsset(supabase, rawUrl, { ownerId, type, name }) {
 function normalizeMember(member, { canViewPhone = false, includeEmail = false, viewer = null } = {}) {
     const phone = member.phone_number || member.phone || '';
     const verified = Boolean(member.verified || member.verification_status === 'verified');
-    const lastSeenAt = livelySeedTime(member);
+    // Real recorded activity only. Presence is never synthesised — a fabricated
+    // "last active" makes an unattended profile look reachable to a paying member.
+    const lastSeenAt = recentDisplayTime(member);
     const lastSeenMs = lastSeenAt ? new Date(lastSeenAt).getTime() : 0;
     const privacy = member.privacy_settings && typeof member.privacy_settings === 'object' ? member.privacy_settings : {};
     const showOnline = privacy.showOnline !== false && privacy.show_online !== false;
@@ -571,18 +634,15 @@ function normalizeMember(member, { canViewPhone = false, includeEmail = false, v
     const lookingFor = member.is_seed_profile
         ? (expectedLookingFor || storedLookingFor || '')
         : (storedLookingFor && isValidLookingFor(storedLookingFor, profileLabel) ? storedLookingFor : (expectedLookingFor || storedLookingFor || ''));
-    const displayName = seedDisplayName(member, profileLabel);
-    const activitySeed = stableHash(member.id || member.email || member.display_name || member.username);
-    const seedViewFloor = member.is_seed_profile ? 900 + (activitySeed % 9000) : 0;
-    const seedFollowerFloor = member.is_seed_profile ? 35 + (activitySeed % 420) : 0;
-    const seedGiftFloor = member.is_seed_profile ? 4 + (activitySeed % 80) : 0;
+    const displayName = getDisplayName(member);
+    const kind = profileKindFor(member);
     const coords = coordinatesForProfile(member);
     const viewerCoords = coordinatesForProfile(viewer);
     const awayKm = displayDistanceKm(viewerCoords, coords);
 
     return {
         id: member.id,
-        source: member.is_seed_profile ? 'seed' : 'member',
+        source: 'member',
         detailPath: `/members/${member.id}`,
         username: member.username || `${makeUsername(displayName || member.email || 'member')}_${String(member.id || '').slice(0, 6)}`,
         name: displayName,
@@ -614,6 +674,11 @@ function normalizeMember(member, { canViewPhone = false, includeEmail = false, v
         verified,
         verificationStatus: member.verification_status || (verified ? 'verified' : 'unsubmitted'),
         showInPublic: member.show_in_public !== false,
+        isBanned: Boolean(member.is_banned),
+        isSuspended: Boolean(member.is_suspended),
+        accountDeletedAt: member.account_deleted_at || null,
+        accountStatus: accountStatus(member),
+        accessBlocked: isAccountRestricted(member),
         adminApproved: Boolean(member.admin_approved),
         packageLocked: Boolean(member.package_locked),
         packageExpiresAt: member.package_expires_at || null,
@@ -626,17 +691,49 @@ function normalizeMember(member, { canViewPhone = false, includeEmail = false, v
         phone: canViewPhone ? phone || null : null,
         phoneMasked: phone ? maskPhone(phone) : null,
         phoneLocked: Boolean(phone && !canViewPhone),
-        totalProfileViews: Math.max(Number(member.total_profile_views || 0), seedViewFloor),
-        followersCount: Math.max(Number(member.followers_count || 0), seedFollowerFloor),
-        giftsReceivedCount: Math.max(Number(member.gifts_received_count || 0), seedGiftFloor),
-        isSeedProfile: Boolean(member.is_seed_profile),
+        // Counts come straight from recorded activity. No synthetic floors.
+        totalProfileViews: Number(member.total_profile_views || 0),
+        followersCount: Number(member.followers_count || 0),
+        giftsReceivedCount: Number(member.gifts_received_count || 0),
+        ...facilitationFields(kind),
         isBoosted,
         boostExpiresAt: member.boost_expires_at || null,
         boostScore: isBoosted ? Number(member.boost_score || 0) : 0,
         createdAt: member.created_at || null,
         lastSeenAt: showOnline ? lastSeenAt : null,
         isOnline,
+        // Set by the ranking pass; absent on direct lookups, which are not ranked.
+        // Excludes jitter and paid placement — see discoveryRanking#displayMatchPercent.
+        matchPercent: typeof member.__matchPercent === 'number' ? member.__matchPercent : null,
     };
+}
+
+/**
+ * The set of profile labels a request is asking for, from either `label` (single)
+ * or `labels` (comma-separated). One parser so the SQL filter, the JavaScript
+ * filter, and the local-seed filter can never disagree about what was requested.
+ * An empty array means "no label constraint".
+ */
+function requestedLabelSet(searchParams) {
+    const many = String(searchParams.get('labels') || '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .slice(0, 8);
+    if (many.length) return many;
+    const single = searchParams.get('label')?.trim();
+    if (single && single !== 'all') return [single];
+    return [];
+}
+
+/**
+ * Whether seed profile labels in the database are known to match their photo
+ * folders. Set SEED_LABELS_RECONCILED=1 only after running
+ * 20260808_020_reconcile_seed_profile_labels.sql and confirming its verification
+ * query returns 0.
+ */
+function seedLabelsReconciled() {
+    return process.env.SEED_LABELS_RECONCILED === '1';
 }
 
 function applyFilters(query, searchParams, { fullSchema, directLookup = false }) {
@@ -645,12 +742,29 @@ function applyFilters(query, searchParams, { fullSchema, directLookup = false })
     const online = searchParams.get('mode') === 'online';
     const boosted = searchParams.get('boosted') === '1';
 
+    const minAge = parseInt(searchParams.get('min_age') || '', 10);
+    const maxAge = parseInt(searchParams.get('max_age') || '', 10);
+    const labelSet = requestedLabelSet(searchParams);
+
     if (fullSchema && !directLookup) {
         if (country && country !== 'all') query = query.ilike('country', `%${country}%`);
         if (boosted) query = query.gt('boost_expires_at', new Date().toISOString());
         if (online) {
             const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
             query = query.gte('last_seen_at', fiveMinutesAgo);
+        }
+        // Age bounds are applied in SQL so they shrink the candidate pool rather
+        // than discarding rows that were already paid for.
+        if (Number.isFinite(minAge) && minAge >= 18) query = query.gte('age', minAge);
+        if (Number.isFinite(maxAge) && maxAge >= 18) query = query.lte('age', maxAge);
+        // Label filtering in SQL, which lets the candidate pool shrink a long way.
+        // Only correct once seed profile_label values agree with their photo folders
+        // — see supabase/migrations/20260808_020_reconcile_seed_profile_labels.sql.
+        // The JavaScript filter downstream still runs, so this is a narrowing, not a
+        // replacement; if the flag is set prematurely the result is missing rows,
+        // never wrong rows.
+        if (seedLabelsReconciled() && labelSet.length) {
+            query = query.in('profile_label', labelSet);
         }
     }
 
@@ -669,7 +783,7 @@ async function fetchMembers(supabase, searchParams, { fullSchema }) {
     const usernameKey = String(searchParams.get('username') || '').trim().replace(/^@+/, '').toLowerCase();
     const directLookup = Boolean(id || usernameKey);
     const page = Math.max(parseInt(searchParams.get('page') || '1', 10), 1);
-    const perPage = Math.min(Math.max(parseInt(searchParams.get('per_page') || '240', 10), 1), 240);
+    const perPage = Math.min(Math.max(parseInt(searchParams.get('per_page') || String(DEFAULT_PER_PAGE), 10), 1), MAX_PER_PAGE);
     const from = (page - 1) * perPage;
     const to = from + perPage - 1;
 
@@ -694,102 +808,100 @@ async function fetchMembers(supabase, searchParams, { fullSchema }) {
     return query;
 }
 
-function rotatingRank(row, seed = 'members') {
-    const rowHash = stableHash(row.id || row.email || row.display_name || row.username);
-    const seedHash = stableHash(seed);
-    return (Math.imul(rowHash ^ seedHash, 2654435761) >>> 0);
-}
-
-function recencyRank(row) {
-    const created = row.created_at ? new Date(row.created_at).getTime() : 0;
-    if (!created || Number.isNaN(created)) return 0;
-    const ageHours = Math.max(0, (Date.now() - created) / (60 * 60 * 1000));
-    if (ageHours <= 24) return 90000;
-    if (ageHours <= 72) return 65000;
-    if (ageHours <= 168) return 42000;
-    if (ageHours <= 720) return 18000;
-    return 0;
-}
-
-function compareFeatured(a, b, seed) {
-    const boostDiff = (activeBoost(b) ? 100000 + Number(b.boost_score || 0) : 0) - (activeBoost(a) ? 100000 + Number(a.boost_score || 0) : 0);
-    if (boostDiff) return boostDiff;
-    const verifiedDiff = Number(Boolean(b.verified || b.verification_status === 'verified')) - Number(Boolean(a.verified || a.verification_status === 'verified'));
-    if (verifiedDiff) return verifiedDiff;
-    const photoDiff = Number(hasProfilePhoto(b)) - Number(hasProfilePhoto(a));
-    if (photoDiff) return photoDiff;
-    return rotatingRank(a, seed) - rotatingRank(b, seed);
-}
-
-function mixedMemberRows(rows, { feedMode = 'mixed', seed = 'members' } = {}) {
+/**
+ * Rank a candidate pool for a viewer.
+ *
+ * Ordering used to be `hash(row.id) XOR hash(seed)` — a deterministic shuffle
+ * unrelated to the viewer or the profile, which is why discovery felt random. Rows
+ * are now scored on preference match, proximity, real activity, profile quality,
+ * freshness, and paid visibility. See lib/discoveryRanking.js for the weights.
+ *
+ * `feedMode` still selects a presentation:
+ *   mixed    — full relevance score (default)
+ *   featured — relevance, with paid and verified profiles weighted harder
+ *   new      — newest first, relevance as the tie-break
+ *   random   — deliberate shuffle, for "surprise me"
+ */
+function mixedMemberRows(rows, { feedMode = 'mixed', seed = 'members', viewer = null } = {}) {
+    const viewerLabel = viewer ? inferProfileLabel(viewer) : '';
     const real = [];
     const seeded = [];
+
     dedupeMemberRows(rows).forEach((row) => {
+        const profileLabel = inferProfileLabel(row) || row.profile_label || row.member_category || '';
+        const boostActive = activeBoost(row);
+        const { score, parts } = scoreMember(row, {
+            viewer,
+            viewerLabel,
+            profileLabel,
+            seed,
+            boostActive,
+        });
+
+        // Surfaced so the client can show a match figure derived from the same
+        // signals the server ranked on, instead of recomputing its own.
+        row.__score = score;
+        row.__matchPercent = displayMatchPercent(parts);
+
         if (row.is_seed_profile) seeded.push(row);
         else real.push(row);
     });
-    const boostRank = (row) => activeBoost(row) ? (100000 + Number(row.boost_score || 0)) : 0;
-    const bySeedRank = (a, b) => {
-        if (feedMode === 'random') return rotatingRank(a, seed) - rotatingRank(b, seed);
-        if (feedMode === 'featured') return compareFeatured(a, b, seed);
-        const boostDiff = boostRank(b) - boostRank(a);
-        if (boostDiff) return boostDiff;
-        const rankA = rotatingRank(a, seed);
-        const rankB = rotatingRank(b, seed);
-        if (rankA !== rankB) return rankA - rankB;
-        return new Date(b.created_at || 0) - new Date(a.created_at || 0);
-    };
-    real.sort((a, b) => {
-        if (feedMode === 'random') return rotatingRank(a, seed) - rotatingRank(b, seed);
-        if (feedMode === 'featured') return compareFeatured(a, b, seed);
-        if (feedMode === 'new') {
-            const dateDiff = new Date(b.created_at || 0) - new Date(a.created_at || 0);
-            if (dateDiff) return dateDiff;
-            return rotatingRank(a, seed) - rotatingRank(b, seed);
+
+    const byScore = (a, b) => b.__score - a.__score;
+
+    const comparator = (() => {
+        if (feedMode === 'random') {
+            return (a, b) => jitterCompare(a, b, seed);
         }
-        const boostDiff = boostRank(b) - boostRank(a);
-        if (boostDiff) return boostDiff;
-        const scoreDiff = (recencyRank(b) + (1000000 - (rotatingRank(b, seed) % 100000))) - (recencyRank(a) + (1000000 - (rotatingRank(a, seed) % 100000)));
-        if (scoreDiff) return scoreDiff;
-        return rotatingRank(a, `${seed}:real-priority`) - rotatingRank(b, `${seed}:real-priority`);
-    });
-    seeded.sort(bySeedRank);
+        if (feedMode === 'new') {
+            return (a, b) => {
+                const dateDiff = new Date(b.created_at || 0) - new Date(a.created_at || 0);
+                return dateDiff || byScore(a, b);
+            };
+        }
+        if (feedMode === 'featured') {
+            return (a, b) => {
+                const boostDiff = Number(activeBoost(b)) - Number(activeBoost(a));
+                if (boostDiff) return boostDiff;
+                const verifiedDiff = Number(Boolean(b.verified)) - Number(Boolean(a.verified));
+                if (verifiedDiff) return verifiedDiff;
+                return byScore(a, b);
+            };
+        }
+        return byScore;
+    })();
 
-    if (feedMode === 'random') return [...real, ...seeded].sort((a, b) => rotatingRank(a, seed) - rotatingRank(b, seed));
+    // A profile with no photo is close to unusable in a swipe deck, so it sorts
+    // last regardless of score rather than being scored down and still surfacing.
+    const withPhotoLast = (comparatorFn) => (a, b) => {
+        const photoDiff = Number(hasProfilePhoto(b)) - Number(hasProfilePhoto(a));
+        if (photoDiff) return photoDiff;
+        return comparatorFn(a, b);
+    };
 
-    const mixed = [];
-    let realIndex = 0;
-    let seedIndex = 0;
-    const pattern = feedMode === 'new'
-        ? ['real', 'real', 'seed', 'real', 'real', 'seed']
-        : feedMode === 'featured'
-            ? ['real', 'seed', 'real', 'seed', 'seed']
-            : ['real', 'seed', 'real', 'real', 'seed'];
-    while (realIndex < real.length || seedIndex < seeded.length) {
-        let pushed = false;
-        pattern.forEach((slot) => {
-            if (slot === 'real' && realIndex < real.length) {
-                mixed.push(real[realIndex]);
-                realIndex += 1;
-                pushed = true;
-            } else if (slot === 'seed' && seedIndex < seeded.length) {
-                mixed.push(seeded[seedIndex]);
-                seedIndex += 1;
-                pushed = true;
-            }
-        });
-        if (!pushed) break;
+    real.sort(withPhotoLast(comparator));
+    seeded.sort(withPhotoLast(comparator));
+
+    if (feedMode === 'random') {
+        return [...real, ...seeded].sort((a, b) => jitterCompare(a, b, seed));
     }
-    return mixed;
+
+    return interleave(real, seeded, feedMode === 'featured'
+        ? ['real', 'seed', 'real', 'seed']
+        : ['real', 'real', 'seed']);
+}
+
+function jitterCompare(a, b, seed) {
+    return stableHash(`${a.id}:${seed}`) - stableHash(`${b.id}:${seed}`);
 }
 
 function localSeedMatchesFilters(member, searchParams) {
-    const label = searchParams.get('label')?.trim();
     const country = searchParams.get('country')?.trim();
     const search = searchParams.get('search')?.trim().toLowerCase();
     const online = searchParams.get('mode') === 'online';
 
-    if (label && label !== 'all' && inferProfileLabel(member) !== label) return false;
+    const labelSet = requestedLabelSet(searchParams);
+    if (labelSet.length && !labelSet.includes(inferProfileLabel(member))) return false;
     if (country && country !== 'all' && !String(member.country || '').toLowerCase().includes(country.toLowerCase())) return false;
     if (online && Date.now() - new Date(member.last_seen_at || 0).getTime() > 60 * 60 * 1000) return false;
     if (!search) return true;
@@ -804,31 +916,25 @@ function localSeedMatchesFilters(member, searchParams) {
     ].some((value) => String(value || '').toLowerCase().includes(search));
 }
 
-async function getViewerUnlock(supabase, searchParams) {
-    const viewerId = searchParams.get('viewer_id');
-    if (!viewerId) return false;
-
-    const { data } = await supabase
-        .from('users')
-        .select('subscription_tier, admin_approved, package_locked')
-        .eq('id', viewerId)
-        .maybeSingle();
-
-    return isUnlockedViewer(data);
+/**
+ * Resolve the viewer from the authenticated session.
+ *
+ * This previously read `?viewer_id=` and looked up whatever account id it was
+ * handed, without checking the requester was that user. Member listings expose
+ * `id`, so any Gold subscriber's uuid could be pasted in to unlock phone reveal.
+ * Entitlement is now keyed to the verified session and the query parameter is
+ * ignored entirely.
+ */
+async function getViewerContext() {
+    const member = await getSessionMember({
+        fields: 'id, subscription_tier, package_expires_at, admin_approved, package_locked, is_banned, '
+            + 'is_suspended, account_deleted_at, latitude, longitude, location, city, country, '
+            + 'preference, profile_label, member_category, looking_for',
+    });
+    if (!member) return { canViewPhone: false, viewer: null };
+    return { canViewPhone: isUnlockedViewer(member), viewer: member };
 }
 
-async function getViewerContext(supabase, searchParams) {
-    const viewerId = searchParams.get('viewer_id');
-    if (!viewerId) return { canViewPhone: false, viewer: null };
-
-    const { data } = await supabase
-        .from('users')
-        .select('id, subscription_tier, admin_approved, package_locked, latitude, longitude, location, city, country')
-        .eq('id', viewerId)
-        .maybeSingle();
-
-    return { canViewPhone: isUnlockedViewer(data), viewer: data || null };
-}
 
 async function applyMemberPrivacySettings(supabase, rows = []) {
     const userIds = rows
@@ -876,19 +982,47 @@ export async function GET(request) {
         }, { status: 200 });
     }
 
-    const privateLookup = Boolean(searchParams.get('viewer_id') || searchParams.get('id') || searchParams.get('username'));
+    const { canViewPhone, viewer } = await getViewerContext();
+    // Any response shaped by a session — personalised ordering, distance, or an
+    // unlocked phone number — must never enter a shared cache. Signed-in requests
+    // are private even when the URL looks anonymous, because entitlement now comes
+    // from cookies rather than the query string.
+    const privateLookup = Boolean(viewer || searchParams.get('id') || searchParams.get('username'));
     const cacheControl = privateLookup ? 'private, no-cache, max-age=0' : 'public, s-maxage=15, stale-while-revalidate=30';
-    const { canViewPhone, viewer } = await getViewerContext(supabase, searchParams);
     const requestedPage = Math.max(parseInt(searchParams.get('page') || '1', 10), 1);
-    const perPage = Math.min(Math.max(parseInt(searchParams.get('per_page') || '240', 10), 1), 240);
+    const perPage = Math.min(Math.max(parseInt(searchParams.get('per_page') || String(DEFAULT_PER_PAGE), 10), 1), MAX_PER_PAGE);
     const requestedLabel = searchParams.get('label')?.trim();
+    // `labels` accepts a comma-separated set so a caller needing several categories
+    // makes one request instead of one per label. The matches page previously fired
+    // 1 + N parallel requests, each pulling a full 240-row page.
+    const requestedLabels = new Set(requestedLabelSet(searchParams));
+    const usePreferenceMix = searchParams.get('scope') !== 'all_types' && searchParams.get('personalize') !== '0';
+    const radiusRaw = parseInt(searchParams.get('radius_km') || '', 10);
+    const radiusKm = Number.isFinite(radiusRaw) && radiusRaw > 0 ? Math.min(radiusRaw, 20000) : 0;
     const includeSelf = searchParams.get('include_self') === '1';
     const feedMode = ['mixed', 'random', 'featured', 'new'].includes(searchParams.get('feed') || '') ? searchParams.get('feed') : 'mixed';
-    const mixSeed = String(searchParams.get('mix') || searchParams.get('viewer_id') || Math.floor(Date.now() / (15 * 60 * 1000))).slice(0, 80);
+    const mixSeed = String(searchParams.get('mix') || viewer?.id || Math.floor(Date.now() / (15 * 60 * 1000))).slice(0, 80);
     const fetchParams = new URLSearchParams(searchParams);
     if (!directLookup) {
+        // Ranking, the local-seed merge, and the preference interleave all operate
+        // across a candidate pool, so the pool has to be larger than the page. It
+        // does not have to be 240 every time, which is what this used to do: a
+        // 20-card discover request pulled 240 full rows and discarded 220.
+        //
+        // The pool is rounded up to a fixed grid so that consecutive pages usually
+        // share the same pool and therefore the same ordering. Crossing a grid
+        // boundary can still reshuffle; stable deep pagination needs the database
+        // -side ranking planned for Phase 6.
+        const POOL_GRID = 60;
+        // How far the pool must exceed the page depends on how much filtering still
+        // happens after the fetch. With the SQL label filter active, only visibility
+        // and self-exclusion remain, so the pool can be much tighter.
+        const labelFilteredInSql = seedLabelsReconciled() && requestedLabels.size > 0;
+        const OVERSHOOT = labelFilteredInSql ? 1.3 : 2;
+        const needed = requestedPage * perPage * OVERSHOOT;
+        const poolSize = Math.min(240, Math.max(POOL_GRID, Math.ceil(needed / POOL_GRID) * POOL_GRID));
         fetchParams.set('page', '1');
-        fetchParams.set('per_page', '240');
+        fetchParams.set('per_page', String(poolSize));
     }
 
     let fullSchema = true;
@@ -920,27 +1054,73 @@ export async function GET(request) {
     }
 
     const rows = (result.data || [])
-        .filter((member) => directLookup || member.show_in_public !== false || (!member.is_seed_profile && member.admin_approved !== false))
+        /**
+         * Who may appear in a listing.
+         *
+         * The previous expression was a chain of ORs:
+         *   directLookup || show_in_public !== false || (!is_seed && admin_approved !== false)
+         *
+         * so a real member who had switched their profile to private still passed
+         * on the third clause. Their privacy setting did nothing. Turning a
+         * privacy control into a no-op is worse than not offering one.
+         *
+         * A direct lookup by id still resolves — that is how a member opens their
+         * own or a shared profile — but browsing respects the setting.
+         */
+        .filter((member) => {
+            if (directLookup) return true;
+            if (member.show_in_public === false) return false;
+            if (!member.is_seed_profile && member.admin_approved === false) return false;
+            return true;
+        })
+        /**
+         * A real account with no picture is not listed.
+         *
+         * The app already tells members "your account stays off the Members page
+         * until you upload a clear profile picture" — but nothing enforced it, and
+         * 56 of 148 accounts were publicly listed with no image at all. Either the
+         * promise holds or it should not be made; browsing a wall of blank cards
+         * is also the fastest way to make a dating app feel empty.
+         *
+         * Seeded profiles are exempt: they always carry imagery, and they are
+         * filtered separately by provenance.
+         */
+        .filter((member) => directLookup || member.is_seed_profile || hasProfilePhoto(member))
         .filter((member) => member.is_banned !== true && member.is_suspended !== true)
         .filter((member) => includeSelf || !viewer?.id || String(member.id) !== String(viewer.id))
-        .filter((member) => !requestedLabel || requestedLabel === 'all' || (inferProfileLabel(member) || member.profile_label || member.member_category) === requestedLabel);
+        .filter((member) => {
+            if (!requestedLabels.size) return true;
+            return requestedLabels.has(inferProfileLabel(member) || member.profile_label || member.member_category);
+        })
+        .filter((member) => {
+            // Radius filter. Applied after the fetch because a profile's position
+            // may be inferred from its location text rather than stored as
+            // coordinates — see geo#coordinatesForProfile.
+            if (!radiusKm || !viewer) return true;
+            const km = distanceKm(coordinatesForProfile(viewer), coordinatesForProfile(member));
+            return km === null ? true : km <= radiusKm;
+        });
     let publicRows = rows;
 
     if (!directLookup && searchParams.get('boosted') !== '1') {
         const existingIds = new Set(publicRows.map((member) => String(member.id)));
         const existingEmails = new Set(publicRows.map((member) => String(member.email || '').toLowerCase()));
         const existingSeedKeys = new Set(publicRows.filter((member) => member.is_seed_profile).map(seedIdentityKey));
-        const supplements = publicRows.length < perPage
-            ? localSeedRows()
-                .filter((member) => !existingIds.has(String(member.id)) && !existingEmails.has(String(member.email || '').toLowerCase()))
-                .filter((member) => !existingSeedKeys.has(seedIdentityKey(member)))
-                .filter((member) => localSeedMatchesFilters(member, searchParams))
-            : [];
-        const mixedRows = mixedMemberRows(await applyMemberPrivacySettings(supabase, [...publicRows, ...supplements]), { feedMode, seed: mixSeed });
+        const supplements = localSeedRows()
+            .filter((member) => !existingIds.has(String(member.id)) && !existingEmails.has(String(member.email || '').toLowerCase()))
+            .filter((member) => !existingSeedKeys.has(seedIdentityKey(member)))
+            .filter((member) => localSeedMatchesFilters(member, searchParams));
+        const mixedRows = mixedMemberRows(
+            await applyMemberPrivacySettings(supabase, [...publicRows, ...supplements]),
+            { feedMode, seed: mixSeed, viewer: usePreferenceMix ? viewer : null }
+        );
         const from = (requestedPage - 1) * perPage;
         publicRows = mixedRows.slice(from, from + perPage);
     } else if (!directLookup) {
-        const mixedRows = mixedMemberRows(await applyMemberPrivacySettings(supabase, publicRows), { feedMode, seed: mixSeed });
+        const mixedRows = mixedMemberRows(
+            await applyMemberPrivacySettings(supabase, publicRows),
+            { feedMode, seed: mixSeed, viewer: usePreferenceMix ? viewer : null }
+        );
         const from = (requestedPage - 1) * perPage;
         publicRows = mixedRows.slice(from, from + perPage);
     } else {
@@ -1027,10 +1207,39 @@ async function uniqueUsername(supabase, desired, existingId = null) {
     return `${base.slice(0, 17)}_${tag || 'user'}`;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function ensureTargetAvailable(supabase, memberId) {
+    if (!UUID_PATTERN.test(String(memberId || ''))) return { ok: true, member: null };
+    let result = await supabase
+        .from('users')
+        .select('id, is_banned, is_suspended, account_deleted_at')
+        .eq('id', memberId)
+        .maybeSingle();
+    if (result.error && ['42703', 'PGRST204'].includes(result.error.code)) {
+        result = await supabase
+            .from('users')
+            .select('id, is_banned, is_suspended')
+            .eq('id', memberId)
+            .maybeSingle();
+    }
+    if (result.error) return { ok: false, error: result.error.message, status: 500 };
+    if (!result.data?.id || isAccountRestricted(result.data)) {
+        return { ok: false, error: 'This member is unavailable.', status: 404 };
+    }
+    return { ok: true, member: result.data };
+}
+
+// resolvePayloadId() was removed with the Supabase Auth cutover. It let the client
+// choose the primary key of a new account row, and generated a random uuid otherwise
+// — which is why users.id never matched auth.uid() and the RLS policies never applied.
+// New rows are now keyed to the Supabase Auth user id at insert time.
+
 function accountPayload(body, { fullSchema = true } = {}) {
     const email = String(body.email || '').trim().toLowerCase();
-    const profileLabel = body.profile_label || profileLabelFromPreference(body.preference);
-    const lookingFor = body.looking_for || lookingForFromPreference(body.preference);
+    const preferenceLabel = profileLabelFromPreference(body.preference);
+    const profileLabel = body.preference ? preferenceLabel : (body.profile_label || preferenceLabel);
+    const lookingFor = defaultLookingFor(profileLabel) || body.looking_for || lookingForFromPreference(body.preference);
     const photos = Array.isArray(body.photos) ? body.photos.filter(Boolean).slice(0, 6) : [];
     const avatar = body.avatar_url || photos[0] || '';
     const phone = String(body.phone || body.phone_number || '').slice(0, 40);
@@ -1051,7 +1260,7 @@ function accountPayload(body, { fullSchema = true } = {}) {
         profile_label: profileLabel,
         member_category: profileLabel,
         looking_for: defaultLookingFor(profileLabel) || lookingFor,
-        subscription_tier: String(body.subscription_tier || 'free').slice(0, 40),
+        subscription_tier: 'free',
         verified: false,
         verification_status: body.verification_submitted_at ? 'pending_admin' : 'unsubmitted',
         show_in_public: body.show_in_public !== false,
@@ -1088,17 +1297,16 @@ function accountPayload(body, { fullSchema = true } = {}) {
         verification_submitted_at: body.verification_submitted_at || null,
         verification_rejection_reason: '',
         is_seed_profile: false,
-        ...(body.password ? { password_hash: hashPassword(body.password), password_updated_at: new Date().toISOString() } : {}),
+        // Passwords are never stored on this row. Supabase Auth is the sole
+        // credential store; the auth identity is provisioned by the caller.
+        ...(body.password ? { password_updated_at: new Date().toISOString() } : {}),
     };
 }
 
 function accountCompletionError(body) {
-    const photos = Array.isArray(body.photos) ? body.photos.filter(Boolean) : [];
-    const avatar = body.avatar_url || photos[0] || '';
     const phone = String(body.phone || body.phone_number || '').replace(/\D/g, '');
     const age = Number(body.age);
     const name = cleanDisplayName(body.display_name, body.email);
-    if (!avatar) return 'A clear profile photo is required before creating an account.';
     if (!name || name === 'GS Member') return 'A real profile name is required before creating an account.';
     if (!Number.isInteger(age) || age < 18 || age > 80) return 'Age must be between 18 and 80.';
     if (String(body.location || '').trim().length < 2) return 'City or area is required before creating an account.';
@@ -1158,6 +1366,7 @@ function profileEditPayload(body = {}, existing = {}) {
         'intent_summary',
         'profile_label',
         'member_category',
+        'preference',
     ]);
     const patch = {};
     for (const [key, rawValue] of Object.entries(body.updates || body)) {
@@ -1237,6 +1446,58 @@ async function removeStorageFolder(supabase, bucket, folder) {
     } catch {}
 }
 
+function isMissingTableError(error) {
+    return ['42P01', 'PGRST205'].includes(error?.code) || String(error?.message || '').toLowerCase().includes('schema cache');
+}
+
+async function deletedAccountRecord(supabase, email) {
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    if (!cleanEmail) return { deleted: false };
+    const emailHash = hashEmail(cleanEmail);
+    try {
+        const result = await supabase
+            .from('account_deletions')
+            .select('email_hash, deleted_at')
+            .eq('email_hash', emailHash)
+            .maybeSingle();
+        if (result.error && result.error.code !== 'PGRST116') {
+            if (isMissingTableError(result.error)) return { deleted: false, missingTable: true };
+            return { deleted: false, error: result.error };
+        }
+        return { deleted: Boolean(result.data?.email_hash), deletedAt: result.data?.deleted_at || null };
+    } catch {
+        return { deleted: false, missingTable: true };
+    }
+}
+
+async function rememberDeletedAccount(supabase, { email, userId }) {
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    if (!cleanEmail) return false;
+    const emailHash = hashEmail(cleanEmail);
+    try {
+        const result = await supabase.from('account_deletions').upsert({
+            email_hash: emailHash,
+            user_id: userId || null,
+            deleted_at: new Date().toISOString(),
+        }, { onConflict: 'email_hash' });
+        return !result.error;
+    } catch {
+        return false;
+    }
+}
+
+async function deleteAuthUserForAccount(supabase, account = {}) {
+    const authId = account.auth_user_id || null;
+    if (authId) {
+        try { await supabase.auth.admin.deleteUser(authId); return authId; } catch {}
+    }
+    const authUser = await findAuthUserByEmail(supabase, account.email);
+    if (authUser?.id) {
+        try { await supabase.auth.admin.deleteUser(authUser.id); return authUser.id; } catch {}
+    }
+    return null;
+}
+
 async function selectUserByEmailInsensitive(supabase, fields, email) {
     const cleanEmail = String(email || '').trim().toLowerCase();
     if (!cleanEmail) return { data: null, error: null };
@@ -1269,6 +1530,13 @@ async function findAuthUserByEmail(supabase, email) {
 async function syncAuthLoginAccount(supabase, authUser, email, password) {
     const authId = authUser?.id;
     if (!authId || !email) return { data: null, error: null };
+    const deletedAccount = await deletedAccountRecord(supabase, email);
+    if (deletedAccount.deleted) {
+        const error = new Error('This account was permanently deleted. Contact support if you need it restored.');
+        error.status = 410;
+        error.code = 'ACCOUNT_DELETED';
+        return { data: null, error };
+    }
     let byAuth = await supabase.from('users').select(FULL_MEMBER_FIELDS).or(`auth_user_id.eq.${authId},id.eq.${authId}`).limit(1);
     if (byAuth.error && ['42703', 'PGRST204'].includes(byAuth.error.code)) {
         byAuth = await supabase.from('users').select(BASIC_MEMBER_FIELDS).eq('id', authId).limit(1);
@@ -1277,11 +1545,19 @@ async function syncAuthLoginAccount(supabase, authUser, email, password) {
     const existing = byAuth.data?.[0] || null;
     const now = new Date().toISOString();
     if (existing?.id) {
+        if (isAccountRestricted(existing)) {
+            const error = new Error(accountRestrictionMessage(existing) || 'Your account cannot be used right now.');
+            error.status = 403;
+            error.code = 'ACCOUNT_RESTRICTED';
+            return { data: existing, error };
+        }
         const patch = {
             email,
             auth_user_id: authId,
-            password_hash: existing.password_hash || hashPassword(password),
-            password_updated_at: existing.password_hash ? existing.password_updated_at : now,
+            // Supabase Auth owns the credential now. Writing a scrypt hash back
+            // here would recreate the second password store this migration removes.
+            password_hash: null,
+            password_updated_at: existing.password_hash ? now : existing.password_updated_at,
             last_seen_at: now,
             last_seen: now,
         };
@@ -1328,7 +1604,7 @@ export async function POST(request) {
     const actorKey = String(body.actorKey || 'guest').slice(0, 120);
 
     if (action === 'account_settings') {
-        const userId = await resolveUserId(supabase, body);
+        const userId = await resolveUserId();
         if (!userId) return NextResponse.json({ settings: normalizeSettings({}) });
         const settingsResult = await getUserSettings(supabase, userId);
         if (settingsResult?.error) return NextResponse.json({ error: 'User settings table is missing. Run supabase/migrations/20260626_080_user_alert_settings.sql.' }, { status: 500 });
@@ -1336,7 +1612,7 @@ export async function POST(request) {
     }
 
     if (action === 'update_settings') {
-        const userId = await resolveUserId(supabase, body);
+        const userId = await resolveUserId();
         if (!userId) return NextResponse.json({ error: 'Account id or email is required.' }, { status: 400 });
         const settings = settingsPayload(body);
         const payload = { user_id: userId, ...settings };
@@ -1381,7 +1657,7 @@ export async function POST(request) {
     }
 
     if (action === 'push_subscription') {
-        const userId = await resolveUserId(supabase, body);
+        const userId = await resolveUserId();
         if (!userId) return NextResponse.json({ error: 'Account id or email is required.' }, { status: 400 });
         const subscription = body.subscription || {};
         const endpoint = String(subscription.endpoint || body.endpoint || '').slice(0, 1000);
@@ -1403,12 +1679,9 @@ export async function POST(request) {
     }
 
     if (action === 'account_inbox') {
-        const email = String(body.email || '').trim().toLowerCase();
-        let userId = body.memberId || body.userId || null;
-        if (!userId && email) {
-            const { data: found } = await supabase.from('users').select('id').eq('email', email).maybeSingle();
-            userId = found?.id || null;
-        }
+        // Inbox is the signed-in member's own. Resolving it from a body id or a
+        // bare email let anyone read another member's notifications.
+        const userId = await resolveUserId();
         if (!userId) return NextResponse.json({ notifications: [] });
         let result = await supabase
             .from('user_notifications')
@@ -1429,7 +1702,7 @@ export async function POST(request) {
     }
 
     if (action === 'account_state') {
-        const userId = await resolveUserId(supabase, body);
+        const userId = await resolveUserId();
         if (!userId) return NextResponse.json({ ok: true, likes: [], matches: [], passes: [], saved: [], usage: {} });
         const today = new Date().toISOString().slice(0, 10);
         const [interactionsResult, savesResult, usageResult] = await Promise.all([
@@ -1480,7 +1753,7 @@ export async function POST(request) {
     }
 
     if (action === 'account_reminders') {
-        const userId = await resolveUserId(supabase, body);
+        const userId = await resolveUserId();
         if (!userId) return NextResponse.json({ ok: true, created: 0 });
         const { data: account } = await supabase
             .from('users')
@@ -1515,33 +1788,43 @@ export async function POST(request) {
         if (!paid && await notifyOnceDaily(supabase, userId, {
             type: 'package',
             title: 'Unlock premium GS features',
-            body: 'Basic unlocks limited messaging and one chosen Telegram direct connection. Silver is recommended for phone reveal, stronger messaging, gifts, and priority support.',
+            body: 'Basic unlocks unlimited messages, photo chat, 50 GS Credits, and one direct connection request after admin approval. Silver unlocks phone reveal, calls, GIFs, voice notes, activity insights, and stronger visibility.',
         })) created++;
         return NextResponse.json({ ok: true, created });
     }
 
     if (action === 'refresh_account') {
-        const email = String(body.email || '').trim().toLowerCase();
-        const userId = body.memberId || body.userId || null;
-        if (!email && !userId) return NextResponse.json({ error: 'Account id or email is required.' }, { status: 400 });
+        // Refreshes the signed-in member's own record. The previous version would
+        // return any account given its id or email.
+        const userId = await resolveUserId();
+        if (!userId) return NextResponse.json({ error: 'Sign in to refresh your account.' }, { status: 401 });
 
-        let query = supabase.from('users').select(FULL_MEMBER_FIELDS);
-        if (userId && email) query = query.eq('id', userId).eq('email', email);
-        else if (userId) query = query.eq('id', userId);
-        else query = query.eq('email', email);
-        const result = await query.maybeSingle();
+        let query = supabase.from('users').select(FULL_MEMBER_FIELDS).eq('id', userId);
+        let result = await query.maybeSingle();
 
         if (result.error && ['42703', 'PGRST204'].includes(result.error.code)) {
-            return NextResponse.json({ error: 'Latest account fields are missing. Run the auth/package SQL migration.' }, { status: 500 });
+            let fallbackQuery = supabase.from('users').select(BASIC_MEMBER_FIELDS);
+            if (userId && email) fallbackQuery = fallbackQuery.eq('id', userId).eq('email', email);
+            else if (userId) fallbackQuery = fallbackQuery.eq('id', userId);
+            else fallbackQuery = fallbackQuery.eq('email', email);
+            result = await fallbackQuery.maybeSingle();
         }
         if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
         if (!result.data) return NextResponse.json({ error: 'Account not found.' }, { status: 404 });
+        const normalized = normalizeMember(result.data, { canViewPhone: true, includeEmail: true });
+        if (isAccountRestricted(result.data)) {
+            return NextResponse.json({
+                error: accountRestrictionMessage(result.data) || 'Your account cannot be used right now.',
+                accountStatus: normalized.accountStatus,
+                member: normalized,
+            }, { status: 403 });
+        }
         await supabase.from('users').update({ last_seen_at: new Date().toISOString(), last_seen: new Date().toISOString() }).eq('id', result.data.id);
-        return NextResponse.json({ ok: true, member: normalizeMember(result.data, { canViewPhone: true, includeEmail: true }) });
+        return NextResponse.json({ ok: true, member: normalized });
     }
 
     if (action === 'heartbeat') {
-        const userId = await resolveUserId(supabase, body);
+        const userId = await resolveUserId();
         if (!userId) return NextResponse.json({ ok: true, updated: false });
         const now = new Date().toISOString();
         const result = await supabase
@@ -1556,7 +1839,7 @@ export async function POST(request) {
 
     if (action === 'update_profile_fields') {
         const email = String(body.email || '').trim().toLowerCase();
-        const userId = await resolveUserId(supabase, body);
+        const userId = await resolveUserId();
         if (!userId && !email) return NextResponse.json({ error: 'Sign in before editing your profile.' }, { status: 400 });
 
         let existing = userId
@@ -1581,6 +1864,7 @@ export async function POST(request) {
         let result = await supabase.from('users').update(patch).eq('id', existing.data.id).select(FULL_MEMBER_FIELDS).maybeSingle();
         if (result.error && ['42703', 'PGRST204'].includes(result.error.code)) {
             const fallbackPatch = { ...patch };
+            // Remove columns that may not exist in the database schema
             delete fallbackPatch.username;
             delete fallbackPatch.member_category;
             delete fallbackPatch.intent_summary;
@@ -1588,15 +1872,23 @@ export async function POST(request) {
             delete fallbackPatch.needed_qualities;
             delete fallbackPatch.age_range_preference;
             delete fallbackPatch.looking_for;
-            result = await supabase.from('users').update(fallbackPatch).eq('id', existing.data.id).select(BASIC_MEMBER_FIELDS).maybeSingle();
+            delete fallbackPatch.profile_label;
+            if (Object.keys(fallbackPatch).length > 0) {
+                result = await supabase.from('users').update(fallbackPatch).eq('id', existing.data.id).select(BASIC_MEMBER_FIELDS).maybeSingle();
+            } else {
+                // All fields were optional/unsupported — return existing data as-is
+                result = { data: existing.data, error: null };
+            }
         }
         if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
-        return NextResponse.json({ ok: true, member: normalizeMember(result.data || { ...existing.data, ...patch }, { canViewPhone: true, includeEmail: true }), profileComplete });
+        const savedMember = result.data || { ...existing.data, ...patch };
+        const isComplete = Boolean(savedMember.bio && savedMember.age && savedMember.location && (savedMember.phone_number || savedMember.phone));
+        return NextResponse.json({ ok: true, member: normalizeMember(savedMember, { canViewPhone: true, includeEmail: true }), profileComplete: isComplete });
     }
 
     if (action === 'delete_account') {
         const email = String(body.email || '').trim().toLowerCase();
-        const userId = await resolveUserId(supabase, body);
+        const userId = await resolveUserId();
         if (!userId && !email) return NextResponse.json({ error: 'Sign in before deleting your account.' }, { status: 400 });
 
         let accountResult = userId
@@ -1612,6 +1904,7 @@ export async function POST(request) {
 
         const id = accountResult.data.id;
         const accountEmail = accountResult.data.email || email;
+        await rememberDeletedAccount(supabase, { email: accountEmail, userId: id });
         await Promise.all([
             safeDeleteByColumn(supabase, 'user_settings', 'user_id', id),
             safeDeleteByColumn(supabase, 'user_notifications', 'user_id', id),
@@ -1671,10 +1964,8 @@ export async function POST(request) {
 
         const deleted = await supabase.from('users').delete().eq('id', id);
         if (deleted.error) return NextResponse.json({ error: deleted.error.message }, { status: 500 });
-        if (accountResult.data.auth_user_id) {
-            try { await supabase.auth.admin.deleteUser(accountResult.data.auth_user_id); } catch {}
-        }
-        try { await supabase.from('admin_logs').insert({ action: 'account_deleted', details: { userId: id, email: accountEmail } }); } catch {}
+        const deletedAuthUserId = await deleteAuthUserForAccount(supabase, { ...accountResult.data, email: accountEmail });
+        try { await supabase.from('admin_logs').insert({ action: 'account_deleted', details: { userId: id, emailHash: hashEmail(accountEmail), deletedAuthUserId } }); } catch {}
         return NextResponse.json({ ok: true, deleted: true });
     }
     if (action === 'request_password_reset') {
@@ -1718,7 +2009,7 @@ export async function POST(request) {
 
     if (action === 'reset_password') {
         const email = String(body.email || '').trim().toLowerCase();
-        const code = String(body.code || '').trim();
+        const code = normalizeResetCode(body.code);
         const password = String(body.password || '');
         if (!email || !email.includes('@')) return NextResponse.json({ error: 'A valid email is required.' }, { status: 400 });
         if (!/^\d{6}$/.test(code)) return NextResponse.json({ error: 'Enter the 6-digit reset code.' }, { status: 400 });
@@ -1738,9 +2029,34 @@ export async function POST(request) {
         if (codeResult.error && codeResult.error.code !== 'PGRST116') return NextResponse.json({ error: codeResult.error.message }, { status: 500 });
         if (!codeResult.data?.id) return NextResponse.json({ error: 'Invalid or expired reset code.' }, { status: 400 });
 
-        const patch = { password_hash: hashPassword(password), password_updated_at: new Date().toISOString() };
-        const updated = await supabase.from('users').update(patch).eq('id', codeResult.data.user_id).select(FULL_MEMBER_FIELDS).maybeSingle();
+        // Reset the Supabase Auth credential, not a local hash. The account row
+        // keeps only the timestamp, and any legacy hash is cleared so the old
+        // password cannot still be used.
+        const resetTarget = await supabase.from('users').select('id, email, auth_user_id').eq('id', codeResult.data.user_id).maybeSingle();
+        if (resetTarget.error || !resetTarget.data?.id) {
+            return NextResponse.json({ error: 'Account was not found for this reset code.' }, { status: 404 });
+        }
+
+        const authIdentity = await provisionAuthUser(resetTarget.data.email, password, {});
+        if (authIdentity.error || !authIdentity.user) {
+            return NextResponse.json({ error: 'Password reset is temporarily unavailable. Please try again shortly.' }, { status: 503 });
+        }
+        if (resetTarget.data.auth_user_id) {
+            const admin = createServerSupabaseClient({ admin: true });
+            await admin?.auth.admin.updateUserById(resetTarget.data.auth_user_id, { password }).catch(() => {});
+        }
+
+        const patch = {
+            password_hash: null,
+            auth_user_id: resetTarget.data.auth_user_id || authIdentity.user.id,
+            password_updated_at: new Date().toISOString(),
+        };
+        let updated = await supabase.from('users').update(patch).eq('id', codeResult.data.user_id).select(FULL_MEMBER_FIELDS).maybeSingle();
+        if (updated.error && ['42703', 'PGRST204'].includes(updated.error.code)) {
+            updated = await supabase.from('users').update(patch).eq('id', codeResult.data.user_id).select(BASIC_MEMBER_FIELDS).maybeSingle();
+        }
         if (updated.error) return NextResponse.json({ error: updated.error.message }, { status: 500 });
+        if (!updated.data?.id) return NextResponse.json({ error: 'Account was not found for this reset code.' }, { status: 404 });
         await supabase.from('password_reset_codes').update({ used_at: new Date().toISOString() }).eq('id', codeResult.data.id);
         try { await supabase.from('user_notifications').insert({ user_id: codeResult.data.user_id, type: 'security', title: 'Password changed', body: 'Your password was reset successfully.' }); } catch {}
         return NextResponse.json({ ok: true, member: normalizeMember(updated.data, { canViewPhone: true, includeEmail: true }) });
@@ -1750,6 +2066,10 @@ export async function POST(request) {
         const password = String(body.password || '');
         if (!email || !email.includes('@')) return NextResponse.json({ error: 'A valid email is required.' }, { status: 400 });
         if (password.length < 6) return NextResponse.json({ error: 'Password is required.' }, { status: 400 });
+        const deletedAccount = await deletedAccountRecord(supabase, email);
+        if (deletedAccount.deleted) {
+            return NextResponse.json({ error: 'This account was permanently deleted. Contact support if you need it restored.', accountStatus: 'deleted' }, { status: 410 });
+        }
 
         let result = await selectUserByEmailInsensitive(supabase, FULL_MEMBER_FIELDS, email);
 
@@ -1761,47 +2081,89 @@ export async function POST(request) {
 
         if (!result.data) {
             // Try Supabase Auth as fallback — user may exist in auth but not users table
-            const authClient = createServerSupabaseClient({ admin: false });
-            const authResult = authClient ? await authClient.auth.signInWithPassword({ email, password }) : { error: new Error('Auth unavailable') };
+            const authResult = await signInWithPassword(email, password);
             if (authResult.data?.user) {
                 const synced = await syncAuthLoginAccount(supabase, authResult.data.user, email, password);
                 if (!synced.error && synced.data) {
                     return NextResponse.json({ ok: true, member: normalizeMember(synced.data, { canViewPhone: true, includeEmail: true }) });
                 }
+                if (synced.error) return NextResponse.json({ error: synced.error.message }, { status: synced.error.status || 500 });
             }
-            // Also try to find by auth admin lookup
-            const authUser = await findAuthUserByEmail(supabase, email);
-            if (authUser) {
-                const synced = await syncAuthLoginAccount(supabase, authUser, email, password);
-                if (!synced.error && synced.data) {
-                    return NextResponse.json({ ok: true, member: normalizeMember(synced.data, { canViewPhone: true, includeEmail: true }) });
-                }
-            }
+            // There was previously a fallback here that looked the account up by
+            // email via the admin API and signed it in when signInWithPassword had
+            // already failed — i.e. with no password check at all. Removed: a failed
+            // password must end the attempt.
             return NextResponse.json({ error: 'No account found for this email. Create an account first.' }, { status: 404 });
         }
 
+        // Path A — already migrated to Supabase Auth. Sign in normally; this also
+        // writes the session cookies that every other route now authorizes against.
         if (!result.data.password_hash) {
-            const authClient = createServerSupabaseClient({ admin: false });
-            const authResult = authClient ? await authClient.auth.signInWithPassword({ email, password }) : { error: null, data: null };
+            const authResult = await signInWithPassword(email, password);
             if (authResult.data?.user) {
                 const synced = await syncAuthLoginAccount(supabase, authResult.data.user, email, password);
-                if (synced.error) return NextResponse.json({ error: synced.error.message }, { status: 500 });
+                if (synced.error) return NextResponse.json({ error: synced.error.message }, { status: synced.error.status || 500 });
                 return NextResponse.json({ ok: true, member: normalizeMember(synced.data, { canViewPhone: true, includeEmail: true }) });
             }
             return NextResponse.json({ error: 'Incorrect email or password. Use password reset if you cannot access this account.' }, { status: 401 });
-
         }
 
+        // Path B — legacy scrypt account. Verify against the old hash first.
         if (!verifyPassword(password, result.data.password_hash)) return NextResponse.json({ error: 'Incorrect email or password.' }, { status: 401 });
+        if (isAccountRestricted(result.data)) {
+            return NextResponse.json({
+                error: accountRestrictionMessage(result.data) || 'Your account cannot be used right now.',
+                accountStatus: accountStatus(result.data),
+            }, { status: 403 });
+        }
 
-        await supabase.from('users').update({ email, last_seen_at: new Date().toISOString(), last_seen: new Date().toISOString() }).eq('id', result.data.id);
+        // The password is now known-good, so the Supabase Auth identity can be
+        // provisioned with it and the member signed in without a password reset.
+        const provisioned = await provisionAuthUser(email, password, {
+            display_name: getDisplayName(result.data),
+            username: result.data.username || '',
+        });
+        if (provisioned.error || !provisioned.user) {
+            return NextResponse.json({
+                error: 'Sign-in is temporarily unavailable. Please try again shortly.',
+            }, { status: 503 });
+        }
+
+        const session = await signInWithPassword(email, password);
+        if (session.error || !session.data?.user) {
+            return NextResponse.json({
+                error: 'Sign-in is temporarily unavailable. Please try again shortly.',
+            }, { status: 503 });
+        }
+
+        const now = new Date().toISOString();
+        // Drop the legacy hash: Supabase Auth is now the only credential store for
+        // this account, so there is no second password to keep in sync.
+        await supabase.from('users').update({
+            email,
+            auth_user_id: provisioned.user.id,
+            password_hash: null,
+            password_updated_at: now,
+            last_seen_at: now,
+            last_seen: now,
+        }).eq('id', result.data.id);
+
         result.data.email = email;
-        return NextResponse.json({ ok: true, member: normalizeMember(result.data, { canViewPhone: true, includeEmail: true }) });
+        result.data.auth_user_id = provisioned.user.id;
+        return NextResponse.json({
+            ok: true,
+            migratedToSupabaseAuth: true,
+            member: normalizeMember(result.data, { canViewPhone: true, includeEmail: true }),
+        });
     }
 
     if (action === 'upsert_account') {
         const email = String(body.email || '').trim().toLowerCase();
         if (!email || !email.includes('@')) return NextResponse.json({ error: 'A valid email is required.' }, { status: 400 });
+        const deletedAccount = await deletedAccountRecord(supabase, email);
+        if (deletedAccount.deleted) {
+            return NextResponse.json({ error: 'This account was permanently deleted. Contact support if you need it restored.', accountStatus: 'deleted' }, { status: 410 });
+        }
         if (body.password && !body.id) {
             const completionError = accountCompletionError(body);
             if (completionError) return NextResponse.json({ error: completionError }, { status: 400 });
@@ -1815,7 +2177,11 @@ export async function POST(request) {
         const isProfileUpdate = Boolean(existingAccount.data?.id && body.id === existingAccount.data.id && !body.password);
         if (!isProfileUpdate) {
             if (String(body.password || '').length < 6) return NextResponse.json({ error: 'Create a password with at least 6 characters.' }, { status: 400 });
-            if (existingAccount.data?.password_hash) return NextResponse.json({ error: 'This email already has an account. Please sign in.' }, { status: 409 });
+            // Migrated accounts have no password_hash, so auth_user_id is also a
+            // signal that this email is already registered.
+            if (existingAccount.data?.password_hash || existingAccount.data?.auth_user_id) {
+                return NextResponse.json({ error: 'This email already has an account. Please sign in.' }, { status: 409 });
+            }
             const completionError = accountCompletionError(body);
             if (completionError) return NextResponse.json({ error: completionError }, { status: 400 });
         }
@@ -1856,6 +2222,7 @@ export async function POST(request) {
         }
         // Use explicit INSERT or UPDATE instead of upsert (avoids issues with missing UNIQUE constraint)
         let result;
+        let newAuthUserId = null;
         if (existingAccount.data?.id) {
             // UPDATE existing user
             const memberId = existingAccount.data.id;
@@ -1883,8 +2250,21 @@ export async function POST(request) {
                     .maybeSingle();
             }
         } else {
-            // INSERT new user
-            payload.id = payload.id || body.id || body.memberId || globalThis.crypto?.randomUUID?.();
+            // INSERT new user. Create the Supabase Auth identity first so the row
+            // can be keyed to it: using the auth uid as the primary key is what
+            // makes the `auth.uid() = id` RLS policies apply to new accounts.
+            const signup = await provisionAuthUser(email, body.password, {
+                display_name: payload.display_name || '',
+                username: payload.username || '',
+            });
+            if (signup.error || !signup.user) {
+                console.error('[upsert_account] auth provisioning failed:', signup.error?.message);
+                return NextResponse.json({ error: 'Account creation is temporarily unavailable. Please try again shortly.' }, { status: 503 });
+            }
+
+            newAuthUserId = signup.user.id;
+            payload.id = signup.user.id;
+            payload.auth_user_id = signup.user.id;
             result = await supabase
                 .from('users')
                 .insert(payload)
@@ -1893,7 +2273,7 @@ export async function POST(request) {
 
             if (result.error && ['42703', 'PGRST204'].includes(result.error.code)) {
                 payload = accountPayload(body, { fullSchema: false });
-                payload.id = payload.id || body.id || body.memberId || globalThis.crypto?.randomUUID?.();
+                payload.id = signup.user.id;
                 delete payload.username;
                 result = await supabase
                     .from('users')
@@ -1903,13 +2283,28 @@ export async function POST(request) {
             }
         }
 
+        // If the profile row could not be written, roll back the auth identity we
+        // just created. Leaving it behind would block the member from retrying with
+        // the same email, and would leave an account with no profile.
+        async function rollbackNewAuthUser() {
+            if (!newAuthUserId) return;
+            const admin = createServerSupabaseClient({ admin: true });
+            try { await admin?.auth.admin.deleteUser(newAuthUserId); } catch {}
+        }
+
         if (result.error) {
             console.error('[upsert_account] DB error:', result.error.code, result.error.message);
+            await rollbackNewAuthUser();
             return NextResponse.json({ error: result.error.message }, { status: 500 });
         }
         if (!result.data) {
             console.error('[upsert_account] No data returned after insert/update for:', email);
+            await rollbackNewAuthUser();
             return NextResponse.json({ error: 'Account could not be saved. Please try again.' }, { status: 500 });
+        }
+        // Establish the session for the newly created account.
+        if (newAuthUserId && body.password) {
+            await signInWithPassword(email, body.password);
         }
         if (profilePhotoChanged && result.data?.id) {
             try {
@@ -1938,7 +2333,7 @@ export async function POST(request) {
                 }, { onConflict: 'user_id' });
             } catch {}
             const welcomeTitle = 'Welcome to Genuine Sugar Mummies';
-            const welcomeBody = 'Your account has been created. Complete your profile, upload a profile picture, submit manual verification, and choose a package when you are ready to unlock premium features.';
+            const welcomeBody = 'Your account has been created. Complete your profile, upload a profile picture, submit manual verification, and choose a package to unlock more of the app. Basic unlocks unlimited messages, photo chat, 50 GS Credits, and one direct connection request after admin approval. Silver unlocks phone reveal, calls, GIFs, voice notes, activity insights, and stronger visibility.';
             try { await supabase.from('user_notifications').insert({ user_id: result.data.id, type: 'welcome', title: welcomeTitle, body: welcomeBody }); } catch {}
             await sendAndLogEmail(supabase, { to: email, subject: welcomeTitle, text: welcomeBody, html: emailHtml(welcomeTitle, welcomeBody) });
         }
@@ -1947,7 +2342,7 @@ export async function POST(request) {
 
     if (action === 'update_profile_photos') {
         const email = String(body.email || '').trim().toLowerCase();
-        const userId = await resolveUserId(supabase, body);
+        const userId = await resolveUserId();
         if (!userId && !email) return NextResponse.json({ error: 'Sign in before updating photos.' }, { status: 400 });
 
         let existing = userId
@@ -2011,6 +2406,10 @@ export async function POST(request) {
     if (action === 'oauth_account') {
         const email = String(body.email || '').trim().toLowerCase();
         if (!email || !email.includes('@')) return NextResponse.json({ error: 'A valid Google email is required.' }, { status: 400 });
+        const deletedAccount = await deletedAccountRecord(supabase, email);
+        if (deletedAccount.deleted) {
+            return NextResponse.json({ error: 'This account was permanently deleted. Contact support if you need it restored.', accountStatus: 'deleted' }, { status: 410 });
+        }
         const displayName = cleanDisplayName(body.display_name || body.name, email);
         let existing = await supabase.from('users').select(FULL_MEMBER_FIELDS).eq('email', email).maybeSingle();
         if (existing.error && ['42703', 'PGRST204'].includes(existing.error.code)) {
@@ -2018,6 +2417,13 @@ export async function POST(request) {
         }
         if (existing.error && existing.error.code !== 'PGRST116') return NextResponse.json({ error: existing.error.message }, { status: 500 });
         if (existing.data?.id) {
+            if (isAccountRestricted(existing.data)) {
+                return NextResponse.json({
+                    error: accountRestrictionMessage(existing.data) || 'Your account cannot be used right now.',
+                    accountStatus: accountStatus(existing.data),
+                    member: normalizeMember(existing.data, { canViewPhone: true, includeEmail: true }),
+                }, { status: 403 });
+            }
             const patch = {
                 last_seen_at: new Date().toISOString(),
                 last_seen: new Date().toISOString(),
@@ -2060,7 +2466,7 @@ export async function POST(request) {
             }, { onConflict: 'user_id' });
         } catch {}
         const welcomeTitle = 'Welcome to Genuine Sugar Mummies';
-        const welcomeBody = 'Your Google sign-in is ready. Complete your profile, upload a profile picture, and request manual verification when you want a blue badge.';
+        const welcomeBody = 'Your Google sign-in is ready. Complete your profile, upload a profile picture, submit manual verification, and choose a package to unlock more of the app. Basic unlocks unlimited messages, photo chat, 50 GS Credits, and one direct connection request after admin approval. Silver unlocks phone reveal, calls, GIFs, voice notes, activity insights, and stronger visibility.';
         try { await supabase.from('user_notifications').insert({ user_id: result.data.id, type: 'welcome', title: welcomeTitle, body: welcomeBody }); } catch {}
         await sendAndLogEmail(supabase, { to: email, subject: welcomeTitle, text: welcomeBody, html: emailHtml(welcomeTitle, welcomeBody) });
         return NextResponse.json({ ok: true, member: normalizeMember({ ...payload, ...(result.data || {}) }, { canViewPhone: true, includeEmail: true }), createdAccount: true });
@@ -2130,6 +2536,7 @@ export async function POST(request) {
             user_id: recipientId,
             subject: String(body.subject || 'Support request').slice(0, 160),
             body: String(body.message || body.body || '').slice(0, 1200),
+            message: String(body.message || body.body || '').slice(0, 1200),
             service,
             status: 'open',
             priority: String(body.priority || 'normal').slice(0, 40),
@@ -2139,7 +2546,14 @@ export async function POST(request) {
         if (result.error && ['42703', 'PGRST204'].includes(result.error.code)) {
             const fallbackPayload = { ...ticketPayload };
             delete fallbackPayload.service;
+            delete fallbackPayload.body;
             result = await supabase.from('support_tickets').insert(fallbackPayload).select('id, subject, status, created_at').maybeSingle();
+        }
+        if (result.error && ['42703', 'PGRST204'].includes(result.error.code)) {
+            const fallbackPayload2 = { ...ticketPayload };
+            delete fallbackPayload2.service;
+            delete fallbackPayload2.message;
+            result = await supabase.from('support_tickets').insert(fallbackPayload2).select('id, subject, status, created_at').maybeSingle();
         }
         if (result.error && result.error.code !== 'PGRST205') return NextResponse.json({ error: result.error.message }, { status: 500 });
         const autoResponse = buildSupportAutoResponse(service, { name: recipientName, subject: ticketPayload.subject });
@@ -2213,12 +2627,12 @@ export async function POST(request) {
     }
 
     if (action === 'record_interaction') {
-        const actorUserId = body.actorUserId || body.userId || null;
+        const actorUserId = await resolveUserId();
         const profileKey = String(body.profileKey || body.savedKey || memberId || '').slice(0, 180);
         const kind = String(body.kind || body.interaction || 'view').slice(0, 40);
         const usageKind = kind === 'superlike' ? 'superlikes' : kind === 'like' ? 'likes' : kind === 'pass' || kind === 'swipe_pass' ? 'swipes' : kind === 'message' ? 'messages' : 'views';
         const quota = await enforceDailyLimit(supabase, actorUserId, usageKind);
-        if (!quota.ok) return NextResponse.json({ error: quota.message || LIMIT_NOTICE, ...quota }, { status: 402 });
+        if (!quota.ok) return NextResponse.json({ error: quota.message || LIMIT_NOTICE, ...quota }, { status: quota.httpStatus || 402 });
         await recordInteraction(supabase, actorUserId, profileKey, kind, {
             profileName: body.profileName,
             profileImage: body.profileImage,
@@ -2233,62 +2647,91 @@ export async function POST(request) {
     }
 
     if (action === 'like' || action === 'superlike') {
-        const actorUserId = body.actorUserId || body.likerId || null;
+        const actorUserId = await resolveUserId();
         if (!memberId || !actorUserId) return NextResponse.json({ error: 'Signed-in user and member are required.' }, { status: 400 });
         if (memberId === actorUserId) return NextResponse.json({ error: 'You cannot like your own profile.' }, { status: 400 });
+        const targetStatus = await ensureTargetAvailable(supabase, memberId);
+        if (!targetStatus.ok) return NextResponse.json({ error: targetStatus.error }, { status: targetStatus.status || 404 });
         const quota = await enforceDailyLimit(supabase, actorUserId, action === 'superlike' ? 'superlikes' : 'likes');
-        if (!quota.ok) return NextResponse.json({ error: quota.message || LIMIT_NOTICE, ...quota }, { status: 402 });
-        const result = await supabase.from('member_likes').upsert({
-            liker_id: actorUserId,
-            liked_id: memberId,
-            is_super_like: action === 'superlike',
-        }, { onConflict: 'liker_id,liked_id' });
-        if (result.error && result.error.code !== 'PGRST205') return NextResponse.json({ error: result.error.message }, { status: 500 });
+        if (!quota.ok) return NextResponse.json({ error: quota.message || LIMIT_NOTICE, ...quota }, { status: quota.httpStatus || 402 });
+
+        /**
+         * Two kinds of target, handled differently.
+         *
+         * `member_likes.liked_id` is a UUID with a foreign key to users. Seeded and
+         * WordPress profiles have ids like `seed-local-004`, which is not a UUID
+         * and has no row — so the previous unconditional upsert raised a type
+         * error and returned a 500. Since most discoverable profiles are seeded,
+         * liking was broken for the common case, which is why `member_likes` had
+         * zero rows despite the daily quota being spent on every attempt.
+         *
+         * Real members go into member_likes, where a trigger forms a match if the
+         * like is returned. Every target, real or seeded, is recorded in the
+         * interaction ledger so the member's own likes list is complete.
+         */
+        const { matched } = await recordMemberLike(supabase, actorUserId, memberId, {
+            isSuperLike: action === 'superlike',
+        });
+
         await recordInteraction(supabase, actorUserId, `member:${memberId}`, action, {
             profileName: body.profileName,
             profileImage: body.profileImage,
             isSuperLike: action === 'superlike',
             metadata: { score: body.score || null, source: 'member' },
         });
-        try {
-            await supabase.from('user_notifications').insert({
-                user_id: memberId,
-                type: action,
-                title: action === 'superlike' ? 'New super like' : 'New like',
-                body: `${String(body.senderName || 'Someone').slice(0, 80)} ${action === 'superlike' ? 'super liked' : 'liked'} your profile.`,
-                metadata: { actorUserId },
-            });
-        } catch {}
-        return NextResponse.json({ ok: true, quota, persisted: !result.error });
+
+        // The like/match notifications for real members are raised by the database
+        // trigger, so they fire however the like was created. Only seeded targets
+        // need nothing here — there is nobody to notify.
+
+        return NextResponse.json({ ok: true, quota, matched });
     }
 
     if (action === 'swipe_pass') {
-        const actorUserId = body.actorUserId || null;
+        const actorUserId = await resolveUserId();
         if (!memberId || !actorUserId) return NextResponse.json({ error: 'Signed-in user and member are required.' }, { status: 400 });
+        const targetStatus = await ensureTargetAvailable(supabase, memberId);
+        if (!targetStatus.ok) return NextResponse.json({ error: targetStatus.error }, { status: targetStatus.status || 404 });
         const quota = await enforceDailyLimit(supabase, actorUserId, 'swipes');
-        if (!quota.ok) return NextResponse.json({ error: quota.message || LIMIT_NOTICE, ...quota }, { status: 402 });
-        const result = await supabase.from('member_swipes').upsert({
-            swiper_id: actorUserId,
-            swiped_id: memberId,
-            direction: 'pass',
-        }, { onConflict: 'swiper_id,swiped_id' });
-        if (result.error && result.error.code !== 'PGRST205') return NextResponse.json({ error: result.error.message }, { status: 500 });
+        if (!quota.ok) return NextResponse.json({ error: quota.message || LIMIT_NOTICE, ...quota }, { status: quota.httpStatus || 402 });
+        // `swiped_id` is a UUID column. Seeded ids such as `seed-local-004` are
+        // not, and passing one raised a type error that surfaced as a 500 — on the
+        // majority of profiles in the deck. The pass is always recorded in the
+        // interaction ledger; the typed table only receives real members.
+        let persisted = false;
+        if (UUID_PATTERN.test(String(memberId))) {
+            const result = await supabase.from('member_swipes').upsert({
+                swiper_id: actorUserId,
+                swiped_id: memberId,
+                direction: 'pass',
+            }, { onConflict: 'swiper_id,swiped_id' });
+            if (result.error && result.error.code !== 'PGRST205') {
+                console.error('[swipe_pass] member_swipes failed:', result.error.code, result.error.message);
+            }
+            persisted = !result.error;
+        }
         await recordInteraction(supabase, actorUserId, `member:${memberId}`, 'pass', { metadata: { source: 'member' } });
-        return NextResponse.json({ ok: true, quota, persisted: !result.error });
+        return NextResponse.json({ ok: true, quota, persisted });
     }
 
     if (action === 'save_profile') {
-        const saverId = body.actorUserId || body.userId || null;
+        const saverId = await resolveUserId();
         const savedKey = String(body.savedKey || memberId || '').slice(0, 160);
         if (!saverId || !savedKey) return NextResponse.json({ error: 'Signed-in user and saved profile are required.' }, { status: 400 });
+        // Same UUID constraint as likes and passes: only a real member id can go
+        // in `saved_member_id`. `saved_key` carries the seeded or WordPress
+        // reference, which is what the saved list actually reads.
         const result = await supabase.from('member_saves').upsert({
             user_id: saverId,
-            saved_member_id: memberId || null,
+            saved_member_id: UUID_PATTERN.test(String(memberId || '')) ? memberId : null,
             saved_key: savedKey,
             saved_name: String(body.savedName || '').slice(0, 120),
             saved_image: String(body.savedImage || '').slice(0, 500),
         }, { onConflict: 'user_id,saved_key' });
-        if (result.error && result.error.code !== 'PGRST205') return NextResponse.json({ error: result.error.message }, { status: 500 });
+        if (result.error && result.error.code !== 'PGRST205') {
+            console.error('[save_profile] member_saves failed:', result.error.code, result.error.message);
+            return NextResponse.json({ error: result.error.message }, { status: 500 });
+        }
         await recordInteraction(supabase, saverId, savedKey, 'save', {
             profileName: body.savedName,
             profileImage: body.savedImage,
@@ -2298,7 +2741,7 @@ export async function POST(request) {
     }
 
     if (action === 'unsave_profile') {
-        const saverId = body.actorUserId || body.userId || null;
+        const saverId = await resolveUserId();
         const savedKey = String(body.savedKey || memberId || '').slice(0, 160);
         if (!saverId || !savedKey) return NextResponse.json({ error: 'Signed-in user and saved profile are required.' }, { status: 400 });
         const result = await supabase.from('member_saves').delete().eq('user_id', saverId).eq('saved_key', savedKey);
@@ -2307,13 +2750,17 @@ export async function POST(request) {
         return NextResponse.json({ ok: true, persisted: !result.error });
     }
     if (action === 'view') {
-        const viewerId = body.actorUserId || body.viewerId || body.userId || null;
+        const viewerId = await resolveUserId();
         if (String(memberId || '').startsWith('seed-local-')) {
-            return NextResponse.json({ ok: true, synthetic: true, totalProfileViews: 900 + (stableHash(memberId) % 9000) });
+            // Local seed profiles have no view ledger. Report nothing rather than
+            // inventing a count — a made-up number is a popularity claim.
+            return NextResponse.json({ ok: true, recorded: false, totalProfileViews: null });
         }
+        const targetStatus = await ensureTargetAvailable(supabase, memberId);
+        if (!targetStatus.ok) return NextResponse.json({ error: targetStatus.error }, { status: targetStatus.status || 404 });
         if (viewerId) {
             const quota = await enforceDailyLimit(supabase, viewerId, 'views');
-            if (!quota.ok) return NextResponse.json({ error: quota.message || LIMIT_NOTICE, ...quota }, { status: 402 });
+            if (!quota.ok) return NextResponse.json({ error: quota.message || LIMIT_NOTICE, ...quota }, { status: quota.httpStatus || 402 });
             await recordInteraction(supabase, viewerId, `member:${memberId}`, 'view', { metadata: { source: 'member' } });
             try {
                 await supabase.from('profile_views').insert({
@@ -2330,6 +2777,8 @@ export async function POST(request) {
     }
 
     if (action === 'follow') {
+        const targetStatus = await ensureTargetAvailable(supabase, memberId);
+        if (!targetStatus.ok) return NextResponse.json({ error: targetStatus.error }, { status: targetStatus.status || 404 });
         const existing = await supabase
             .from('member_follows')
             .select('id')
@@ -2354,14 +2803,39 @@ export async function POST(request) {
     if (action === 'message') {
         const text = String(body.message || '').trim();
         let attachmentUrl = String(body.attachmentUrl || body.attachment_url || '').trim();
-        const attachmentType = String(body.attachmentType || body.attachment_type || '').trim().slice(0, 40);
+        const attachmentType = String(body.attachmentType || body.attachment_type || '').trim().toLowerCase().slice(0, 40);
         const attachmentName = String(body.attachmentName || body.attachment_name || '').trim().slice(0, 120);
         let voiceUrl = String(body.voiceUrl || body.voice_url || '').trim();
         if (text.length < 2 && !attachmentUrl && !voiceUrl) return NextResponse.json({ error: 'Message is too short.' }, { status: 400 });
-        const senderUserId = body.actorUserId || body.senderUserId || null;
+        const senderUserId = await resolveUserId();
         const senderName = String(body.senderName || 'Member').slice(0, 80);
+        const targetStatus = await ensureTargetAvailable(supabase, memberId);
+        if (!targetStatus.ok) return NextResponse.json({ error: targetStatus.error }, { status: targetStatus.status || 404 });
+        let senderTier = await getPackageTier(supabase, 'free');
+        if (senderUserId) {
+            const { data: sender } = await supabase
+                .from('users')
+                .select('id, subscription_tier, admin_approved, package_locked, is_banned, is_suspended, account_deleted_at')
+                .eq('id', senderUserId)
+                .maybeSingle();
+            if (!sender?.id) return NextResponse.json({ error: 'Signed-in user was not found.' }, { status: 404 });
+            if (isAccountRestricted(sender)) return NextResponse.json({ error: accountRestrictionMessage(sender), redirectTo: '/auth/login' }, { status: 403 });
+            senderTier = await getPackageTier(supabase, activeTierId(sender));
+        }
+        if (attachmentUrl && attachmentType === 'image' && !canUseFeature(senderTier, 'images')) {
+            return NextResponse.json({ error: 'Image sharing requires Basic package or higher.', redirectTo: '/packages' }, { status: 402 });
+        }
+        if (attachmentUrl && attachmentType === 'gif' && !canUseFeature(senderTier, 'gifs')) {
+            return NextResponse.json({ error: 'GIF sharing requires Silver package or higher.', redirectTo: '/packages' }, { status: 402 });
+        }
+        if (attachmentUrl && !['image', 'gif'].includes(attachmentType) && !canUseFeature(senderTier, 'voiceNotes')) {
+            return NextResponse.json({ error: 'Media sharing requires Silver package or higher.', redirectTo: '/packages' }, { status: 402 });
+        }
+        if (voiceUrl && !canUseFeature(senderTier, 'voiceNotes')) {
+            return NextResponse.json({ error: 'Voice notes require Silver package or higher.', redirectTo: '/packages' }, { status: 402 });
+        }
         const quota = await enforceDailyLimit(supabase, senderUserId, 'messages');
-        if (!quota.ok) return NextResponse.json({ error: quota.message || LIMIT_NOTICE, ...quota }, { status: 402 });
+        if (!quota.ok) return NextResponse.json({ error: quota.message || LIMIT_NOTICE, ...quota }, { status: quota.httpStatus || 402 });
         attachmentUrl = await uploadMessageAsset(supabase, attachmentUrl, { ownerId: senderUserId || actorKey, type: attachmentType || 'attachment', name: attachmentName });
         voiceUrl = await uploadMessageAsset(supabase, voiceUrl, { ownerId: senderUserId || actorKey, type: 'voice_note', name: attachmentName || 'voice-note' });
         const messagePayload = {
@@ -2398,6 +2872,8 @@ export async function POST(request) {
     }
 
     if (action === 'call_request') {
+        const targetStatus = await ensureTargetAvailable(supabase, memberId);
+        if (!targetStatus.ok) return NextResponse.json({ error: targetStatus.error }, { status: targetStatus.status || 404 });
         const callType = String(body.callType || 'voice').slice(0, 20);
         const requesterName = String(body.senderName || 'Member').slice(0, 80);
         const result = await supabase.from('call_requests').insert({
@@ -2422,6 +2898,8 @@ export async function POST(request) {
     }
 
     if (action === 'gift') {
+        const targetStatus = await ensureTargetAvailable(supabase, memberId);
+        if (!targetStatus.ok) return NextResponse.json({ error: targetStatus.error }, { status: targetStatus.status || 404 });
         const giftName = String(body.giftName || 'Rose').slice(0, 80);
         const emoji = String(body.emoji || ':rose:').slice(0, 40);
         const senderName = String(body.senderName || 'Member').slice(0, 80);

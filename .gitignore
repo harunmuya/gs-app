@@ -41,3 +41,7 @@ next-env.d.ts
 /android/.gradle/
 /android/keystores/
 
+
+# Scratch: pasted SQL dump, 531KB, not part of the app
+teta.txt
+.next-dev.log

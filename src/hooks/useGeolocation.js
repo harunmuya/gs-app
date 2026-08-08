@@ -33,7 +33,7 @@ export function useGeolocation() {
 
     const requestLocation = useCallback(async () => {
         if (!navigator.geolocation) {
-            setError('Geolocation is not supported by your browser');
+            setError('Location is not supported on this device');
             return;
         }
 
