@@ -497,6 +497,24 @@ export default function PackagesPage() {
  *  - The wait is stated up front instead of being discovered.
  */
 
+/** Where a member asks for the current payment destination. */
+export const ADMIN_TELEGRAM = 'https://t.me/GSADMINMARYGAGENCY';
+
+/*
+  Payment destinations.
+
+  There is deliberately no fallback number here. This previously read
+  `process.env.NEXT_PUBLIC_MPESA_TILL || '5204588'`, with a matching Airtel
+  default — figures carried over from older code and never verified. An unset
+  environment variable therefore did not produce an error; it produced a
+  confident, copyable till number on a payment screen. A member following those
+  instructions sends real money to whoever owns that till, and neither they nor
+  the admin panel would have any way to trace it.
+
+  So the destination is either configured, or the screen says it is not and sends
+  the member to Admin Mary G for the current number. A missing configuration
+  should stop a payment, not invent one.
+*/
 const PROVIDERS = [
     {
         id: 'mpesa',
@@ -504,14 +522,13 @@ const PROVIDERS = [
         network: 'Safaricom',
         accent: '#00A551',
         payTo: 'Till number',
-        // Published payment destinations. Change here and the instructions follow.
-        target: process.env.NEXT_PUBLIC_MPESA_TILL || '5204588',
+        target: process.env.NEXT_PUBLIC_MPESA_TILL || '',
         codeHint: '10 characters, e.g. SFJ4K2L9MN',
         steps: [
+            'Ask Admin Mary G for the current till number',
             'Open M-Pesa on your phone',
             'Choose Lipa na M-Pesa, then Buy Goods and Services',
-            'Enter the till number above',
-            'Enter the exact amount and your PIN',
+            'Enter the till number, the exact amount and your PIN',
             'Copy the code from the confirmation SMS',
         ],
     },
@@ -521,17 +538,47 @@ const PROVIDERS = [
         network: 'Airtel',
         accent: '#E4002B',
         payTo: 'Pay to number',
-        target: process.env.NEXT_PUBLIC_AIRTEL_NUMBER || '0738871048',
+        target: process.env.NEXT_PUBLIC_AIRTEL_NUMBER || '',
         codeHint: 'The reference on your Airtel SMS',
         steps: [
+            'Ask Admin Mary G for the current Airtel number',
             'Dial *334# or open the Airtel Money app',
             'Choose Send Money',
-            'Enter the number above',
-            'Enter the exact amount and your PIN',
+            'Enter the number, the exact amount and your PIN',
             'Copy the reference from the confirmation SMS',
         ],
     },
 ];
+
+/**
+ * Shown in place of the number when no destination is configured.
+ *
+ * Blocking is the point: a member cannot pay correctly without a destination, so
+ * offering the transaction-code box underneath would only collect codes for
+ * payments sent somewhere arbitrary.
+ */
+function RequestPaymentNumber({ provider }) {
+    return (
+        <div className="border-danger-soft tint-danger space-y-3 rounded-xl p-4">
+            <p className="flex items-center gap-2 type-body-strong text-danger">
+                <Shield size={15} /> Ask for the {provider.name} number first
+            </p>
+            <p className="type-caption text-text-secondary">
+                We do not publish a {provider.payTo.toLowerCase()} in the app. Message Admin Mary G for the
+                current one, confirm the amount, then pay and enter your code below.
+                <strong className="text-text-primary"> Never send money to a number given by anyone else.</strong>
+            </p>
+            <a
+                href={ADMIN_TELEGRAM}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl type-body-strong text-white gradient-primary"
+            >
+                <Headphones size={16} /> Get the number from Admin Mary G
+            </a>
+        </div>
+    );
+}
 
 function CopyRow({ label, value, accent }) {
     const [copied, setCopied] = useState(false);
@@ -662,7 +709,12 @@ function PaymentCheckout({ tier, defaultPhone }) {
                 </div>
 
                 <div className="space-y-3 p-5">
-                    <CopyRow label={provider.payTo} value={provider.target} accent={provider.accent} />
+                    {/* A configured destination is shown and copyable. An unset one
+                        sends the member to Admin Mary G rather than to a number
+                        this screen made up. */}
+                    {provider.target
+                        ? <CopyRow label={provider.payTo} value={provider.target} accent={provider.accent} />
+                        : <RequestPaymentNumber provider={provider} />}
                     <CopyRow label="Exact amount" value={`KSh ${amount.toLocaleString()}`} accent={provider.accent} />
 
                     <ol className="space-y-2 pt-1">
