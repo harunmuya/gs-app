@@ -80,7 +80,25 @@ export default function UserModeration({ user, onAction, busy }) {
                 {hidden
                     ? <ActionButton icon={Eye} label="Show in discovery" tone="positive" busy={busy} onClick={() => onAction('show_user', 'Profile now listed')} />
                     : <ActionButton icon={Eye} label="Hide from discovery" busy={busy} onClick={() => onAction('hide_user', 'Profile hidden')} />}
-                {!approved && <ActionButton icon={Check} label="Approve account" tone="positive" busy={busy} onClick={() => onAction('approve_user', 'Account approved')} />}
+                {/*
+                  approve_user does more than its name suggests: it verifies,
+                  approves, unhides, unbans, unsuspends AND sets the package
+                  tier. The tier defaults to 'basic' when none is sent — so
+                  calling it without one silently downgrades a Silver or Gold
+                  member and grants them basic starting credits. The current tier
+                  is passed explicitly so approving never changes what they paid
+                  for.
+                */}
+                {!approved && (
+                    <ActionButton
+                        icon={Check}
+                        label="Approve & verify"
+                        tone="positive"
+                        busy={busy}
+                        title="Approves, verifies and unhides the account, keeping its current package"
+                        onClick={() => onAction('approve_user', 'Account approved and verified', { subscriptionTier: user.subscription_tier || 'free' })}
+                    />
+                )}
                 <ActionButton icon={UserCog} label="Approve profile" busy={busy} onClick={() => onAction('approve_profile', 'Profile approved')} title="Mark the profile content as reviewed" />
             </div>
 

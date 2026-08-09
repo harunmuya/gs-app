@@ -410,9 +410,9 @@ export default function AdminPage() {
                             <UserModeration
                                 user={user}
                                 busy={moderating === user.id}
-                                onAction={async (action, success) => {
+                                onAction={async (action, success, extra = {}) => {
                                     setModerating(user.id);
-                                    try { await adminAction({ action, userId: user.id }, success); }
+                                    try { await adminAction({ action, userId: user.id, ...extra }, success); }
                                     finally { setModerating(null); }
                                 }}
                             />
