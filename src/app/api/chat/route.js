@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
 import { accountRestrictionMessage, canUseFeature, dailyLimitForFeature, getUserPackageAccess, isAccountRestricted } from '@/lib/packageAccess';
 import { requireMember } from '@/lib/authSession';
+import { notifyMember } from '@/lib/notifyMember';
 import { consumeQuota } from '@/lib/entitlementGuard';
 import { FACILITATION_NOTICE, profileKindFor, requiresFacilitation } from '@/lib/profileKind';
 
@@ -320,15 +321,19 @@ export async function POST(request) {
 
     const now = new Date().toISOString();
     await supabase.from('conversations').update({ last_message_at: now, updated_at: now }).eq('id', conversation.data.id);
-    try {
-        await supabase.from('user_notifications').insert({
-            user_id: peerId,
-            type: 'member_message',
-            title: `New message from ${user.display_name || 'Member'}`,
-            body: inserted.data.body,
-            metadata: { conversationId: conversation.data.id, senderId: userId, actionLink: `/messages/${userId}` },
-        });
-    } catch {}
+    // Notify in the app, and email if the recipient is away. A message nobody
+    // is told about is the most common reason a conversation dies here.
+    await notifyMember(supabase, {
+        userId: peerId,
+        type: 'member_message',
+        title: `New message from ${user.display_name || 'Member'}`,
+        body: inserted.data.body,
+        metadata: { conversationId: conversation.data.id, senderId: userId, actionLink: `/messages/${userId}` },
+        email: {
+            template: 'message',
+            data: { senderName: user.display_name || 'A member', preview: inserted.data.body },
+        },
+    });
     try {
         await supabase.from('admin_logs').insert({ action: 'chat_message_sent', details: { conversationId: conversation.data.id, senderId: userId, receiverId: peerId, messageType } });
     } catch {}

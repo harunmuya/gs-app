@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
 import { accountRestrictionMessage, canUseFeature, getUserPackageAccess, isAccountRestricted } from '@/lib/packageAccess';
 import { requireMember } from '@/lib/authSession';
+import { notifyMember } from '@/lib/notifyMember';
 
 const LIVE_CALL_STATUSES = ['ringing', 'accepted', 'active'];
 const CLOSED_CALL_STATUSES = ['ended', 'rejected', 'declined', 'missed'];
@@ -342,12 +343,22 @@ export async function POST(request) {
         if (['rejected', 'declined', 'missed', 'ended'].includes(status)) {
             const notifyUserId = userId === data.caller_id ? data.receiver_id : data.caller_id;
             if (notifyUserId) {
-                await supabase.from('user_notifications').insert({
-                    user_id: notifyUserId,
+                // A missed call is worth an email; a call that simply ended is
+                // not, since both parties were on it.
+                const missed = status === 'missed' && notifyUserId === data.receiver_id;
+                const [caller] = missed ? [await getUser(supabase, data.caller_id)] : [null];
+                await notifyMember(supabase, {
+                    userId: notifyUserId,
                     type: 'call_status',
                     title: status === 'ended' ? 'Call ended' : 'Call not answered',
-                    body: status === 'ended' ? `The ${data.call_type || 'voice'} call ended after ${formatCallDuration(durationSeconds)}.` : `The ${data.call_type || 'voice'} call was ${status}.`,
+                    body: status === 'ended'
+                        ? `The ${data.call_type || 'voice'} call ended after ${formatCallDuration(durationSeconds)}.`
+                        : `The ${data.call_type || 'voice'} call was ${status}.`,
                     metadata: { callSessionId: data.id, actionLink: `/messages/${userId}` },
+                    email: missed ? {
+                        template: 'missedCall',
+                        data: { callerName: caller?.display_name || 'A member', callType: data.call_type || 'voice' },
+                    } : null,
                 });
             }
         }
