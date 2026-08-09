@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 export const metadata = {
-    title: 'Terms and Conditions - Genuine Sugar Mummies',
+    title: 'Terms and Conditions | Genuine Sugar Mummies',
 };
 
 export default function TermsPage() {

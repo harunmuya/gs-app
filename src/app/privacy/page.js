@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 export const metadata = {
-    title: 'Privacy Policy - Genuine Sugar Mummies',
+    title: 'Privacy Policy | Genuine Sugar Mummies',
 };
 
 export default function PrivacyPage() {

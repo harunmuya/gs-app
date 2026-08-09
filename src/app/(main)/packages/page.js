@@ -37,6 +37,7 @@ import {
     GsPhoneUnlock,
 } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
+import { SUPPORT } from '@/lib/support';
 
 const TIERS = [
     {
@@ -473,7 +474,7 @@ export default function PackagesPage() {
             <section className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                 <h2 className="text-sm font-bold text-text-primary flex items-center gap-2"><Headphones size={16} className="text-secondary" /> Direct support</h2>
                 <p className="text-sm text-text-secondary leading-relaxed">Need help choosing a package or confirming payment? Contact Admin Mary G and include your account email plus payment transaction ID.</p>
-                <a href="https://t.me/GSADMINMARYGAGENCY" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-2xl px-4 text-sm font-bold text-white gradient-primary"><HelpCircle size={16} /> Open Telegram Support</a>
+                <a href={SUPPORT.telegram.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-2xl px-4 text-sm font-bold text-white gradient-primary"><HelpCircle size={16} /> Open Telegram Support</a>
             </section>
         </div>
     );
@@ -498,7 +499,8 @@ export default function PackagesPage() {
  */
 
 /** Where a member asks for the current payment destination. */
-export const ADMIN_TELEGRAM = 'https://t.me/GSADMINMARYGAGENCY';
+// Re-exported so existing imports keep working. The value lives in SupportContact.
+export const ADMIN_TELEGRAM = SUPPORT.telegram.url;
 
 /*
   Payment destinations.

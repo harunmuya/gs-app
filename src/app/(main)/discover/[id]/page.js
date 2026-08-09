@@ -14,6 +14,7 @@ import CommentForm from '@/components/CommentForm';
 import ContactButtons from '@/components/ContactButtons';
 import { useAuth } from '@/contexts/AuthContext';
 import FacilitationNotice from '@/components/FacilitationNotice';
+import { SUPPORT } from '@/lib/support';
 
 function legacyPostKey(searchParams, fallback) {
     return searchParams.get('id')
@@ -150,7 +151,7 @@ export default function ProfileDetailPage({ params }) {
         if (guest || !user) { router.push('/auth/login'); return; }
         requestConnection(profile.name, profile.wpId);
         const msg = encodeURIComponent(`Hi, need a match connection with ${profile.name}`);
-        window.open(`https://t.me/GSADMINMARYGAGENCY?text=${msg}`, '_blank');
+        window.open(`${SUPPORT.telegram.url}?text=${msg}`, '_blank');
     };
 
     if (loading) {

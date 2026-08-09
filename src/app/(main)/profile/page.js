@@ -19,6 +19,7 @@ import VerifiedBadge from '@/components/VerifiedBadge';
 import StoriesStrip from '@/components/StoriesStrip';
 import AccountActivityPanel from '@/components/AccountActivityPanel';
 import { unreadMessageValue } from '@/lib/inboxCounts';
+import { SUPPORT } from '@/lib/support';
 
 const PREFERENCE_LABELS = {
     sugar_mummy_looking_for_toyboy: 'Sugar Mummy seeking Sugar Guy / Toyboy',
@@ -795,7 +796,7 @@ export default function ProfilePage() {
                 <textarea value={supportForm.message} onChange={(e) => setSupportForm({ ...supportForm, message: e.target.value })} placeholder="Tell support what you need" rows={3} className="w-full rounded-xl py-3 px-3 text-sm resize-none" style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }} />
                 <button onClick={submitSupportTicket} className="w-full py-3 rounded-xl font-bold text-white gradient-primary flex items-center justify-center gap-2"><Send size={16} /> Submit Ticket</button>
                 {supportStatus && <p className="text-xs font-bold text-primary bg-primary/10 rounded-xl p-3">{supportStatus}</p>}
-                <a href="https://t.me/GSADMINMARYGAGENCY" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-bold text-primary"><ExternalLink size={15} /> Telegram Admin Support</a>
+                <a href={SUPPORT.telegram.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-bold text-primary"><ExternalLink size={15} /> Telegram Admin Support</a>
             </div>
             )}
 

@@ -9,6 +9,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import Logo from '@/components/Logo';
 import { labelFromCoordinates } from '@/lib/geo';
+import { SUPPORT } from '@/lib/support';
 
 /**
  * Authentication — one page, three modes.
@@ -753,6 +754,26 @@ export default function LoginPage() {
                         </Link>
                     ))}
                 </nav>
+
+                {/*
+                  Support belongs on this screen more than on any other.
+
+                  Somebody locked out of their account cannot reach the launcher
+                  in the signed-in shell, and the policy pages are not where they
+                  would think to look. One line, on the page where being stuck is
+                  most likely.
+                */}
+                <p className="text-center type-caption text-text-muted">
+                    Locked out or waiting on verification?{' '}
+                    <a
+                        href={SUPPORT.telegram.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold text-primary"
+                    >
+                        Message Admin Mary G on Telegram
+                    </a>
+                </p>
             </div>
         </main>
     );

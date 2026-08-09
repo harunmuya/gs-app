@@ -14,6 +14,7 @@ import { notifyMember } from '@/lib/notifyMember';
 import { getSessionMember, provisionAuthUser, signInWithPassword } from '@/lib/authSession';
 import { displayMatchPercent, interleave, scoreMember } from '@/lib/discoveryRanking';
 import { consumeQuota } from '@/lib/entitlementGuard';
+import { TELEGRAM_MENTION } from '@/lib/support';
 
 const FULL_MEMBER_FIELDS = `
     id,
@@ -218,7 +219,7 @@ const SUPPORT_RESPONSE_TEMPLATES = {
         team: 'Billing Team',
         title: 'Package unlock request received',
         shortStatus: 'Package unlock request received. Billing has replied in your inbox and email.',
-        body: ({ name }) => `Hello ${name},\n\nYour package unlock request has been received. The Billing Team will confirm the payment reference, the package you selected, and the account that should be unlocked.\n\nAfter approval, the paid features on your lifetime package will open from the admin control panel. If you paid for Silver or Gold, contact reveal, unlimited messaging, gifts, and supported premium features will update on your account after approval.\n\nFor urgent help, you can also contact Admin Mary G on Telegram @GSADMINMARYGAGENCY.`,
+        body: ({ name }) => `Hello ${name},\n\nYour package unlock request has been received. The Billing Team will confirm the payment reference, the package you selected, and the account that should be unlocked.\n\nAfter approval, the paid features on your lifetime package will open from the admin control panel. If you paid for Silver or Gold, contact reveal, unlimited messaging, gifts, and supported premium features will update on your account after approval.\n\nFor urgent help, you can also contact Admin Mary G on Telegram ${TELEGRAM_MENTION}.`,
     },
     refund: {
         team: 'Billing Team',
@@ -248,7 +249,7 @@ const SUPPORT_RESPONSE_TEMPLATES = {
         team: 'Admin Mary G Support',
         title: 'Direct connection request received',
         shortStatus: 'Direct connection request received. Admin Mary G Support has replied.',
-        body: ({ name }) => `Hello ${name},\n\nYour direct connection service request has been received by Admin Mary G Support. Connections are handled through the official support route, and you choose the person you want help with. We do not assign random connections.\n\nIf your package or direct connection payment is approved, Admin Mary G will guide the next step, including Telegram assistance where needed.\n\nFor faster help, contact @GSADMINMARYGAGENCY on Telegram using the same name as your GS account.`,
+        body: ({ name }) => `Hello ${name},\n\nYour direct connection service request has been received by Admin Mary G Support. Connections are handled through the official support route, and you choose the person you want help with. We do not assign random connections.\n\nIf your package or direct connection payment is approved, Admin Mary G will guide the next step, including Telegram assistance where needed.\n\nFor faster help, contact ${TELEGRAM_MENTION} on Telegram using the same name as your GS account.`,
     },
     general: {
         team: 'GS Support Team',

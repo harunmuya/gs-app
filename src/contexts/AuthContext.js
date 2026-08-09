@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef } f
 import { createBrowserSupabaseClient, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { clearEntitlements } from '@/lib/useEntitlements';
 import { POLL } from '@/lib/usePolling';
+import { TELEGRAM_MENTION } from '@/lib/support';
 
 const AuthContext = createContext({});
 
@@ -1731,7 +1732,7 @@ export function AuthProvider({ children }) {
     // ---- Request Connection ----
     const requestConnection = useCallback((profileName, profileId) => {
         logActivity('connection_request', { title: `Connection requested with ${profileName}`, message: 'Admin Mary G will facilitate on Telegram', profileId });
-        addMessage({ type: 'connection', sender: 'GS Support', senderImage: '', title: `Connection request sent for ${profileName}`, body: `Contact admin @GSADMINMARYGAGENCY on Telegram for faster response.` });
+        addMessage({ type: 'connection', sender: 'GS Support', senderImage: '', title: `Connection request sent for ${profileName}`, body: `Contact admin ${TELEGRAM_MENTION} on Telegram for faster response.` });
     }, [logActivity, addMessage]);
 
     // ---- Log Message/View ----

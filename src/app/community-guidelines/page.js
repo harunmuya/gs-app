@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 export const metadata = {
-    title: 'Community Guidelines - Genuine Sugar Mummies',
+    title: 'Community Guidelines | Genuine Sugar Mummies',
 };
 
 export default function CommunityGuidelinesPage() {

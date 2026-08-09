@@ -4,6 +4,7 @@ import AuthGuard from '@/components/AuthGuard';
 import IncomingCallManager from '@/components/IncomingCallManager';
 import LocationPermissionManager from '@/components/LocationPermissionManager';
 import ProfileCompletionModal from '@/components/ProfileCompletionModal';
+import SupportLauncher from '@/components/SupportLauncher';
 
 /**
  * Everything in this route group is behind AuthGuard, which runs on the client —
@@ -30,6 +31,9 @@ export default function MainLayout({ children }) {
                 <LocationPermissionManager />
                 <IncomingCallManager />
                 <ProfileCompletionModal />
+                {/* Support reaches every signed-in screen from here rather than
+                    only the policy pages, which is where it used to live. */}
+                <SupportLauncher />
                 <BottomNav />
             </div>
         </AuthGuard>

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 export const metadata = {
-    title: 'Safety Center - Genuine Sugar Mummies',
+    title: 'Safety Center | Genuine Sugar Mummies',
 };
 
 export default function SafetyPage() {

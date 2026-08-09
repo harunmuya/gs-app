@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Headphones, Mail, MessageCircle, Send } from '@/components/icons';
+import { SUPPORT } from '@/lib/support';
 
 /**
  * One place that knows how to reach Admin Mary G.
@@ -14,32 +15,8 @@ import { Headphones, Mail, MessageCircle, Send } from '@/components/icons';
  * Every channel lives here. Change it once and every page follows.
  */
 
-export const SUPPORT = {
-    telegram: {
-        handle: 'GSADMINMARYGAGENCY',
-        url: 'https://t.me/GSADMINMARYGAGENCY',
-        label: 'Telegram',
-        detail: 'Fastest reply, usually within the hour',
-    },
-    whatsapp: {
-        number: '+254738871048',
-        url: 'https://wa.me/254738871048',
-        label: 'WhatsApp',
-        detail: 'For payments and account questions',
-    },
-    email: {
-        address: 'support@genuinesugarmummies.co.ke',
-        url: 'mailto:support@genuinesugarmummies.co.ke',
-        label: 'Email',
-        detail: 'For anything that needs a record',
-    },
-    sms: {
-        number: '+254738871048',
-        url: 'sms:+254738871048',
-        label: 'SMS',
-        detail: 'If you have no data',
-    },
-};
+// The channels themselves live in lib so the server can use them too.
+export { SUPPORT } from '@/lib/support';
 
 const ICONS = { telegram: Send, whatsapp: MessageCircle, email: Mail, sms: MessageCircle };
 
