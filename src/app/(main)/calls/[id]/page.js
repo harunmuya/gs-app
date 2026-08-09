@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { MessageCircle, Mic, MicOff, PhoneOff, RefreshCw, Video, VideoOff } from '@/components/icons';
 import { createBrowserSupabaseClient, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthContext';
+import PermissionSheet from '@/components/PermissionSheet';
+import { permissionState, wasDismissed } from '@/lib/permissions';
 
 const ICE_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -55,6 +57,8 @@ export default function CallRoomPage({ params }) {
     const pcRef = useRef(null);
     const localStreamRef = useRef(null);
     const handledSignalsRef = useRef(new Set());
+    // Which permission still needs explaining before the OS is asked.
+    const [askPermission, setAskPermission] = useState(null);
 
     const sessionIdFromUrl = searchParams.get('session');
     const role = searchParams.get('role') || (sessionIdFromUrl ? 'receiver' : 'caller');
@@ -221,6 +225,28 @@ export default function CallRoomPage({ params }) {
     }
 
     async function startMedia(activeSession) {
+        /*
+          Explain before the browser asks.
+
+          getUserMedia was previously called cold, so the member saw a bare
+          system prompt from an app that had not said why it wanted their camera
+          or microphone. A reflexive Block is remembered permanently by the
+          browser, and from then on every call failed with "Camera or microphone
+          could not open" and no route back except device settings.
+
+          Only shown when the OS has not already decided — somebody who granted
+          access last week is not asked again — and skipped if they dismissed the
+          rationale recently, so a "not now" is respected rather than nagged.
+        */
+        const needsVideo = (activeSession.call_type || callType) === 'video';
+        const needed = needsVideo ? 'camera' : 'microphone';
+        const state = await permissionState(needed);
+        if (state === 'prompt' && !wasDismissed(needed)) {
+            setAskPermission({ kind: needed, session: activeSession });
+            setStatus(needsVideo ? 'Camera and microphone needed' : 'Microphone needed');
+            return;
+        }
+
         setStatus('Opening secure call room...');
         setMediaWarning('');
         const videoEnabled = (activeSession.call_type || callType) === 'video';
@@ -419,6 +445,24 @@ export default function CallRoomPage({ params }) {
 
     return (
         <div className="min-h-dvh bg-gray-950 text-white flex flex-col">
+            {/* Shown in place of the bare OS prompt. On allow, the call picks up
+                exactly where it paused; on decline, the room stays open so the
+                member can retry or switch to messaging. */}
+            {askPermission && (
+                <PermissionSheet
+                    permission={askPermission.kind}
+                    onResolved={() => {
+                        const pending = askPermission.session;
+                        setAskPermission(null);
+                        startMedia(pending);
+                    }}
+                    onClose={() => {
+                        setAskPermission(null);
+                        setStatus('Call needs camera and microphone access. Tap Retry when you are ready.');
+                        setMediaWarning('This call cannot connect without microphone access.');
+                    }}
+                />
+            )}
             <main className="relative flex-1 overflow-hidden">
                 <video ref={remoteVideoRef} autoPlay playsInline onClick={() => remoteVideoRef.current?.play?.().catch(() => {})} className="absolute inset-0 w-full h-full object-cover bg-gray-900" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40" />

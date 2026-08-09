@@ -11,6 +11,8 @@ import BoostedMembersStrip from '@/components/BoostedMembersStrip';
 import StoriesStrip from '@/components/StoriesStrip';
 import { useAuth } from '@/contexts/AuthContext';
 import PresenceDot from '@/components/PresenceDot';
+import PermissionSheet from '@/components/PermissionSheet';
+import { permissionState, wasDismissed } from '@/lib/permissions';
 import { POLL } from '@/lib/usePolling';
 import { getProfileImageSrc, useProfileImageFallback } from '@/lib/profileImages';
 import { displayDistanceKm, distanceText as profileDistanceText } from '@/lib/geo';
@@ -284,6 +286,9 @@ export default function DiscoverPage() {
     const [loading, setLoading] = useState(true);
     const [direction, setDirection] = useState(null);
     const [notice, setNotice] = useState('');
+    // Set when location is needed and the OS has not yet been asked, so the
+    // accuracy choice can be offered before the system dialog appears.
+    const [askLocation, setAskLocation] = useState(false);
     const [liveStreams, setLiveStreams] = useState([]);
     const [geo, setGeo] = useState(null);
     const [filter, setFilter] = useState('all');
@@ -389,6 +394,41 @@ export default function DiscoverPage() {
         return () => window.clearInterval(timer);
     }, []);
 
+    /**
+     * Save a position from the device, at whichever accuracy was granted.
+     *
+     * Extracted from inside the getCurrentPosition callback so the
+     * permission sheet can reuse it — the sheet performs its own request
+     * once the member has chosen precise or approximate, and previously
+     * there was no shared path for storing the result.
+     */
+    async function applyDeviceLocation(coords, { precise = true } = {}) {
+        const next = {
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            geo_updated_at: new Date().toISOString(),
+        };
+        const label = locationLabelFromCoords(next.latitude, next.longitude);
+        setGeo(next);
+        setFilter('nearby');
+        updateProfile?.({ ...next, location: user.location || label, city: user.city || label });
+        // liveLocation follows the accuracy chosen: continuous tracking is
+        // not something to switch on for someone who asked for town-level.
+        updateSettings?.({ locationEnabled: true, liveLocation: precise });
+        setNotice(precise
+            ? `Nearby matching is on from this device: ${label}.`
+            : `Nearby matching is using your approximate area: ${label}.`);
+        try {
+            const res = await fetch('/api/location', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user.id, ...next }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) setNotice(data.error || 'Location was found but could not be saved. Try again.');
+        } catch { /* saved locally; the next refresh retries */ }
+    }
+
     async function requestNearby() {
         if (!user?.id) { router.push('/auth/login'); return; }
         async function useApproximateLocation(reason = '') {
@@ -425,6 +465,26 @@ export default function DiscoverPage() {
             await useApproximateLocation('Using approximate location for nearby matching...');
             return;
         }
+        /*
+          Offer the accuracy choice before the OS dialog.
+
+          getCurrentPosition was called cold with enableHighAccuracy, so the
+          member got a bare system prompt demanding precise location from an app
+          that had not explained why. A refusal is remembered permanently, which
+          is how the deck ends up showing "Location could not be detected" with
+          no way back.
+
+          The sheet asks in the app's own words and lets them pick approximate —
+          which is all Nearby actually needs. Someone who has already answered,
+          either way, is not asked again.
+        */
+        const locationState = await permissionState('location');
+        if (locationState === 'prompt' && !wasDismissed('location')) {
+            setAskLocation(true);
+            return;
+        }
+
+
         if (navigator.permissions?.query) {
             try {
                 const permission = await navigator.permissions.query({ name: 'geolocation' });
@@ -436,30 +496,7 @@ export default function DiscoverPage() {
         }
         setNotice('Requesting your device location...');
         navigator.geolocation.getCurrentPosition(async (position) => {
-            const next = {
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude,
-                geo_updated_at: new Date().toISOString(),
-            };
-            const label = locationLabelFromCoords(next.latitude, next.longitude);
-            setGeo(next);
-            setFilter('nearby');
-            updateProfile?.({
-                ...next,
-                location: user.location || label,
-                city: user.city || label,
-            });
-            updateSettings?.({ locationEnabled: true, liveLocation: true });
-            setNotice(`Nearby matching is on from this device: ${label}.`);
-            try {
-                const res = await fetch('/api/location', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: user.id, ...next }),
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok) setNotice(data.error || 'Location was found but could not be saved. Try again.');
-            } catch {}
+            await applyDeviceLocation(position.coords, { precise: true });
         }, async (error) => {
             if (error?.code === error.PERMISSION_DENIED) await useApproximateLocation('Precise location is off. Using approximate location instead...');
             else if (error?.code === error.TIMEOUT) await useApproximateLocation('GPS timed out. Using approximate location instead...');
@@ -716,6 +753,23 @@ export default function DiscoverPage() {
 
     return (
         <div className="px-4 py-4 pb-28 space-y-4">
+            {/* The accuracy choice, shown before the OS prompt rather than after
+                a refusal has already been recorded. Declining falls back to the
+                IP-based area so Nearby still does something useful. */}
+            {askLocation && (
+                <PermissionSheet
+                    permission="location"
+                    onResolved={(result) => {
+                        setAskLocation(false);
+                        if (result?.ok) applyDeviceLocation(result.coords, { precise: result.precise });
+                        else useApproximateLocation('Using your approximate area instead...');
+                    }}
+                    onClose={() => {
+                        setAskLocation(false);
+                        useApproximateLocation('Using your approximate area. You can turn on location any time.');
+                    }}
+                />
+            )}
             {notice && <div className="rounded-2xl p-3 text-xs font-bold text-primary bg-primary/10">{notice}</div>}
             <StoriesStrip title="Discover Stories" />
             {liveStreams.length > 0 && <section className="card-premium p-3">
