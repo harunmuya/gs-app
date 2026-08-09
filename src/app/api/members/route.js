@@ -1803,14 +1803,26 @@ export async function POST(request) {
         let result = await query.maybeSingle();
 
         if (result.error && ['42703', 'PGRST204'].includes(result.error.code)) {
-            let fallbackQuery = supabase.from('users').select(BASIC_MEMBER_FIELDS);
-            if (userId && email) fallbackQuery = fallbackQuery.eq('id', userId).eq('email', email);
-            else if (userId) fallbackQuery = fallbackQuery.eq('id', userId);
-            else fallbackQuery = fallbackQuery.eq('email', email);
-            result = await fallbackQuery.maybeSingle();
+            // `email` is not in scope here — the const declarations for it live
+            // inside later action blocks, so the previous version referenced an
+            // undeclared identifier and threw ReferenceError instead of falling
+            // back. The id from the session is the only identity this needs
+            // anyway; matching on a client-supplied email would be weaker.
+            result = await supabase
+                .from('users')
+                .select(BASIC_MEMBER_FIELDS)
+                .eq('id', userId)
+                .maybeSingle();
         }
         if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
-        if (!result.data) return NextResponse.json({ error: 'Account not found.' }, { status: 404 });
+        // 404 here signs the member out on the client, so be precise about what
+        // it means: the session resolved to an id that has no row. resolveUserId
+        // provisions a missing profile, so reaching this is a genuine anomaly
+        // rather than the routine "not signed in" case, which returns 401 above.
+        if (!result.data) {
+            console.error('[members] refresh_account: session resolved to id with no users row:', userId);
+            return NextResponse.json({ error: 'Account not found.' }, { status: 404 });
+        }
         const normalized = normalizeMember(result.data, { canViewPhone: true, includeEmail: true });
         if (isAccountRestricted(result.data)) {
             return NextResponse.json({

@@ -1302,7 +1302,21 @@ export function AuthProvider({ children }) {
     }, [settings.darkMode]);
 
     // ---- Settings ----
-    function updateSettings(updates) {
+    /**
+     * Change account settings, and only keep the change if the server took it.
+     *
+     * This used to update local state, fire the request, and end with
+     * `.catch(() => {})`. A rejected save therefore left the toggle looking
+     * switched while the server still held the old value — and refreshAccount,
+     * which runs every 60 seconds and overwrites local state from the server,
+     * would quietly flip it back. From the member's side a setting simply would
+     * not stick, with nothing on screen explaining why.
+     *
+     * Now the previous state is captured first, and a failure restores it and
+     * says so. A setting that appears to change must actually have changed.
+     */
+    async function updateSettings(updates) {
+        const previous = settings;
         const updated = { ...settings, ...updates };
         setSettings(updated);
         setStored(STORAGE_KEYS.SETTINGS, updated);
@@ -1319,21 +1333,48 @@ export function AuthProvider({ children }) {
         }
 
         if (user?.email || user?.id) {
-            fetch('/api/members', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'update_settings', memberId: user.id, email: user.email, settings: updated }),
-            })
-                .then((res) => res.json().catch(() => ({})).then((data) => ({ ok: res.ok, data })))
-                .then(({ ok, data }) => {
-                    if (ok && data.settings) applyRemoteSettings(data.settings);
-                    if (ok && data.member) {
-                        const synced = { ...user, ...accountFromMember(data.member, user.email || data.member.email || ''), preference: user.preference || preference };
-                        setUser(synced);
-                        setStored(STORAGE_KEYS.USER, synced);
-                    }
-                })
-                .catch(() => {});
+            try {
+                const res = await fetch('/api/members', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'update_settings', memberId: user.id, settings: updated }),
+                });
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok) {
+                    // Put the switch back where the member left it, rather than
+                    // letting the next refresh do it 60 seconds later without
+                    // explanation.
+                    setSettings(previous);
+                    setStored(STORAGE_KEYS.SETTINGS, previous);
+                    addMessage({
+                        type: 'security',
+                        sender: 'GS Account',
+                        senderImage: '',
+                        title: 'Setting not saved',
+                        body: data.error || 'That change could not be saved. Check your connection and try again.',
+                    });
+                    return false;
+                }
+
+                if (data.settings) applyRemoteSettings(data.settings);
+                if (data.member) {
+                    const synced = { ...user, ...accountFromMember(data.member, user.email || data.member.email || ''), preference: user.preference || preference };
+                    setUser(synced);
+                    setStored(STORAGE_KEYS.USER, synced);
+                }
+            } catch {
+                setSettings(previous);
+                setStored(STORAGE_KEYS.SETTINGS, previous);
+                addMessage({
+                    type: 'security',
+                    sender: 'GS Account',
+                    senderImage: '',
+                    title: 'Setting not saved',
+                    body: 'You appear to be offline. That change was not saved.',
+                });
+                return false;
+            }
         }
 
         // Live location toggle
@@ -1347,6 +1388,7 @@ export function AuthProvider({ children }) {
         if (updates.notifications === true && typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('gs-request-notifications'));
         }
+        return true;
     }
 
     // ---- Live Location ----
