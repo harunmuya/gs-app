@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
 import { getSessionMember, requireMember } from '@/lib/authSession';
+import { notifyMember } from '@/lib/notifyMember';
 
 function jsonError(message, status = 500) {
     return NextResponse.json({ error: message }, { status });
@@ -86,8 +87,8 @@ export async function POST(request) {
                 .maybeSingle();
             const followerName = follower?.display_name || follower?.email?.split('@')[0] || 'A member';
             const followerUsername = follower?.username ? `@${follower.username}` : '';
-            await supabase.from('user_notifications').insert({
-                user_id: targetId,
+            await notifyMember(supabase, {
+                userId: targetId,
                 type: 'follow',
                 title: `${followerName} followed you`,
                 body: followerUsername ? `${followerName} (${followerUsername}) followed your profile.` : `${followerName} followed your profile.`,
@@ -98,6 +99,7 @@ export async function POST(request) {
                     followerAvatar: follower?.avatar_url || follower?.photos?.[0] || '',
                     actionLink: `/members/${userId}`,
                 },
+                email: { template: 'follow', data: { followerName } },
             });
         } catch {}
     }

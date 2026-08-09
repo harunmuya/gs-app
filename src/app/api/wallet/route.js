@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
 import { requireMember } from '@/lib/authSession';
+import { notifyMember } from '@/lib/notifyMember';
 import { consumeQuota } from '@/lib/entitlementGuard';
 import { accountRestrictionMessage, canUseFeature, dailyLimitForFeature, getUserPackageAccess, isAccountRestricted } from '@/lib/packageAccess';
 
@@ -446,11 +447,12 @@ export async function POST(request) {
             await supabase.from('conversations').update({ last_message_at: now, updated_at: now }).eq('id', conversation.data.id);
         }
         const giftsReceivedCount = await updateGiftCounter(supabase, receiverId);
-        await supabase.from('user_notifications').insert({
-            user_id: receiverId,
+        await notifyMember(supabase, {
+            userId: receiverId,
             type: 'gift',
             title: `${gift.name} received`,
             body: `${sender?.display_name || 'A member'} sent you a ${gift.name} gift.`,
+            email: { template: 'gift', data: { senderName: sender?.display_name || 'A member', giftName: gift.name } },
             metadata: { giftId: gift.id, senderId: userId, gifUrl: gift.gif_url, iconUrl: gift.icon_url, conversationId: conversation.data?.id || null, actionLink: `/messages/${userId}` },
         });
         await supabase.from('admin_logs').insert({ action: 'gift_sent', details: { senderId: userId, receiverId, giftId: gift.id, credits: cost } });

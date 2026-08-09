@@ -10,6 +10,7 @@ import { getLocalSeedMember, localSeedRows } from '@/lib/localSeedMembers';
 import { coordinatesForProfile, displayDistanceKm, distanceKm } from '@/lib/geo';
 import { fallbackProfileImageSrc } from '@/lib/profileImages';
 import { facilitationFields, profileKindFor } from '@/lib/profileKind';
+import { notifyMember } from '@/lib/notifyMember';
 import { getSessionMember, provisionAuthUser, signInWithPassword } from '@/lib/authSession';
 import { displayMatchPercent, interleave, scoreMember } from '@/lib/discoveryRanking';
 import { consumeQuota } from '@/lib/entitlementGuard';
@@ -571,7 +572,63 @@ async function recordMemberLike(supabase, likerId, likedKey, { isSuperLike = fal
         .eq('user_high', high)
         .maybeSingle();
 
-    return { matched: Boolean(match?.id) };
+    const matched = Boolean(match?.id);
+
+    /*
+      Tell them.
+
+      This recorded the like, detected the match, and told nobody. A member could
+      be liked and matched without a single notification in the app or an email,
+      which makes the two strongest reasons to come back completely invisible.
+
+      A match notifies both sides, because both need to know they can now message.
+      A one-sided like notifies only the person who received it; telling the liker
+      "you liked someone" is noise.
+    */
+    const { data: liker } = await supabase
+        .from('users')
+        .select('id, display_name')
+        .eq('id', likerId)
+        .maybeSingle();
+    const likerName = liker?.display_name || 'A member';
+
+    if (matched) {
+        const { data: likedUser } = await supabase
+            .from('users')
+            .select('id, display_name')
+            .eq('id', likedId)
+            .maybeSingle();
+        const likedName = likedUser?.display_name || 'A member';
+        await Promise.all([
+            notifyMember(supabase, {
+                userId: likedId,
+                type: 'match',
+                title: `You matched with ${likerName}`,
+                body: 'You both liked each other. You can message now.',
+                metadata: { matchId: match.id, memberId: likerId, actionLink: `/messages/${likerId}` },
+                email: { template: 'match', data: { matchName: likerName } },
+            }),
+            notifyMember(supabase, {
+                userId: likerId,
+                type: 'match',
+                title: `You matched with ${likedName}`,
+                body: 'You both liked each other. You can message now.',
+                metadata: { matchId: match.id, memberId: likedId, actionLink: `/messages/${likedId}` },
+                email: { template: 'match', data: { matchName: likedName } },
+            }),
+        ]);
+    } else {
+        await notifyMember(supabase, {
+            userId: likedId,
+            type: isSuperLike ? 'superlike' : 'like',
+            title: isSuperLike ? `${likerName} super liked you` : `${likerName} liked your profile`,
+            body: 'Like them back to start talking.',
+            metadata: { memberId: likerId, actionLink: `/members/${likerId}` },
+            email: { template: 'like', data: { likerName, isSuperLike: Boolean(isSuperLike) } },
+        });
+    }
+
+    return { matched };
 }
 
 function parseDataUrl(dataUrl) {
