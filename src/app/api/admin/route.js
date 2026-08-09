@@ -61,6 +61,13 @@ async function packagePlanDetails(supabase, tier, fallbackPlan = {}) {
 
 async function safeSelect(supabase, table, select, options = {}) {
     let query = supabase.from(table).select(select, options.count ? { count: 'exact' } : undefined);
+    // Restrict to a set of ids. Without this an `in` option passed by a caller
+    // is silently ignored and the whole table comes back — which is exactly the
+    // failure the verification-image query below is trying to avoid.
+    if (options.in?.column && Array.isArray(options.in.values)) {
+        if (!options.in.values.length) return { data: [], count: 0, error: null };
+        query = query.in(options.in.column, options.in.values);
+    }
     if (options.order) query = query.order(options.order.column, { ascending: options.order.ascending ?? false });
     if (options.limit) query = query.limit(options.limit);
     const result = await query;
@@ -802,7 +809,20 @@ export async function GET(request) {
     const supabase = createServerSupabaseClient({ admin: true });
     if (!supabase) return jsonError('Supabase admin env missing.', 503);
 
-    const usersFullSelect = 'id, username, email, display_name, avatar_url, photos, profile_label, member_category, looking_for, phone_number, phone, subscription_tier, package_locked, package_expires_at, verified, verification_status, verification_selfie_url, verification_document_url, verification_document_type, verification_phone, verification_submitted_at, verification_rejection_reason, admin_approved, show_in_public, is_seed_profile, is_live, latitude, longitude, geo_updated_at, is_suspended, is_banned, created_at, last_seen_at, followers_count, following_count, gifts_received_count, total_profile_views';
+    /*
+      The users list, without the verification imagery.
+
+      verification_selfie_url and verification_document_url were in this select,
+      and they hold base64 data URLs rather than links: 296KB and 80KB
+      respectively across 148 rows, which was 70% of a 538KB payload sent on
+      every single panel load. Both belong to accounts that are already
+      `verified`, so the images were being shipped to render a list that never
+      displays them.
+
+      They are still fetched for the verification queue below, where they are
+      actually looked at, and that query is filtered to accounts awaiting review.
+    */
+    const usersFullSelect = 'id, username, email, display_name, avatar_url, photos, profile_label, member_category, looking_for, phone_number, phone, subscription_tier, package_locked, package_expires_at, verified, verification_status, verification_document_type, verification_phone, verification_submitted_at, verification_rejection_reason, admin_approved, show_in_public, is_seed_profile, is_live, latitude, longitude, geo_updated_at, is_suspended, is_banned, created_at, last_seen_at, followers_count, following_count, gifts_received_count, total_profile_views';
     let users = await safeSelect(supabase, 'users', usersFullSelect, { count: true, order: { column: 'created_at', ascending: false }, limit: 500 });
     if (users.error) {
         users = await safeSelect(supabase, 'users', 'id, email, display_name, avatar_url, profile_label, phone_number, subscription_tier, verified, verification_status, admin_approved, show_in_public, is_suspended, is_banned, created_at', { count: true, order: { column: 'created_at', ascending: false }, limit: 500 });
@@ -866,7 +886,26 @@ export async function GET(request) {
         return null;
     };
     const now = Date.now();
-    const pendingVerificationRows = rows.filter((u) => u.verification_status === 'pending_admin' && (u.verification_selfie_url || u.verification_document_url));
+
+    /*
+      The verification queue, fetched separately with its imagery.
+
+      The selfie and document columns hold base64 data URLs, so including them in
+      the main users select meant shipping every stored image on every panel load
+      — 376KB of it, for accounts that were already verified and would never be
+      reviewed again. This query carries them for the handful of accounts that
+      are actually waiting, which is the only place they are looked at.
+    */
+    const awaitingReview = rows.filter((u) => u.verification_status === 'pending_admin').map((u) => u.id);
+    let verificationImages = new Map();
+    if (awaitingReview.length) {
+        const withImages = await safeSelect(supabase, 'users', 'id, verification_selfie_url, verification_document_url', { in: { column: 'id', values: awaitingReview }, limit: 100 });
+        if (!withImages.error) verificationImages = new Map(withImages.data.map((u) => [u.id, u]));
+    }
+    const pendingVerificationRows = rows
+        .filter((u) => u.verification_status === 'pending_admin')
+        .map((u) => ({ ...u, ...(verificationImages.get(u.id) || {}) }))
+        .filter((u) => u.verification_selfie_url || u.verification_document_url);
     const usersMissingPhotos = rows.filter((u) => !u.avatar_url && !(Array.isArray(u.photos) && u.photos[0]) && !u.is_banned && !u.is_suspended);
     const walletRows = walletTransactions.data.map((tx) => ({ ...tx, account: findAccount(tx) }));
     const pendingPackages = packageRequests.data.filter((r) => r.status === 'pending').map((request) => ({ ...request, account: findAccount(request) }));

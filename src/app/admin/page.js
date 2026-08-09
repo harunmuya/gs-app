@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import UserModeration, { UserStateBadges } from './UserModeration';
 import {
     Activity,
     Ban,
@@ -139,6 +140,8 @@ export default function AdminPage() {
     const [checkingSession, setCheckingSession] = useState(true);
     const [activeTab, setActiveTab] = useState('users');
     const [data, setData] = useState({ users: [], messages: [], gifts: [], packageRequests: [], tickets: [], broadcasts: [], logs: [], callRequests: [], emailOutbox: [], notifications: [], ticketResponses: [], limits: [], stats: {}, attention: {}, tableErrors: {} });
+    // Which row is mid-action, so its buttons disable without freezing the list.
+    const [moderating, setModerating] = useState(null);
     const [error, setError] = useState('');
     const [notice, setNotice] = useState('');
     const [loading, setLoading] = useState(false);
@@ -369,8 +372,10 @@ export default function AdminPage() {
                                         {needsPhoto(user) && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-danger/10 text-danger">PHOTO REQUIRED</span>}
                                         {!user.username && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-gold">USERNAME AUTO</span>}
                                         {verificationReady && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-gold">BADGE REVIEW</span>}
-                                        {user.package_locked && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-danger/10 text-danger">PACKAGE LOCKED</span>}
                                     </div>
+                                    {/* One consistent set of state chips, instead of ad-hoc spans
+                                        that each invented their own colour. */}
+                                    <div className="mt-1"><UserStateBadges user={user} /></div>
                                 </div>
                             </div>
 
@@ -389,21 +394,32 @@ export default function AdminPage() {
                                     </div>
                                 ))}
                             </div>
+                            {/*
+                              Moderation, grouped.
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                <button onClick={() => adminAction({ action: user.show_in_public ? 'hide_user' : 'show_user', userId: user.id }, user.show_in_public ? 'User hidden' : 'User shown')} className="min-h-10 rounded-xl px-3 py-2 text-xs font-semibold bg-primary/10 text-primary">{user.show_in_public ? 'Hide From Members' : 'Show In Members'}</button>
-                                <button onClick={() => adminAction({ action: user.package_locked ? 'unlock_package' : 'lock_package', userId: user.id }, user.package_locked ? 'Package unlocked' : 'Package locked')} className="min-h-10 rounded-xl px-3 py-2 text-xs font-semibold bg-amber-100 text-gold flex items-center justify-center gap-1">{user.package_locked ? <Unlock size={13} /> : <Lock size={13} />} {user.package_locked ? 'Unlock Package' : 'Lock Package'}</button>
-                            </div>
+                              These controls were four separate grids plus a loose
+                              delete button, with ban next to restore and no
+                              confirmation on anything except delete. They are now
+                              grouped by what they affect — access, listing, package —
+                              and every destructive action confirms on a second click.
+
+                              It also exposes approve_user, approve_profile and
+                              revoke_verification, which the API has always implemented
+                              and the panel never offered.
+                            */}
+                            <UserModeration
+                                user={user}
+                                busy={moderating === user.id}
+                                onAction={async (action, success) => {
+                                    setModerating(user.id);
+                                    try { await adminAction({ action, userId: user.id }, success); }
+                                    finally { setModerating(null); }
+                                }}
+                            />
 
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                                {TIERS.map((tier) => <button key={tier} onClick={() => adminAction({ action: 'set_package', userId: user.id, tier, locked: false }, `${tier} package set`)} className={`min-h-9 px-2 py-2 rounded-lg text-[10px] font-semibold ${String(user.subscription_tier || 'free') === tier ? 'gradient-primary text-white' : 'bg-gray-100 text-text-secondary'}`}>{tier}</button>)}
+                                {TIERS.map((tier) => <button key={tier} onClick={() => adminAction({ action: 'set_package', userId: user.id, tier }, `Package set to ${tier}`)} className="rounded-xl px-2 py-2 text-[11px] font-semibold bg-primary/10 text-primary">{tierText(tier)}</button>)}
                             </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                <button onClick={() => adminAction({ action: user.is_suspended || user.is_banned ? 'restore_user' : 'suspend_user', userId: user.id }, user.is_suspended || user.is_banned ? 'User restored' : 'User suspended')} className="min-h-10 rounded-xl px-3 py-2 text-xs font-semibold bg-gray-900 text-white">{user.is_suspended || user.is_banned ? 'Restore Account' : 'Suspend Account'}</button>
-                                <button onClick={() => adminAction({ action: user.is_banned ? 'unban_user' : 'ban_user', userId: user.id }, user.is_banned ? 'User unbanned' : 'User banned')} className="min-h-10 rounded-xl px-3 py-2 text-xs font-semibold bg-danger/10 text-danger">{user.is_banned ? 'Unban User' : 'Ban User'}</button>
-                            </div>
-
                             <button onClick={() => window.confirm(`Permanently delete ${user.display_name || user.email || 'this account'}? This removes the profile, messages, activity, and login, then blocks the same email from silently returning.`) && adminAction({ action: 'delete_user_forever', userId: user.id }, 'User permanently deleted')} className="w-full min-h-10 rounded-xl px-3 py-2 text-xs font-semibold bg-danger text-white">Delete Forever</button>
 
                             <div className="rounded-xl p-2 space-y-2 bg-surface">
