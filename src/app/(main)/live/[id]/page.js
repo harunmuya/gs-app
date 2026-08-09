@@ -45,6 +45,7 @@ export default function WatchLivePage({ params }) {
     const pcRef = useRef(null);
     const channelRef = useRef(null);
     const seenGiftIdsRef = useRef(new Set());
+    const chatRef = useRef(null);
 
     async function loadLive() {
         const res = await fetch(`/api/live?streamId=${encodeURIComponent(id)}`);
@@ -231,6 +232,12 @@ export default function WatchLivePage({ params }) {
         });
     }, [gifts]);
 
+    // Keep the chat pinned to the newest line as comments arrive.
+    useEffect(() => {
+        const box = chatRef.current;
+        if (box) box.scrollTop = box.scrollHeight;
+    }, [comments.length]);
+
     async function sendComment(event) {
         event.preventDefault();
         if (!user?.id) {
@@ -246,7 +253,14 @@ export default function WatchLivePage({ params }) {
             setStatus(data.error || 'Comment failed.');
             return;
         }
-        setComments((items) => [...items.slice(-80), { ...(data.comment || {}), id: data.comment?.id || `${Date.now()}`, content: body, user: { display_name: user.display_name || 'You' } }]);
+        /*
+          The optimistic echo has to use the same field the list reads.
+
+          It wrote `content` while the list renders `comment.body`, so your own
+          message appeared as your name followed by nothing until the next poll
+          replaced it. The column is `body`; that is what goes in here.
+        */
+        setComments((items) => [...items.slice(-80), { ...(data.comment || {}), id: data.comment?.id || `${Date.now()}`, body, user: { display_name: user.display_name || 'You' } }]);
         loadLive();
     }
 
@@ -294,40 +308,74 @@ export default function WatchLivePage({ params }) {
     return (
         <div className="min-h-dvh bg-gray-950 text-white">
             <div className="relative min-h-dvh overflow-hidden" onDoubleClick={addHeart}>
+                {/*
+                  Backdrop, then broadcast, then scrim.
+
+                  The pink and teal radial wash used to be painted after the
+                  video, so it tinted the host's actual picture: every stream
+                  came through with coloured blotches over the middle of it.
+                  Both decorative layers now sit behind the video, where they
+                  only show while there is nothing to broadcast, and a plain
+                  dark scrim over the top carries the text.
+                */}
                 <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-teal-950 to-rose-950" />
-                <video ref={remoteVideoRef} autoPlay playsInline onClick={() => remoteVideoRef.current?.play?.().catch(() => {})} className="absolute inset-0 h-full w-full object-cover bg-gray-950" />
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(240,68,114,.28),transparent_30%),radial-gradient(circle_at_70%_70%,rgba(14,143,131,.32),transparent_34%)]" />
+                <video ref={remoteVideoRef} autoPlay playsInline onClick={() => remoteVideoRef.current?.play?.().catch(() => {})} className="absolute inset-0 h-full w-full object-cover" />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-black/55" />
                 {hearts.map((heart) => <span key={heart.id} className="pointer-events-none absolute bottom-24 text-3xl animate-[float_1.9s_ease-out_forwards]" style={{ left: `${heart.left}%` }}>♥</span>)}
 
+                {/*
+                  The header carries the three things a viewer wants on sight:
+                  who is broadcasting, that it is live right now, and how many
+                  other people are here. Everything else moved out of the way.
+                */}
                 <header className="relative z-10 flex items-center gap-3 p-4">
-                    <Link href="/live" className="flex h-10 w-10 items-center justify-center rounded-full bg-black/35"><ArrowLeft size={19} /></Link>
-                    <UserAvatar name={host.display_name || 'Member'} src={hostPhoto} size={44} />
-                    <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-bold">{stream?.title || 'GS Live'}</p>
-                        <p className="truncate text-xs text-white/70">{host.display_name || 'Member'} · {formatDuration(seconds)}</p>
+                    <Link href="/live" aria-label="Back to live streams" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/45 backdrop-blur"><ArrowLeft size={19} /></Link>
+                    <div className="flex min-w-0 flex-1 items-center gap-3 rounded-full bg-black/45 py-1.5 pl-1.5 pr-4 backdrop-blur">
+                        <UserAvatar name={host.display_name || 'Member'} src={hostPhoto} size={40} />
+                        <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-bold">{host.display_name || 'Member'}</p>
+                            <p className="truncate type-caption text-white/70">{stream?.title || 'Live now'}</p>
+                        </div>
                     </div>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-danger px-3 py-1 text-xs font-semibold"><Users size={12} /> {stream?.viewer_count || 0}</span>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-danger px-2.5 py-1 text-[11px] font-black uppercase tracking-wide">
+                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" /> Live
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-black/45 px-2.5 py-1 text-[11px] font-semibold backdrop-blur">
+                            <Users size={11} /> {stream?.viewer_count || 0}
+                        </span>
+                    </div>
                 </header>
 
                 <main className="relative z-10 flex min-h-[calc(100dvh-160px)] flex-col justify-end p-4">
                     {status && <p className="mb-3 rounded-2xl bg-white/15 p-3 text-xs font-bold">{status}</p>}
-                    <div className="mb-3 grid grid-cols-5 gap-2 text-center text-[10px] font-semibold">
-                        {[
-                            [Clock, formatDuration(seconds), 'time'],
-                            [Eye, stream?.total_views || 0, 'views'],
-                            [Heart, stream?.total_likes || 0, 'likes'],
-                            [MessageCircle, stream?.total_comments ?? comments.length, 'chat'],
-                            [Gift, stream?.total_gifts ?? gifts.length, 'gifts'],
-                        ].map(([Icon, value, label]) => (
-                            <div key={label} className="rounded-2xl bg-black/35 px-2 py-2 backdrop-blur">
-                                <Icon size={13} className="mx-auto mb-1" />
-                                <p>{value}</p>
-                                <p className="text-white/60">{label}</p>
-                            </div>
-                        ))}
+                    {/*
+                      One quiet line instead of five boxes.
+
+                      The counters were a grid of tiles in 10px type, which is
+                      below the size anything should be read at, and two of the
+                      five repeated the duration and viewer count already in the
+                      header. They sit in a single row now, out of the way of the
+                      broadcast, at a size that can actually be read.
+                    */}
+                    <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 type-caption text-white/75">
+                        <span className="inline-flex items-center gap-1.5"><Clock size={13} /> {formatDuration(seconds)}</span>
+                        <span className="inline-flex items-center gap-1.5"><Eye size={13} /> {stream?.total_views || 0}</span>
+                        <span className="inline-flex items-center gap-1.5"><Heart size={13} /> {stream?.total_likes || 0}</span>
+                        <span className="inline-flex items-center gap-1.5"><MessageCircle size={13} /> {stream?.total_comments ?? comments.length}</span>
+                        <span className="inline-flex items-center gap-1.5"><Gift size={13} /> {stream?.total_gifts ?? gifts.length}</span>
                     </div>
-                    <div className="max-h-64 space-y-2 overflow-auto pb-3">
-                        {comments.slice(-40).map((comment) => <p key={comment.id} className="w-fit max-w-[88%] rounded-2xl bg-black/35 px-3 py-2 text-xs backdrop-blur"><b>{comment.user?.display_name || 'Member'}:</b> {comment.body}</p>)}
+                    {/* The chat holds itself at the newest message. It used to
+                        stay wherever it was, so arriving comments scrolled out
+                        of sight and the stream looked dead. */}
+                    <div ref={chatRef} className="max-h-64 space-y-2 overflow-auto pb-3">
+                        {comments.slice(-40).map((comment) => (
+                            <p key={comment.id} className="w-fit max-w-[88%] rounded-2xl bg-black/45 px-3 py-2 text-xs backdrop-blur">
+                                <b className="text-white/70">{comment.user?.display_name || 'Member'}</b>{' '}
+                                <span className="text-white">{comment.body}</span>
+                            </p>
+                        ))}
                     </div>
                     {giftPanelOpen && <div className="mb-3 rounded-3xl bg-white p-3 text-text-primary shadow-2xl">
                         <div className="mb-2 flex items-center justify-between">

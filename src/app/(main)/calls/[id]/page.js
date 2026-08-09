@@ -2,10 +2,11 @@
 
 import { use, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { MessageCircle, Mic, MicOff, PhoneOff, RefreshCw, Video, VideoOff } from '@/components/icons';
+import { MessageCircle, Mic, MicOff, Phone, PhoneOff, RefreshCw, Video, VideoOff } from '@/components/icons';
 import { createBrowserSupabaseClient, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthContext';
 import PermissionSheet from '@/components/PermissionSheet';
+import UserAvatar from '@/components/UserAvatar';
 import { permissionState, wasDismissed } from '@/lib/permissions';
 
 const ICE_SERVERS = [
@@ -59,12 +60,37 @@ export default function CallRoomPage({ params }) {
     const handledSignalsRef = useRef(new Set());
     // Which permission still needs explaining before the OS is asked.
     const [askPermission, setAskPermission] = useState(null);
+    /*
+      Who is on the other end.
+
+      The screen said "GS Call" and nothing else. On a video call you at least
+      see a face; on a voice call it was a black rectangle with a status line,
+      and nothing anywhere told you who you were speaking to or who was ringing.
+      Every phone app in existence leads with the name and the photo, because
+      that is the only thing the person actually needs to know.
+    */
+    const [peer, setPeer] = useState(null);
+    const [remoteLive, setRemoteLive] = useState(false);
 
     const sessionIdFromUrl = searchParams.get('session');
     const role = searchParams.get('role') || (sessionIdFromUrl ? 'receiver' : 'caller');
     const acceptedFromUrl = searchParams.get('accept') === '1';
     const receiverId = role === 'caller' ? peerId : user?.id;
     const otherUserId = role === 'caller' ? peerId : peerId;
+
+    /*
+      Name and photo, from whichever source has them.
+
+      The profile fetch is the best answer but arrives a moment later, so the
+      session metadata (written when the call was created) covers the gap. A
+      call screen that says Member briefly is still better than one that never
+      says who it is.
+    */
+    const peerName = peer?.name
+        || (role === 'caller' ? session?.metadata?.receiverName : session?.metadata?.callerName)
+        || 'GS Member';
+    // The members endpoint returns the photo as avatarUrl; photos is the gallery.
+    const peerPhoto = peer?.avatarUrl || (Array.isArray(peer?.photos) ? peer.photos[0] : '') || '';
 
     useEffect(() => {
         if (!user?.id || !peerId) return;
@@ -112,6 +138,21 @@ export default function CallRoomPage({ params }) {
             cleanupCall();
         };
     }, [user?.id, peerId, sessionIdFromUrl]);
+
+    // Load the other person's name and photo so the screen can say who this is.
+    useEffect(() => {
+        if (!peerId || String(peerId).startsWith('@')) return undefined;
+        let alive = true;
+        (async () => {
+            try {
+                const res = await fetch(`/api/members?id=${encodeURIComponent(peerId)}`, { cache: 'no-store' });
+                const data = await res.json().catch(() => ({}));
+                const found = (data.members || [])[0];
+                if (alive && found) setPeer(found);
+            } catch { /* the name falls back to the session metadata below */ }
+        })();
+        return () => { alive = false; };
+    }, [peerId]);
 
     useEffect(() => {
         if (!['accepted', 'active'].includes(session?.status)) return;
@@ -271,6 +312,9 @@ export default function CallRoomPage({ params }) {
             } catch {}
         }
         pc.ontrack = (event) => {
+            // Only a video track should hide the identity layer; an audio only
+            // stream still needs the name and photo on screen.
+            if (event.track?.kind === 'video') setRemoteLive(true);
             if (remoteVideoRef.current) {
                 remoteVideoRef.current.srcObject = event.streams[0];
                 remoteVideoRef.current.muted = false;
@@ -465,34 +509,155 @@ export default function CallRoomPage({ params }) {
             )}
             <main className="relative flex-1 overflow-hidden">
                 <video ref={remoteVideoRef} autoPlay playsInline onClick={() => remoteVideoRef.current?.play?.().catch(() => {})} className="absolute inset-0 w-full h-full object-cover bg-gray-900" />
+
+                {/* The scrim sits on the video and nothing else. It used to be
+                    painted last, which meant it dimmed every layer above it. */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40" />
-                <video ref={localVideoRef} autoPlay muted playsInline className="absolute right-4 top-4 w-28 h-40 rounded-2xl object-cover bg-black border border-white/20" />
-                <div className="absolute left-4 right-4 top-5">
-                    <p className="text-xs uppercase tracking-wide text-white/70">{callType === 'video' ? 'Video Call' : 'Voice Call'}</p>
-                    <h1 className="text-xl font-black">GS Call</h1>
-                    <p className="text-sm text-white/75">{status}{['accepted', 'active'].includes(session?.status) ? ` · ${formatDuration(duration)}` : ''}</p>
-                    {role === 'receiver' && session?.status === 'ringing' && <div className="mt-4 max-w-sm rounded-3xl bg-white/10 p-4 backdrop-blur-xl border border-white/15">
-                        <p className="text-sm font-bold">Incoming {callType === 'video' ? 'video' : 'voice'} call</p>
-                        <p className="mt-1 text-xs text-white/70">Answer inside GS App or decline the call. This call is handled through your app account and Supabase call records.</p>
-                        <div className="mt-4 flex gap-3">
-                            <button onClick={declineIncoming} className="h-12 flex-1 rounded-2xl bg-danger font-black text-white">Decline</button>
-                            <button onClick={acceptIncoming} className="h-12 flex-1 rounded-2xl bg-success font-black text-white">Accept</button>
+
+                {/*
+                  The identity layer.
+
+                  Shown whenever there is no remote video to look at, which is
+                  every voice call and the whole of the connecting phase on a
+                  video one. Without it the screen was black with the words
+                  "GS Call", so a member answering had no idea who was on the
+                  line until somebody spoke.
+                */}
+                {!remoteLive && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-8">
+                        <div className="relative">
+                            <UserAvatar name={peerName} src={peerPhoto} size={132} className="ring-4 ring-white/15" />
+                            {/* A quiet pulse while ringing, so a still screen does not read as frozen. */}
+                            {session?.status === 'ringing' && (
+                                <span className="absolute inset-0 animate-ping rounded-full ring-2 ring-white/25" />
+                            )}
                         </div>
-                    </div>}
-                    {mediaWarning && <div className="mt-3 max-w-sm rounded-2xl bg-amber-400/20 px-3 py-3 text-xs font-bold text-amber-100 space-y-2">
+                        <div className="text-center">
+                            <h1 className="type-display text-white">{peerName}</h1>
+                            <p className="mt-1 type-body text-white/70">
+                                {callType === 'video' ? 'Video call' : 'Voice call'}
+                                {['accepted', 'active'].includes(session?.status) ? ` · ${formatDuration(duration)}` : ''}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {/* The self view belongs on a video call only. On a voice call it
+                    was a black rectangle pinned to the corner for no reason. */}
+                {callType === 'video' && (
+                    <video ref={localVideoRef} autoPlay muted playsInline className="absolute right-4 top-4 h-40 w-28 rounded-2xl border border-white/20 bg-black object-cover" />
+                )}
+
+                <div className="absolute left-4 right-4 top-5">
+                    {/* Once video is flowing the name moves up here, so it never
+                        covers the person you are looking at. */}
+                    {remoteLive && (
+                        <>
+                            <h1 className="type-title text-white">{peerName}</h1>
+                            <p className="type-caption text-white/70">{formatDuration(duration)}</p>
+                        </>
+                    )}
+                    <p className="mt-1 type-caption text-white/75">{status}</p>
+                    {mediaWarning && <div className="mt-3 max-w-sm space-y-2 rounded-2xl bg-amber-400/20 px-3 py-3 text-xs font-bold text-amber-100">
                         <p>{mediaWarning}</p>
                         <p className="text-white/70">Detected: {deviceInfo.checked ? `${deviceInfo.audioInputs} mic, ${deviceInfo.videoInputs} camera` : 'device check unavailable'}</p>
                         <div className="flex flex-wrap gap-2">
-                            <button onClick={retryMedia} className="inline-flex items-center gap-1 rounded-xl bg-white/15 px-3 py-2 text-white"><RefreshCw size={13} /> Retry</button>
-                            <button onClick={() => router.push(`/messages/${peerId}`)} className="inline-flex items-center gap-1 rounded-xl bg-white/15 px-3 py-2 text-white"><MessageCircle size={13} /> Message</button>
+                            <button onClick={retryMedia} className="inline-flex min-h-11 items-center gap-1 rounded-xl bg-white/15 px-3 py-2 text-white"><RefreshCw size={13} /> Retry</button>
+                            <button onClick={() => router.push(`/messages/${peerId}`)} className="inline-flex min-h-11 items-center gap-1 rounded-xl bg-white/15 px-3 py-2 text-white"><MessageCircle size={13} /> Message</button>
                         </div>
                     </div>}
                 </div>
             </main>
-            {!(role === 'receiver' && session?.status === 'ringing') && <footer className="p-5 flex items-center justify-center gap-4 bg-black">
-                <button onClick={toggleMute} className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center">{muted ? <MicOff /> : <Mic />}</button>
-                {callType === 'video' && <button onClick={toggleCamera} className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center">{cameraOff ? <VideoOff /> : <Video />}</button>}
-                <button onClick={() => endCall('ended')} className="w-16 h-16 rounded-full bg-danger flex items-center justify-center"><PhoneOff /></button>
+
+            {/*
+              Answering.
+
+              This was a small translucent card floated over the top left corner,
+              with Decline first and a line of copy that mentioned Supabase call
+              records to the member. It now answers from the bottom of the screen
+              where a thumb already is, with Accept on the right, the way every
+              phone has done it for fifteen years.
+            */}
+            {role === 'receiver' && session?.status === 'ringing' && (
+                <footer className="bg-black px-6 pb-8 pt-5">
+                    <p className="text-center type-caption text-white/60">
+                        Incoming {callType === 'video' ? 'video' : 'voice'} call
+                    </p>
+                    <div className="mx-auto mt-4 flex max-w-sm items-center justify-between gap-6">
+                        <button
+                            type="button"
+                            onClick={declineIncoming}
+                            aria-label="Decline the call"
+                            className="flex flex-1 flex-col items-center gap-2"
+                        >
+                            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-danger text-white shadow-lg shadow-black/50">
+                                <PhoneOff size={26} />
+                            </span>
+                            <span className="type-caption text-white/70">Decline</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={acceptIncoming}
+                            aria-label="Accept the call"
+                            className="flex flex-1 flex-col items-center gap-2"
+                        >
+                            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-success text-white shadow-lg shadow-black/50">
+                                {callType === 'video' ? <Video size={26} /> : <Phone size={26} />}
+                            </span>
+                            <span className="type-caption text-white/70">Accept</span>
+                        </button>
+                    </div>
+                </footer>
+            )}
+            {/*
+              The control bar.
+
+              Three unlabelled grey circles told you nothing about what they did
+              or which state they were in: a muted mic and a live mic sat in the
+              same grey, distinguishable only by a small glyph. Each control now
+              carries a word underneath, an aria-label, and a fill that changes
+              when it is switched on, so mute reads as mute at a glance.
+            */}
+            {!(role === 'receiver' && session?.status === 'ringing') && <footer className="flex items-center justify-center gap-6 bg-black px-5 pb-8 pt-5">
+                <button
+                    type="button"
+                    onClick={toggleMute}
+                    aria-pressed={muted}
+                    aria-label={muted ? 'Unmute your microphone' : 'Mute your microphone'}
+                    className="flex w-20 flex-col items-center gap-2"
+                >
+                    <span className={`flex h-14 w-14 items-center justify-center rounded-full transition ${muted ? 'bg-white text-gray-950' : 'bg-white/10 text-white'}`}>
+                        {muted ? <MicOff size={22} /> : <Mic size={22} />}
+                    </span>
+                    <span className="type-caption text-white/70">{muted ? 'Unmute' : 'Mute'}</span>
+                </button>
+
+                {callType === 'video' && (
+                    <button
+                        type="button"
+                        onClick={toggleCamera}
+                        aria-pressed={cameraOff}
+                        aria-label={cameraOff ? 'Turn your camera on' : 'Turn your camera off'}
+                        className="flex w-20 flex-col items-center gap-2"
+                    >
+                        <span className={`flex h-14 w-14 items-center justify-center rounded-full transition ${cameraOff ? 'bg-white text-gray-950' : 'bg-white/10 text-white'}`}>
+                            {cameraOff ? <VideoOff size={22} /> : <Video size={22} />}
+                        </span>
+                        <span className="type-caption text-white/70">{cameraOff ? 'Camera on' : 'Camera off'}</span>
+                    </button>
+                )}
+
+                <button
+                    type="button"
+                    onClick={() => endCall('ended')}
+                    aria-label="End the call"
+                    className="flex w-20 flex-col items-center gap-2"
+                >
+                    <span className="flex h-16 w-16 items-center justify-center rounded-full bg-danger text-white shadow-lg shadow-black/50">
+                        <PhoneOff size={26} />
+                    </span>
+                    <span className="type-caption text-white/70">End</span>
+                </button>
             </footer>}
         </div>
     );
