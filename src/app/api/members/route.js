@@ -1735,6 +1735,45 @@ export async function POST(request) {
         return NextResponse.json({ ok: true, persisted: !result.error });
     }
 
+    /*
+      Mark notifications read, on the server.
+
+      Reading was previously a local-only change: markActivityRead and
+      markMessagesRead updated React state and localStorage and nothing else. No
+      server action existed to record it, so all 387 notifications in this
+      database are still flagged unread. The badge therefore came back in full
+      on any other device, after clearing site data, or after a reinstall, and
+      one member is carrying a permanent 16.
+
+      Scoped to the signed-in member: a notification id belonging to somebody
+      else is simply not matched, so passing one does nothing.
+    */
+    if (action === 'mark_notifications_read') {
+        const userId = await resolveUserId();
+        if (!userId) return NextResponse.json({ error: 'Sign in to update your notifications.' }, { status: 401 });
+
+        const ids = Array.isArray(body.notificationIds)
+            ? body.notificationIds.map((id) => String(id)).filter(Boolean).slice(0, 200)
+            : [];
+
+        let query = supabase
+            .from('user_notifications')
+            .update({ read: true, read_at: new Date().toISOString() })
+            .eq('user_id', userId)
+            .eq('read', false);
+
+        // No ids means "mark everything read", which is what the Mark all
+        // control does. With ids, only those rows are touched.
+        if (ids.length) query = query.in('id', ids);
+
+        const { error, count } = await query.select('id', { count: 'exact' });
+        if (error) {
+            console.error('[members] mark_notifications_read failed:', error.message);
+            return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+        return NextResponse.json({ ok: true, marked: count ?? 0 });
+    }
+
     if (action === 'account_inbox') {
         // Inbox is the signed-in member's own. Resolving it from a body id or a
         // bare email let anyone read another member's notifications.

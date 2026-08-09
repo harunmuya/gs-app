@@ -553,15 +553,45 @@ export function AuthProvider({ children }) {
      * cleared the unread state of every other, and a member had no way to tell
      * what they had actually seen.
      */
+    /**
+     * Record on the server that notifications have been read.
+     *
+     * Reading was local only, so every badge reset itself on another device or
+     * after clearing storage. Fire and forget: the UI has already updated, and
+     * a failed write means the badge reappears on the next load rather than
+     * anything breaking.
+     *
+     * `all` marks everything unread for this member, which is what the "Mark all
+     * read" control means, and avoids sending several hundred ids.
+     */
+    const persistNotificationsRead = useCallback((notificationIds, all = false) => {
+        if (!all && !notificationIds?.length) return;
+        fetch('/api/members', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'mark_notifications_read',
+                ...(all ? {} : { notificationIds }),
+            }),
+        }).catch(() => { /* the badge simply returns on the next load */ });
+    }, []);
+
     const markActivityRead = useCallback((id) => {
         setActivity(prev => {
             const updated = id
                 ? prev.map(a => (String(a.id) === String(id) ? { ...a, read: true } : a))
                 : prev.map(a => ({ ...a, read: true }));
             setStored(STORAGE_KEYS.ACTIVITY, updated);
+            // Activity entries that came from a server notification carry its id.
+            const notificationIds = updated
+                .filter((a) => (id ? String(a.id) === String(id) : true))
+                .map((a) => String(a.id || ''))
+                .filter((key) => key.startsWith('admin-'))
+                .map((key) => key.slice(6));
+            persistNotificationsRead(notificationIds, !id);
             return updated;
         });
-    }, []);
+    }, [persistNotificationsRead]);
 
     // ---- Messages ----
     const addMessage = useCallback((msg) => {
@@ -588,9 +618,18 @@ export function AuthProvider({ children }) {
                 ? prev.map(m => (String(m.id) === String(id) ? { ...m, read: true, unreadCount: 0 } : m))
                 : prev.map(m => ({ ...m, read: true, unreadCount: 0 }));
             setStored(STORAGE_KEYS.MESSAGES, updated);
+
+            // Persist it. Inbox items carry an "admin-" prefixed id built from
+            // the notification row, so the prefix is stripped to recover it.
+            const notificationIds = updated
+                .filter((m) => (id ? String(m.id) === String(id) : true))
+                .map((m) => String(m.id || ''))
+                .filter((key) => key.startsWith('admin-'))
+                .map((key) => key.slice(6));
+            persistNotificationsRead(notificationIds, !id);
             return updated;
         });
-    }, []);
+    }, [persistNotificationsRead]);
 
     async function syncAccountToServer(account, auth = {}) {
         if (!account?.email) return { error: 'Email is required' };
