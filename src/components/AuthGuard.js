@@ -6,7 +6,17 @@ import { useEffect } from 'react';
 import Logo from '@/components/Logo';
 
 export default function AuthGuard({ children }) {
-    const { user, loading, signOut } = useAuth();
+    const { user, loading, sessionChecked, signOut } = useAuth();
+    /*
+      Wait for the server session check before deciding anyone is signed out.
+
+      This used to redirect as soon as `loading` went false and `user` was null —
+      but `user` comes from localStorage, so a member holding a perfectly valid
+      Supabase session was bounced to the login screen the moment local storage
+      was empty. AuthContext now asks the server who it thinks you are;
+      `sessionChecked` is what says that answer has arrived.
+    */
+    const settling = loading || !sessionChecked;
     const router = useRouter();
     const pathname = usePathname();
     const restricted = Boolean(
@@ -18,7 +28,7 @@ export default function AuthGuard({ children }) {
     );
 
     useEffect(() => {
-        if (loading) return;
+        if (settling) return;
         if (!user) {
             router.replace('/auth/login');
             return;
@@ -29,9 +39,9 @@ export default function AuthGuard({ children }) {
         }
         // No longer lock the app for incomplete profiles —
         // ProfileCompletionModal handles this gracefully
-    }, [user, loading, restricted, router, pathname, signOut]);
+    }, [user, settling, restricted, router, pathname, signOut]);
 
-    if (loading) {
+    if (settling) {
         return (
             <div className="min-h-dvh flex items-center justify-center" style={{ background: 'var(--gradient-primary)' }}>
                 <div className="flex flex-col items-center gap-4">

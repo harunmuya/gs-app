@@ -284,6 +284,9 @@ export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [guest, setGuest] = useState(false);
     const [loading, setLoading] = useState(true);
+    // False until the server session has been consulted, so AuthGuard does not
+    // redirect a member who has a valid session but no local storage entry.
+    const [sessionChecked, setSessionChecked] = useState(false);
     const [likes, setLikes] = useState([]);
     const [matches, setMatches] = useState([]);
     const [passes, setPasses] = useState([]);
@@ -316,6 +319,60 @@ export function AuthProvider({ children }) {
         setLiveLocationData(getStored(STORAGE_KEYS.LIVE_LOCATION, null));
         setLoading(false);
     }, []);
+
+    /**
+     * Recover the member from the server session when local storage has none.
+     *
+     * "Signed in" was decided entirely by the `gscom_user` entry in
+     * localStorage. The Supabase session — the thing the server actually trusts —
+     * was never consulted at boot. So a valid session with no local entry read as
+     * signed out: AuthGuard saw `user === null`, redirected to /auth/login, and
+     * the member was told to sign in while already holding a working session.
+     * That happens after clearing site data, in a fresh Capacitor webview whose
+     * storage is separate, in a private window, or whenever localStorage is
+     * evicted — and it looked exactly like being randomly logged out.
+     *
+     * refresh_account resolves identity from the session cookie alone, so it is
+     * the right question to ask here: "who does the server think I am?" A 401
+     * means genuinely signed out and the redirect is correct.
+     *
+     * SIGNED_OUT_UNTIL is respected so that signing out does not immediately
+     * re-hydrate from a cookie that is still being torn down.
+     */
+    useEffect(() => {
+        if (loading) return undefined;
+        if (user || guest) { setSessionChecked(true); return undefined; }
+        const signedOutUntil = Number(getStored(STORAGE_KEYS.SIGNED_OUT_UNTIL, 0) || 0);
+        if (signedOutUntil && Date.now() < signedOutUntil) { setSessionChecked(true); return undefined; }
+
+        let alive = true;
+        (async () => {
+            try {
+                const res = await fetch('/api/members', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'refresh_account' }),
+                });
+                if (!alive || !res.ok) return;
+                const data = await res.json().catch(() => ({}));
+                if (!alive || !data.member) return;
+                const recovered = accountFromMember(data.member, data.member.email || '');
+                if (recovered.access_blocked) return;
+                setUser(recovered);
+                setGuest(false);
+                setStored(STORAGE_KEYS.USER, recovered);
+                setStored(STORAGE_KEYS.GUEST, false);
+            } catch {
+                // Offline, or no session. Either way the redirect to sign in is
+                // the correct outcome.
+            } finally {
+                // Always release AuthGuard, including on failure — otherwise a
+                // dead network would hold every screen on the splash forever.
+                if (alive) setSessionChecked(true);
+            }
+        })();
+        return () => { alive = false; };
+    }, [loading, user, guest]);
 
     useEffect(() => {
         // Google OAuth is disabled for the GS app because provider redirects leave
@@ -1722,7 +1779,7 @@ export function AuthProvider({ children }) {
     }
 
     const value = {
-        user, guest, loading, profile: user,
+        user, guest, loading, sessionChecked, profile: user,
         likes, matches, saved, activity, settings,
         messages, verificationStatus, verificationTimer, realProfilePool,
         preference, subscribed, liveLocationData,
