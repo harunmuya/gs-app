@@ -1,3 +1,14 @@
+-- SUPERSEDED by 20260809_010 and 20260809_020 — DO NOT RUN.
+--
+-- Its trigger inserts member_matches.is_super_match, a column 20260809_010
+-- omitted; since 010 has already created the table, this file's CREATE TABLE
+-- IF NOT EXISTS is a no-op and the trigger would fail on every mutual like.
+--
+-- Its trigger also inserts user_notifications, which recordMemberLike now does
+-- through notifyMember with an email attached. Running both double-notifies.
+--
+-- 20260809_020 carries the corrected trigger. Kept for its reasoning only.
+/*
 -- Make likes, swipes and matches real.
 --
 -- Two problems, both silent.
@@ -213,3 +224,5 @@ COMMIT;
 --   -- withdrawing a like removes the match
 --   DELETE FROM member_likes WHERE liker_id = '<B>' AND liked_id = '<A>';
 --   SELECT count(*) FROM member_matches;                  -- 0
+
+*/
