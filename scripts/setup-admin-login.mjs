@@ -82,7 +82,49 @@ function askHidden(question) {
  * come from somewhere other than a prompt without ever being an argument —
  * arguments show up in shell history and process listings.
  */
+/**
+ * Generate a strong password locally.
+ *
+ * Uses only letters, digits and hyphens. Not because symbols are weak, but
+ * because this gets typed into a PowerShell command line where $ ( ) & ^ ! are
+ * interpreted — a symbol-heavy password is what left the previous attempt stuck
+ * at a `>>` continuation prompt with the password echoed to the screen.
+ *
+ * Two words for recall plus ten random characters. The words contribute 10 bits
+ * and the random tail 58, so roughly 68 bits in total — an earlier version of
+ * this used three words and three digits, which I described as "around 60 bits"
+ * when measurement put it at 25. The random tail is doing the real work here;
+ * the words are only there so it can be read aloud and written down.
+ *
+ * Printed once, on this machine, and never transmitted.
+ */
+function generatePassword() {
+    const words = [
+        'anchor', 'bamboo', 'cobalt', 'dune', 'ember', 'fjord', 'granite', 'harbour',
+        'indigo', 'jasper', 'kettle', 'lantern', 'meadow', 'nimbus', 'onyx', 'pebble',
+        'quarry', 'ridge', 'summit', 'timber', 'umber', 'valley', 'walnut', 'yonder',
+        'basalt', 'cedar', 'delta', 'flint', 'gorge', 'hollow', 'ivory', 'juniper',
+    ];
+    // No look-alikes: 0/O and 1/l/I are a support call waiting to happen when
+    // someone reads this off a screen.
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    const byte = () => randomBytes(2).readUInt16BE(0);
+    const pick = (list) => list[byte() % list.length];
+    const cap = (w) => w[0].toUpperCase() + w.slice(1);
+    const tail = Array.from({ length: 10 }, () => pick(alphabet)).join('');
+    return `${cap(pick(words))}-${cap(pick(words))}-${tail}`;
+}
+
 async function readPassword() {
+    if (process.argv.includes('--generate')) {
+        const generated = generatePassword();
+        console.log('Generated a password on this machine:\n');
+        console.log(`    ${generated}\n`);
+        console.log('Write it down now. It is shown here once and nowhere else —');
+        console.log('only its hash is uploaded, and a hash cannot be reversed.\n');
+        return { password: generated, confirmed: true };
+    }
+
     const fromEnv = process.env.ADMIN_NEW_PASSWORD;
     if (fromEnv) {
         console.log('Using ADMIN_NEW_PASSWORD from the environment.\n');
