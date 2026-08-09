@@ -18,7 +18,7 @@ export default function SafetyPage() {
                     <ul className="list-disc pl-5 space-y-1">
                         <li>Never send money to someone you haven&apos;t met in person, no matter what reason they give</li>
                         <li>Be suspicious of anyone who asks for M-Pesa, bank transfers, or airtime before meeting you</li>
-                        <li>Scammers often create fake emergencies — &quot;I&apos;m stuck&quot;, &quot;I need transport money&quot;, &quot;hospital bill&quot; — to pressure you into sending money quickly</li>
+                        <li>Scammers often create fake emergencies. &quot;I&apos;m stuck&quot;, &quot;I need transport money&quot;, &quot;hospital bill&quot;. To pressure you into sending money quickly</li>
                         <li>No genuine member will ask you to pay for verification, special access, or &quot;connection fees&quot;</li>
                         <li>If someone promises you a job, sponsorship, or large sums of money in exchange for a small upfront payment, it is almost certainly a scam</li>
                     </ul>
@@ -34,10 +34,10 @@ export default function SafetyPage() {
                     <h2 className="text-base font-black text-text-primary pt-2">Meeting in Person</h2>
                     <p>If you decide to meet someone from the Platform in person, take these precautions:</p>
                     <ul className="list-disc pl-5 space-y-1">
-                        <li>Always meet in a public place — a restaurant, coffee shop, or busy area</li>
+                        <li>Always meet in a public place. A restaurant, coffee shop, or busy area</li>
                         <li>Tell a friend or family member where you&apos;re going, who you&apos;re meeting, and when you expect to be back</li>
                         <li>Arrange your own transport. Don&apos;t get into a stranger&apos;s car on the first meeting</li>
-                        <li>Trust your instincts — if something feels off, leave</li>
+                        <li>Trust your instincts. If something feels off, leave</li>
                         <li>Don&apos;t drink too much or leave your drink unattended</li>
                         <li>Have your phone charged and keep emergency contacts accessible</li>
                     </ul>

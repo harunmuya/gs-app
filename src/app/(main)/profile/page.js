@@ -127,7 +127,9 @@ function AccountMenu({
                 <MenuRow icon={Settings} label="Settings" value="Notifications, theme, visibility" onClick={() => onOpen('settings')} />
                 <MenuRow icon={Eye} label="Account status" value={verified ? 'Verified account' : 'Not verified'} onClick={() => onOpen('status')} />
                 <MenuRow icon={Shield} label="Safety centre" href="/safety" />
-                <MenuRow icon={FileText} label="Community guidelines" href="/community-guidelines" last />
+                <MenuRow icon={FileText} label="Community guidelines" href="/community-guidelines" />
+                <MenuRow icon={BadgeCheck} label="How verification works" value="What the badge proves" href="/verification" />
+                <MenuRow icon={Users} label="Facilitated introductions" value="Why some profiles cannot be messaged" href="/facilitation" last />
             </MenuGroup>
 
             <MenuGroup title="Support">

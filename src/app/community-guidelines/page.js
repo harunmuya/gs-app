@@ -25,7 +25,7 @@ export default function CommunityGuidelinesPage() {
                         <li>No harassment or repeated unwanted contact after someone has declined</li>
                         <li>No threats of any kind, whether physical, financial, or emotional</li>
                         <li>No discrimination based on ethnicity, religion, gender, body type, or background</li>
-                        <li>Accept rejection gracefully — not everyone will be interested, and that&apos;s okay</li>
+                        <li>Accept rejection gracefully. Not everyone will be interested, and that&apos;s okay</li>
                     </ul>
 
                     <h2 className="text-base font-black text-text-primary pt-2">Keep It Legal and Safe</h2>
@@ -51,7 +51,7 @@ export default function CommunityGuidelinesPage() {
                     <h2 className="text-base font-black text-text-primary pt-2">Profile Photos and Content</h2>
                     <p>Your profile represents you to the community. Follow these guidelines for photos and content:</p>
                     <ul className="list-disc pl-5 space-y-1">
-                        <li>Use clear, recent photos of yourself — group photos where it&apos;s unclear who you are should not be your main photo</li>
+                        <li>Use clear, recent photos of yourself. Group photos where it&apos;s unclear who you are should not be your main photo</li>
                         <li>No nudity or explicitly sexual photos in your profile</li>
                         <li>No photos of other people without their consent</li>
                         <li>No images promoting violence, drugs, or illegal activities</li>
@@ -61,7 +61,7 @@ export default function CommunityGuidelinesPage() {
                     <h2 className="text-base font-black text-text-primary pt-2">Messaging Etiquette</h2>
                     <p>Keep your messages respectful and genuine. Here are some guidelines:</p>
                     <ul className="list-disc pl-5 space-y-1">
-                        <li>Start conversations politely — a simple greeting goes a long way</li>
+                        <li>Start conversations politely. A simple greeting goes a long way</li>
                         <li>Don&apos;t send unsolicited explicit messages or images</li>
                         <li>Don&apos;t spam members with repeated messages if they haven&apos;t responded</li>
                         <li>Don&apos;t use messaging to advertise products, services, or other platforms</li>
@@ -83,7 +83,7 @@ export default function CommunityGuidelinesPage() {
                     <p>Each person is allowed one account. Creating multiple accounts to evade bans, manipulate the system, or deceive other members will result in all associated accounts being permanently removed.</p>
 
                     <h2 className="text-base font-black text-text-primary pt-2">Be Part of the Solution</h2>
-                    <p>A good community is built by its members. By being honest, respectful, and looking out for each other, you help make Genuine Sugar Mummies a better place for everyone. If you have suggestions for improving the platform or community, reach out through our Support section — we&apos;re always listening.</p>
+                    <p>A good community is built by its members. By being honest, respectful, and looking out for each other, you help make Genuine Sugar Mummies a better place for everyone. If you have suggestions for improving the platform or community, reach out through our Support section. We&apos;re always listening.</p>
                 </div>
             </section>
         </main>
