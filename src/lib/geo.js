@@ -25,10 +25,46 @@ export const KNOWN_PLACES = [
     { name: 'Bujumbura', aliases: ['bujumbura'], latitude: -3.3614, longitude: 29.3599 },
     { name: 'Juba', aliases: ['juba'], latitude: 4.8594, longitude: 31.5713 },
     { name: 'Addis Ababa', aliases: ['addis ababa', 'addis'], latitude: 8.9806, longitude: 38.7578 },
-    { name: 'Lagos', aliases: ['lagos'], latitude: 6.5244, longitude: 3.3792 },
+    { name: 'Lagos', aliases: ['lagos', 'ikotun'], latitude: 6.5244, longitude: 3.3792 },
     { name: 'Accra', aliases: ['accra'], latitude: 5.6037, longitude: -0.1870 },
     { name: 'Johannesburg', aliases: ['johannesburg', 'joburg'], latitude: -26.2041, longitude: 28.0473 },
     { name: 'Cape Town', aliases: ['cape town'], latitude: -33.9249, longitude: 18.4241 },
+
+    /*
+      Added from the places members have actually entered, not from a guess at
+      which towns matter.
+
+      Only 22 of 148 accounts carry coordinates, so 95 rely on this lookup to
+      produce a distance at all. It could not place 20 of them, including Nyeri,
+      Kisii and Kericho, which are county capitals. Those members saw no distance
+      on any card and were excluded from Nearby entirely, which reads as the
+      feature being broken rather than as missing data.
+
+      The slug form (transnzoia-kitale) comes from the old WordPress category
+      import. The West African cities are members who signed up from outside
+      Kenya; placing them honestly is better than showing nothing.
+    */
+    { name: 'Nyeri', aliases: ['nyeri'], latitude: -0.4201, longitude: 36.9476 },
+    { name: 'Kisii', aliases: ['kisii'], latitude: -0.6817, longitude: 34.7667 },
+    { name: 'Kericho', aliases: ['kericho'], latitude: -0.3689, longitude: 35.2861 },
+    { name: 'Homa Bay', aliases: ['homa bay', 'homabay'], latitude: -0.5273, longitude: 34.4571 },
+    { name: 'Isiolo', aliases: ['isiolo'], latitude: 0.3546, longitude: 37.5822 },
+    { name: 'Malindi', aliases: ['malindi'], latitude: -3.2192, longitude: 40.1169 },
+    { name: 'Kitale', aliases: ['kitale', 'transnzoia', 'trans nzoia'], latitude: 1.0157, longitude: 35.0062 },
+    { name: 'Ngong', aliases: ['ngong'], latitude: -1.3526, longitude: 36.6558 },
+    { name: 'Mlolongo', aliases: ['mlolongo'], latitude: -1.3872, longitude: 36.9276 },
+    { name: 'Utawala, Nairobi', aliases: ['utawala'], latitude: -1.2833, longitude: 36.9500 },
+    { name: 'Kenol, Murang\'a', aliases: ['kenol'], latitude: -0.9833, longitude: 37.1333 },
+    { name: 'Githunguri', aliases: ['githunguri'], latitude: -1.0500, longitude: 36.7667 },
+    { name: 'Karuri, Kiambu', aliases: ['karuri'], latitude: -1.1667, longitude: 36.7167 },
+    { name: 'Kikima, Makueni', aliases: ['kikima'], latitude: -1.6167, longitude: 37.5000 },
+    { name: 'Konza, Machakos', aliases: ['konza'], latitude: -1.7500, longitude: 37.1167 },
+    { name: 'Kikuyu, Kiambu', aliases: ['kikuyu'], latitude: -1.2465, longitude: 36.6636 },
+    { name: 'Kiambu', aliases: ['kiambu'], latitude: -1.1714, longitude: 36.8356 },
+
+    // Members outside Kenya.
+    { name: 'Abuja', aliases: ['abuja'], latitude: 9.0765, longitude: 7.3986 },
+    { name: 'Effiduase, Ashanti', aliases: ['effiduase'], latitude: 6.8500, longitude: -1.4000 },
 ];
 
 function isNairobiMetro(coords = {}) {
