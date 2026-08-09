@@ -119,10 +119,12 @@ export default function ProfileDetailPage({ params }) {
         setLiked(true);
         addLike(profile);
 
-        if (shouldMatchProfile(profile, user, settings)) {
-            const score = computeMatchScore(profile, user, settings);
-            addMatch(profile, score);
-        }
+        // No match is declared here. shouldMatchProfile hashed the profile id
+        // and rolled the result against a compatibility score to decide whether
+        // to announce a match, so a member could be told they had matched with
+        // somebody who had never opened their profile. Reciprocity is decided by
+        // the member_matches trigger, which fires only when both people have
+        // liked each other, and account_state reports what it finds there.
     };
 
     const handleSave = () => {

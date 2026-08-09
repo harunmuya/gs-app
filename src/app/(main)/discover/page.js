@@ -647,7 +647,10 @@ export default function DiscoverPage() {
             return;
         }
         const score = matchScore(target, user);
-        if (score >= 93) addMatch(profile, score);
+        // No addMatch here. A match requires the other person to have liked back,
+        // which the member_matches trigger decides and account_state reports.
+        // Calling it on a score told members they had matched with people who had
+        // never seen their profile.
         addMessage?.({ type: 'like', sender: 'You', title: `You liked ${target.name}`, body: `${score}% compatibility. Keep interacting to turn this into a stronger match.`, memberId: target.id, senderImage: target.avatarUrl });
     }
 
@@ -665,7 +668,7 @@ export default function DiscoverPage() {
             return;
         }
         const score = Math.min(99, matchScore(target, user) + 5);
-        if (score >= 88) addMatch(profile, score);
+        // See handleLike: reciprocity is the database's call, not the score's.
         addMessage?.({ type: 'superlike', sender: 'You', title: `You super liked ${target.name}`, body: `${score}% compatibility. This profile was added to your priority interactions.`, memberId: target.id, senderImage: target.avatarUrl });
     }
 

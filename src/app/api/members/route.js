@@ -1794,7 +1794,53 @@ export async function POST(request) {
             source: row.metadata?.source || '',
         });
         const likes = rows.filter((row) => row.action === 'like' || row.action === 'superlike').map(mapInteraction);
-        const matches = rows.filter((row) => row.action === 'match').map(mapInteraction);
+        /*
+          Matches come from member_matches, which only the reciprocity trigger
+          writes.
+
+          This used to read rows where action = 'match' in user_interactions,
+          and those rows were written by the client: discover called addMatch
+          whenever a compatibility score cleared 93, and shouldMatchProfile
+          rolled a hash-based dice against the score to decide. So a member could
+          like somebody, be told "Matched with X, 94% compatible", and open a
+          conversation with a person who had never seen their profile. The score
+          is a ranking heuristic; it is not consent from the other side.
+
+          member_matches is written only when both people have liked each other,
+          enforced in the database. If it is empty, nobody has matched, and
+          saying otherwise is the fabrication this rebuild has been removing
+          everywhere else.
+        */
+        const { data: matchRows } = await supabase
+            .from('member_matches')
+            .select('id, user_low, user_high, is_super_match, created_at')
+            .or(`user_low.eq.${userId},user_high.eq.${userId}`)
+            .order('created_at', { ascending: false })
+            .limit(200);
+
+        const partnerIds = [...new Set((matchRows || []).map((row) => (row.user_low === userId ? row.user_high : row.user_low)))];
+        const { data: partners } = partnerIds.length
+            ? await supabase.from('users').select('id, display_name, avatar_url, photos, profile_label, verified, last_seen_at').in('id', partnerIds)
+            : { data: [] };
+        const partnersById = new Map((partners || []).map((row) => [row.id, row]));
+
+        const matches = (matchRows || []).map((row) => {
+            const partnerId = row.user_low === userId ? row.user_high : row.user_low;
+            const partner = partnersById.get(partnerId);
+            if (!partner) return null;
+            return {
+                wpId: partner.id,
+                id: partner.id,
+                name: partner.display_name || 'Member',
+                imageUrl: partner.avatar_url || (Array.isArray(partner.photos) ? partner.photos[0] : '') || '',
+                profileLabel: partner.profile_label || '',
+                verified: Boolean(partner.verified),
+                lastSeenAt: partner.last_seen_at || null,
+                matchedAt: row.created_at,
+                super: Boolean(row.is_super_match),
+                mutual: true,
+            };
+        }).filter(Boolean);
         const passes = rows.filter((row) => row.action === 'pass' || row.action === 'swipe_pass').map((row) => row.profile_key);
         const interactionSaved = rows.filter((row) => row.action === 'save').map(mapInteraction);
         const tableSaved = savesResult.error ? [] : (savesResult.data || []).map((row) => ({
