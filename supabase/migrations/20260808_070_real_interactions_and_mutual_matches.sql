@@ -13,8 +13,15 @@
 --       user_id, profile_wp_id, profile_name, profile_image, score, seen
 --    — one-sided stored recommendations against WordPress profile ids. There is
 --    no second member and no reciprocity, so the product had no concept of mutual
---    interest at all. `member_likes` already had the right shape
---    (liker_id, liked_id, UNIQUE) and zero rows, because nothing wrote to it.
+--    interest at all. `member_likes` has the right columns
+--    (liker_id, liked_id) and zero rows, because nothing wrote to it.
+--
+-- CORRECTION, 9 Aug 2026: an earlier version of this comment said member_likes
+-- already carried a UNIQUE on (liker_id, liked_id). It does not, and that was
+-- never verified. recordMemberLike upserts on that pair, so the write fails with
+-- "no unique or exclusion constraint matching the ON CONFLICT specification" and
+-- the trigger below never fires. 20260809_010 adds the missing constraint; run it
+-- alongside this migration.
 --
 -- This creates the missing interaction table, and makes a match what the word
 -- means: both people liked each other.
