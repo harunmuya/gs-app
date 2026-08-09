@@ -229,6 +229,30 @@
   .tint-primary {
     background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);
   }
+  /* Completes the set. The admin panel used bg-amber-100, bg-sky-100 and
+     bg-rose-100 — fixed Tailwind light-mode swatches that stay pale on a dark
+     surface, leaving pale-on-pale badges unreadable in the dark theme. */
+  /* The card surface as a class. The admin panel used literal bg-white for
+     inner panels, which is white in both themes — white text on white in dark
+     mode. */
+  .bg-card {
+    background-color: var(--color-bg-card);
+  }
+  .tint-warning {
+    background-color: color-mix(in srgb, var(--accent-gift) 14%, transparent);
+  }
+  .tint-info {
+    background-color: color-mix(in srgb, var(--accent-call) 12%, transparent);
+  }
+  .tint-accent {
+    background-color: color-mix(in srgb, var(--accent-match) 12%, transparent);
+  }
+  .text-warning {
+    color: var(--accent-gift);
+  }
+  .text-info {
+    color: var(--accent-call);
+  }
 
   .text-gold {
     color: var(--color-gold);
