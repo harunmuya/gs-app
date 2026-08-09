@@ -11,6 +11,7 @@ import BoostedMembersStrip from '@/components/BoostedMembersStrip';
 import StoriesStrip from '@/components/StoriesStrip';
 import { getProfileImageSrc, useProfileImageFallback } from '@/lib/profileImages';
 import { distanceText as profileDistanceText } from '@/lib/geo';
+import PermissionSheet from '@/components/PermissionSheet';
 
 const VALID_PROFILE_LABELS = new Set(['sugar_mummy', 'sugar_daddy', 'mistress', 'toyboy']);
 
@@ -155,6 +156,36 @@ export default function MatchesPage() {
     const [followed, setFollowed] = useState({});
     const currentProfileLabel = userProfileLabel(user);
     const [locationTick, setLocationTick] = useState(0);
+    const [askLocation, setAskLocation] = useState(false);
+    const hasLocation = Boolean(user?.latitude && user?.longitude);
+
+    /**
+     * Store a position chosen from the permission sheet.
+     *
+     * Mirrors Discover's applyDeviceLocation, and fires the same
+     * gs-location-updated event so the ranking below re-runs immediately rather
+     * than waiting for a navigation.
+     */
+    async function saveMatchLocation(result) {
+        setAskLocation(false);
+        if (!result?.ok || !user?.id) return;
+        const next = {
+            latitude: result.coords.latitude,
+            longitude: result.coords.longitude,
+            geo_updated_at: new Date().toISOString(),
+        };
+        try {
+            await fetch('/api/location', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user.id, ...next }),
+            });
+        } catch { /* kept locally; the next load retries */ }
+        window.dispatchEvent(new CustomEvent('gs-location-updated', {
+            detail: { source: result.precise ? 'device' : 'approximate', location: next },
+        }));
+        setLocationTick((value) => value + 1);
+    }
 
     useEffect(() => {
         function onLocationUpdated() {
@@ -208,6 +239,37 @@ export default function MatchesPage() {
 
     return (
         <div className="px-4 py-4 pb-28 space-y-5">
+            {askLocation && (
+                <PermissionSheet
+                    permission="location"
+                    onResolved={saveMatchLocation}
+                    onClose={() => setAskLocation(false)}
+                />
+            )}
+
+            {/*
+              Matches ranks by distance but had no way to ask for a location — it
+              only listened for gs-location-updated, an event fired by Discover.
+              A member who came straight here saw "Ranked by location" with no
+              location and nothing offering to fix it.
+            */}
+            {!askLocation && !hasLocation && (
+                <button
+                    type="button"
+                    onClick={() => setAskLocation(true)}
+                    className="flex min-h-[56px] w-full items-center gap-3 rounded-2xl p-3 text-left"
+                    style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}
+                >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl tint-primary">
+                        <MapPin size={18} className="text-primary" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                        <span className="block type-body-strong text-text-primary">Sort matches by distance</span>
+                        <span className="block type-caption text-text-muted">Choose precise or approximate — you decide how much to share.</span>
+                    </span>
+                </button>
+            )}
+
             <div className="flex items-center justify-between gap-3">
                 <div>
                     <h1 className="text-xl font-black text-text-primary">Smart Matches</h1>

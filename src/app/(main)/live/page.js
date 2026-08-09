@@ -7,6 +7,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import UserAvatar from '@/components/UserAvatar';
 import { createBrowserSupabaseClient, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { useEntitlements } from '@/lib/useEntitlements';
+import PermissionSheet from '@/components/PermissionSheet';
+import { permissionState, wasDismissed } from '@/lib/permissions';
 import { POLL } from '@/lib/usePolling';
 
 const ICE_SERVERS = [
@@ -46,6 +48,8 @@ export default function LivePage() {
     const [title, setTitle] = useState('');
     const [activeStream, setActiveStream] = useState(null);
     const [status, setStatus] = useState('');
+    // Camera rationale, shown before the OS dialog covers the status line.
+    const [askCamera, setAskCamera] = useState(false);
     const [seconds, setSeconds] = useState(0);
     const videoRef = useRef(null);
     const streamRef = useRef(null);
@@ -215,6 +219,20 @@ export default function LivePage() {
             setStatus('Camera and microphone are not available on this device.');
             return null;
         }
+        /*
+          Explain before the OS asks.
+
+          "Your device will ask for camera and microphone access" was set as a
+          status line and then getUserMedia fired immediately — the member had no
+          chance to read it before the system dialog covered it. A Block here is
+          permanent, and Go Live would then fail on every attempt with no way
+          back short of device settings.
+        */
+        if (await permissionState('camera') === 'prompt' && !wasDismissed('camera')) {
+            setAskCamera(true);
+            setStatus('Camera and microphone needed to broadcast.');
+            return null;
+        }
         try {
             setStatus('Your device will ask for camera and microphone access.');
             window.dispatchEvent(new CustomEvent('gs-media-permission-requested', { detail: { source: 'live', video: true } }));
@@ -280,6 +298,13 @@ export default function LivePage() {
 
     return (
         <div className="px-4 py-4 pb-28 space-y-5">
+            {askCamera && (
+                <PermissionSheet
+                    permission="camera"
+                    onResolved={() => { setAskCamera(false); startPreview(); }}
+                    onClose={() => { setAskCamera(false); setStatus('Go Live needs camera and microphone access.'); }}
+                />
+            )}
             <section className="rounded-3xl overflow-hidden relative min-h-[360px]" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                 <video ref={videoRef} autoPlay muted playsInline className="absolute inset-0 h-full w-full object-cover bg-gray-900" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-black/45" />
