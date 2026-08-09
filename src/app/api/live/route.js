@@ -247,7 +247,26 @@ export async function GET(request) {
         || Number(b.total_comments || 0) - Number(a.total_comments || 0)
         || new Date(b.started_at || b.created_at || 0) - new Date(a.started_at || a.created_at || 0)
     ));
-    return NextResponse.json({ ok: true, streams });
+    /*
+      Cached at the edge for 30 seconds.
+
+      This list is identical for every viewer: it carries no session state and no
+      per-member flags, unlike the stories feed (likedByMe, viewedByMe) or the
+      packages endpoint (quota counts), which for that reason are left uncached.
+
+      Every signed-in client polls this every 45 seconds, and it was answering
+      "public, max-age=0, must-revalidate" with X-Vercel-Cache: MISS, so each
+      poll invoked the function. With a 30 second edge cache most polls are
+      served without one, which matters while the account is over its request
+      allowance.
+
+      30 seconds is well inside the 90 second heartbeat timeout, so a stream that
+      ends is still reflected quickly, and the abandoned-stream sweep still runs
+      at least twice a minute.
+    */
+    return NextResponse.json({ ok: true, streams }, {
+        headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' },
+    });
 }
 
 export async function POST(request) {
