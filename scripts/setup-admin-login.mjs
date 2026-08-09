@@ -39,18 +39,75 @@ function hashPassword(password) {
     return `${PASSWORD_PREFIX}:${salt}:${scryptSync(clean, salt, 64).toString('hex')}`;
 }
 
+/**
+ * Read a line without echoing it.
+ *
+ * The first version of this listened for stdin 'data' and re-drew the prompt on
+ * every keystroke. That fights readline's own echo and cursor handling — on
+ * Windows it reprinted the prompt and captured nothing, so two correct entries
+ * still reported "they do not match".
+ *
+ * Overriding _writeToOutput is the supported way: readline writes the prompt
+ * through it once, and everything after that is the echo of what is being typed,
+ * which is exactly what should be suppressed.
+ */
 function askHidden(question) {
     return new Promise((resolve) => {
         const rl = createInterface({ input: stdin, output: stdout, terminal: true });
-        const mask = () => { stdout.clearLine(0); stdout.cursorTo(0); stdout.write(question); };
-        stdin.on('data', mask);
-        rl.question(question, (value) => {
-            stdin.removeListener('data', mask);
+        let settled = false;
+        const finish = (value) => {
+            if (settled) return;
+            settled = true;
             rl.close();
             stdout.write('\n');
             resolve(value);
-        });
+        };
+        let muted = false;
+        rl._writeToOutput = (str) => { if (!muted) rl.output.write(str); };
+        // Stdin closing without an answer must still settle the promise. Without
+        // this the await never resolves and node exits with an "unsettled
+        // top-level await" warning instead of saying what went wrong.
+        rl.on('close', () => finish(''));
+        rl.question(question, finish);
+        // The prompt has been written; everything from here is keystroke echo.
+        muted = true;
     });
+}
+
+/**
+ * Password source.
+ *
+ * The hidden prompt is preferred, but a terminal that will not cooperate should
+ * not be a dead end. ADMIN_NEW_PASSWORD is read if set, which lets the value
+ * come from somewhere other than a prompt without ever being an argument —
+ * arguments show up in shell history and process listings.
+ */
+async function readPassword() {
+    const fromEnv = process.env.ADMIN_NEW_PASSWORD;
+    if (fromEnv) {
+        console.log('Using ADMIN_NEW_PASSWORD from the environment.\n');
+        return { password: fromEnv, confirmed: true };
+    }
+    // A prompt needs a real terminal. Say so before asking, rather than asking
+    // and appearing to hang.
+    if (!stdin.isTTY) {
+        console.error('This needs an interactive terminal, and stdin is not one.');
+        console.error('Pass the password through the environment for a single command instead:\n');
+        console.error('  PowerShell:  $env:ADMIN_NEW_PASSWORD="your-password"; node scripts/setup-admin-login.mjs; $env:ADMIN_NEW_PASSWORD=$null');
+        console.error('  Git Bash:    ADMIN_NEW_PASSWORD="your-password" node scripts/setup-admin-login.mjs\n');
+        process.exit(1);
+    }
+
+    const password = await askHidden('Choose an admin password (hidden, nothing will appear): ');
+    if (!password) {
+        console.error('\nNothing was read from the prompt. Your terminal may not support hidden input.');
+        console.error('Set it as an environment variable for one command instead:\n');
+        console.error('  PowerShell:  $env:ADMIN_NEW_PASSWORD="your-password"; node scripts/setup-admin-login.mjs; $env:ADMIN_NEW_PASSWORD=$null');
+        console.error('  Git Bash:    ADMIN_NEW_PASSWORD="your-password" node scripts/setup-admin-login.mjs\n');
+        process.exit(1);
+    }
+    const confirm = await askHidden('Type it again: ');
+    return { password, confirmed: password === confirm };
 }
 
 /** Run a command, optionally feeding it a value on stdin. */
@@ -77,10 +134,9 @@ async function setEnv(name, value) {
 
 console.log(`Admin login setup for ${ADMIN_EMAIL}\n`);
 
-const password = await askHidden('Choose an admin password (hidden): ');
-const confirm = await askHidden('Type it again: ');
+const { password, confirmed } = await readPassword();
 
-if (password !== confirm) {
+if (!confirmed) {
     console.error('\nThey do not match. Nothing was changed.');
     process.exit(1);
 }
