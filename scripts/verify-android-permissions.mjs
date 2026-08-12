@@ -83,6 +83,33 @@ if (!existsSync(ACTIVITY) || !existsSync(MANIFEST)) {
     check('no permission is documented that the app cannot request',
         !/READ_CONTACTS|CALL_PHONE/.test(contract));
 
+    console.log('\nAn update can actually install over the old app');
+    {
+        /*
+          Android refuses an install whose versionCode is not higher than the
+          one on the device. This sat at 1 from the first build, so any rebuild
+          would have failed to update anybody: they would see "App not
+          installed" and be told to uninstall first, losing their local state.
+          That is the exact opposite of shipping an update.
+        */
+        const gradle = readFileSync(join('android', 'app', 'build.gradle'), 'utf8');
+        const versionCode = Number((gradle.match(/versionCode\s+(\d+)/) || [])[1] || 0);
+        check('versionCode has been moved off the default', versionCode > 1,
+            `currently ${versionCode}`);
+
+        /*
+          The web layer reaching installed users without a new APK depends
+          entirely on this. If server.url were ever dropped, the app would load
+          a bundle frozen at build time and every fix would need a release.
+        */
+        const capacitor = JSON.parse(readFileSync('capacitor.config.json', 'utf8'));
+        check('the app loads the site remotely', Boolean(capacitor.server?.url),
+            capacitor.server?.url || 'no server.url, every fix would need a new APK');
+        check('it points at the production deployment',
+            String(capacitor.server?.url || '').startsWith('https://'),
+            capacitor.server?.url || '');
+    }
+
     console.log(`\n${pass} passed, ${fail} failed`);
     process.exitCode = fail ? 1 : 0;
 }

@@ -7,8 +7,24 @@ android {
         applicationId "ke.co.genuinesugarmummies.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        /*
+          versionCode must increase for every APK that is meant to replace an
+          installed one. Android refuses an install whose versionCode is not
+          higher than the version already on the device, so a rebuild that left
+          this at 1 could not update anybody: they would see "App not installed"
+          and be told to uninstall first, which loses their local state.
+
+          It had never moved off 1. Bump it on every release, and keep the
+          signing keystore the same, because a different signature is refused
+          for the same reason.
+
+          Most changes do not need a release at all. The app loads the site from
+          a remote URL, so the whole web layer updates itself on next launch. An
+          APK is only needed when something native changes: the manifest, or
+          MainActivity. Version 2 carries the WebView permission bridge.
+        */
+        versionCode 2
+        versionName "1.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
