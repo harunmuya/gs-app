@@ -25,8 +25,25 @@ export const metadata = {
     authors: [{ name: 'Genuine Sugar Mummies' }],
     creator: 'Genuine Sugar Mummies',
     metadataBase: new URL('https://genuinesugarmummies.co.ke'),
-    alternates: {
-        canonical: '/',
+    /*
+      Nothing here is indexed, and it says so in its own metadata as well as in
+      the X-Robots-Tag header set in next.config.js. Two independent statements
+      of the same thing, because one of them being dropped by a refactor should
+      not quietly put member photographs into image search.
+
+      The canonical that used to sit here is gone. It pointed every page on this
+      deployment at the website's homepage, which is wrong twice over: a canonical
+      is a claim that two URLs are the same page, and /terms here is not the
+      website's front page. Google also treats noindex and canonical together as
+      a contradiction, since one says do not index this and the other says index
+      that instead. The website ranks on its own pages; this one simply stays out
+      of the way.
+    */
+    robots: {
+        index: false,
+        follow: false,
+        nocache: true,
+        googleBot: { index: false, follow: false },
     },
     openGraph: {
         title: 'Genuine Sugar Mummies - Find Your Perfect Match',

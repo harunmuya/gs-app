@@ -64,6 +64,34 @@ const nextConfig = {
         ],
       },
       {
+        /*
+          Keep the app out of search entirely.
+
+          genuinesugarmummies.co.ke is the property that ranks. This deployment
+          is the product behind it, and anything a crawler finds here is either
+          a duplicate of a page on the site, competing with it for the same
+          terms, or a shell that renders nothing to a signed out visitor.
+
+          robots.txt is not enough on its own. It asks a crawler not to fetch a
+          URL, which means a URL discovered from a link elsewhere can still be
+          indexed, listed with no snippet because the crawler was never allowed
+          to read it. X-Robots-Tag is served with the response itself and is
+          what actually keeps it out of the index.
+
+          noimageindex matters here specifically. Member photographs are served
+          from this deployment, and image search is the one route by which a
+          member's face could surface publicly without their profile ever being
+          indexed at all.
+        */
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'X-Robots-Tag',
+            value: 'noindex, nofollow, noarchive, noimageindex',
+          },
+        ],
+      },
+      {
         source: '/(.*)',
         headers: [
           {
