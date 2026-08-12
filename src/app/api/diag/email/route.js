@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { sendEmail } from '@/lib/email';
+import { sendAndLogEmail } from '@/lib/email';
+import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
 
 /**
  * Can this deployment actually send mail, right now?
@@ -82,7 +83,16 @@ export async function GET(request) {
     */
     const fromOverride = String(url.searchParams.get('from') || '').trim();
 
-    const attempt = await sendEmail({
+    /*
+      Logged to email_outbox like any other send.
+
+      The first version called sendEmail directly, so a successful test left no
+      trace and verify-email-delivery went on reporting the outage that had just
+      been fixed. A health check that cannot see the thing proving it healthy is
+      not much of a health check.
+    */
+    const db = createServerSupabaseClient({ admin: true });
+    const attempt = await sendAndLogEmail(db, {
         to,
         subject: 'GS delivery test',
         text: 'This is a delivery test from Genuine Sugar Mummies. Nothing is wrong with your account.',
