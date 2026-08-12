@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import SupportContact from '@/components/SupportContact';
+import PolicyBackLink from '@/components/PolicyBackLink';
 
 export const metadata = {
     title: 'Contact Support | Genuine Sugar Mummies',
@@ -28,9 +29,7 @@ export default function ContactPage() {
     return (
         <main className="min-h-dvh app-shell px-5 py-8">
             <div className="mx-auto max-w-2xl space-y-5">
-                <Link href="/auth/login" className="inline-flex min-h-11 items-center type-caption font-semibold text-primary">
-                    Back to sign in
-                </Link>
+                <PolicyBackLink />
 
                 <header>
                     <h1 className="type-display text-text-primary">Contact support</h1>

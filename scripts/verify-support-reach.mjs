@@ -55,8 +55,8 @@ console.log('\nOne source of truth for the handle');
 console.log('\nReach');
 
 const mainLayout = read(join('src', 'app', '(main)', 'layout.js'));
-check('the signed-in shell mounts the support launcher', /<SupportLauncher \/>/.test(mainLayout));
-check('the launcher is imported', /import SupportLauncher from '@\/components\/SupportLauncher'/.test(mainLayout));
+check('the signed-in shell mounts the help centre', /<HelpCentre \/>/.test(mainLayout));
+check('the help centre is imported', /import HelpCentre from '@\/components\/HelpCentre'/.test(mainLayout));
 
 // Every signed-in page must sit inside that shell, or it is not covered.
 {
@@ -69,7 +69,7 @@ check('the launcher is imported', /import SupportLauncher from '@\/components\/S
 
 // The pages outside the shell each need their own route to support.
 {
-    const launcher = read(join('src', 'components', 'SupportLauncher.js'));
+    const launcher = read(join('src', 'components', 'HelpCentre.js'));
     check('the launcher stays off the call and live screens',
         /\/\^\\\/calls\\\//.test(launcher) || /\^\\\/calls\\\//.test(launcher),
         'so it never covers End Call');
@@ -87,13 +87,16 @@ check('the launcher is imported', /import SupportLauncher from '@\/components\/S
 
 console.log('\nThe sheet itself');
 {
-    const launcher = read(join('src', 'components', 'SupportLauncher.js'));
-    check('the trigger has an accessible name', /aria-label="Contact support"/.test(launcher));
+    const launcher = read(join('src', 'components', 'HelpCentre.js'));
+    check('the trigger has an accessible name', /aria-label="Get help"/.test(launcher));
     check('the sheet is a labelled dialog', /role="dialog"/.test(launcher) && /aria-modal="true"/.test(launcher));
     check('escape closes it', /event\.key === 'Escape'/.test(launcher));
-    check('the backdrop closes it', /aria-label="Close support"[\s\S]{0,200}absolute inset-0/.test(launcher));
+    check('the backdrop closes it', /aria-label="Close help"[\s\S]{0,200}absolute inset-0/.test(launcher));
     check('it closes on navigation', /useEffect\(\(\) => \{ setOpen\(false\); \}, \[pathname\]\)/.test(launcher));
-    check('the close control meets the 44px target', /h-11 w-11 items-center justify-center rounded-full/.test(launcher));
+    // Back, close, and the topic rows are all reached with a thumb.
+    check('the close control meets the 44px target', /h-11 w-11 shrink-0 items-center justify-center rounded-full/.test(launcher));
+    check('the back control meets it too', /onClick=\{onBack\}[\s\S]{0,140}h-11 w-11/.test(launcher));
+    check('the topic rows are reachable', /min-h-\[56px\] w-full items-center gap-3 rounded-2xl/.test(launcher));
     check('it clears the bottom navigation', /bottom-24/.test(launcher));
 }
 

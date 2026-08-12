@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import SupportContact from '@/components/SupportContact';
+import PolicyBackLink from '@/components/PolicyBackLink';
 
 /**
  * The shell every policy and explainer page shares.
@@ -11,12 +12,12 @@ import SupportContact from '@/components/SupportContact';
  * support block, and it was the pages most likely to raise a question that
  * lacked it.
  */
-export default function PolicyPage({ title, updated, intro, children, backHref = '/profile', backLabel = 'Back to account' }) {
+export default function PolicyPage({ title, updated, intro, children }) {
     return (
         <main className="min-h-dvh px-5 py-8 app-shell">
             <div className="mx-auto max-w-2xl space-y-5">
                 <section className="space-y-4 rounded-2xl p-5" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                    <Link href={backHref} className="inline-block type-caption font-semibold text-primary">{backLabel}</Link>
+                    <PolicyBackLink />
                     <div>
                         <h1 className="type-display text-text-primary">{title}</h1>
                         {updated && <p className="mt-1 type-micro text-text-muted">Last updated {updated}</p>}

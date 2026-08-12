@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import PolicyBackLink from '@/components/PolicyBackLink';
 
 export const metadata = {
     title: 'Privacy Policy | Genuine Sugar Mummies',
@@ -8,7 +8,7 @@ export default function PrivacyPage() {
     return (
         <main className="min-h-dvh px-5 py-8 app-shell">
             <section className="mx-auto max-w-2xl space-y-5 rounded-2xl p-5" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                <Link href="/auth/login" className="text-xs font-semibold text-primary">← Back to login</Link>
+                <PolicyBackLink />
                 <h1 className="text-2xl font-black text-text-primary">Privacy Policy</h1>
                 <p className="text-xs text-text-muted">Last updated: July 2025</p>
 
