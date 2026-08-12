@@ -261,8 +261,13 @@ export default function ProfileDetailPage({ params }) {
                   listing and is not a private message — without this the two are
                   easy to confuse, and a member could reasonably think they had
                   sent something private.
+
+                  The real profile goes in rather than a stub, so the panel can
+                  use the person's name. "Grace is listed with us" reads as
+                  somebody specific; "This member is listed with us" reads as a
+                  policy notice about a category of thing.
                 */}
-                <FacilitationNotice member={{ facilitationLabel: 'Facilitation Required' }} />
+                <FacilitationNotice member={profile} />
 
                 {/* Profile Stats */}
                 <div className="grid grid-cols-3 gap-2">

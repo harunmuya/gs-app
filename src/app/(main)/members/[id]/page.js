@@ -3,7 +3,7 @@
 import { use, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Ban, Calendar, Eye, Gift, GsMatch, Heart, ImagePlus, Lock, MapPin, MessageCircle, Mic, Phone, PhoneCall, Send, Shield, Smile, StopCircle, UserPlus, Video, X } from '@/components/icons';
+import { ArrowLeft, Calendar, Eye, Gift, GsMatch, Heart, HeartHandshake, ImagePlus, Lock, MapPin, MessageCircle, Mic, Phone, PhoneCall, Send, Shield, Smile, StopCircle, UserPlus, Video, X } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import FacilitationNotice from '@/components/FacilitationNotice';
 import PresenceDot from '@/components/PresenceDot';
@@ -103,36 +103,43 @@ function isLocalOnlyMember(member, key = '') {
 }
 
 /**
- * An action that exists but cannot be used on this profile.
+ * An action that goes through our team rather than straight to an inbox.
  *
- * Muted rather than hidden, with a red bar across the corner so the state is
- * legible before the tap, and an accessible name that says why rather than just
- * naming the action.
+ * This was BlockedAction: a muted icon with a red circle and a strike through
+ * symbol on the corner, inside a red border. That is the badge a browser puts
+ * on a blocked pop up and a bank puts on a frozen card, so three of the six
+ * controls on the profile were wearing an error state. Nothing was wrong. The
+ * message simply takes a different route.
+ *
+ * It reads as a different route now. The icon stays where it is, so the profile
+ * does not look broken, and the corner carries a small primary mark instead of
+ * a red one. Tapping still explains, because an icon alone cannot.
  */
-function BlockedAction({ icon: ActionIcon, label, onClick }) {
+function FacilitatedAction({ icon: ActionIcon, label, onClick }) {
     return (
         <button
             type="button"
             onClick={onClick}
             aria-label={label}
             title={label}
-            className="relative flex h-12 items-center justify-center rounded-2xl text-text-muted shadow-sm"
-            style={{ background: 'var(--color-surface)', border: '1px solid color-mix(in srgb, var(--color-danger-text) 30%, transparent)' }}
+            className="relative flex h-12 items-center justify-center rounded-2xl text-primary shadow-sm"
+            style={{ background: 'var(--color-surface)', border: '1px solid color-mix(in srgb, var(--color-primary) 35%, transparent)' }}
         >
             <ActionIcon size={18} />
             <span
                 className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full text-white"
-                style={{ background: 'var(--color-danger)' }}
+                style={{ background: 'var(--color-primary-fill, var(--color-primary))' }}
             >
-                <Ban size={9} strokeWidth={2.8} />
+                <HeartHandshake size={9} strokeWidth={2.6} />
             </span>
         </button>
     );
 }
 
 function facilitationMessage(member) {
+    const name = String(member?.name || '').trim().split(/\s+/)[0];
     return member?.facilitationNotice
-        || 'This profile is introduced through our facilitation service. Direct messaging is not available — contact support to arrange an introduction.';
+        || `Messages to ${name || 'this member'} go through our team. Use the introduction panel below and we will pass yours on.`;
 }
 
 function getActorKey() {
@@ -422,7 +429,7 @@ export default function MemberProfilePage({ params }) {
                 <div className="absolute bottom-0 left-0 right-0 p-5 text-white space-y-2">
                     <div className="flex items-center gap-2"><PresenceDot member={member} size={14} className="ring-2 ring-white/75" /><h1 className="text-3xl font-black truncate">{member.name}</h1><VerifiedBadge verified={member.verified} size={22} /></div>
                     <div className="flex flex-wrap items-center gap-2 text-sm opacity-90">{member.age && <span>{member.age}</span>}{member.location && <span className="inline-flex items-center gap-1"><MapPin size={14} /> {member.location}</span>}{memberDistanceText && <span className="inline-flex items-center gap-1"><MapPin size={14} /> {memberDistanceText}</span>}</div>
-                    <div className="flex flex-wrap gap-2"><span className="px-3 py-1 rounded-full text-xs font-bold bg-white/18 backdrop-blur-sm">{formatLabel(member.profileLabel)}</span>{member.lookingFor && <span className="px-3 py-1 rounded-full text-xs font-bold bg-white/18 backdrop-blur-sm">Looking for {member.lookingFor}</span>}{localOnlyMember && <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-400 text-black inline-flex items-center gap-1"><Shield size={12} /> {member.facilitationLabel || 'Facilitation Required'}</span>}</div>
+                    <div className="flex flex-wrap gap-2"><span className="px-3 py-1 rounded-full text-xs font-bold bg-white/18 backdrop-blur-sm">{formatLabel(member.profileLabel)}</span>{member.lookingFor && <span className="px-3 py-1 rounded-full text-xs font-bold bg-white/18 backdrop-blur-sm">Looking for {member.lookingFor}</span>}{localOnlyMember && <span className="px-3 py-1 rounded-full text-xs font-bold bg-white/18 backdrop-blur-sm inline-flex items-center gap-1"><HeartHandshake size={12} /> {member.facilitationLabel || 'Introduced by our team'}</span>}</div>
                 </div>
             </section>
 
@@ -434,18 +441,18 @@ export default function MemberProfilePage({ params }) {
                       stay put but stop leading anywhere. Removing them would make
                       these profiles look broken rather than different; keeping
                       them live would send a member into a conversation nobody
-                      receives. They read as blocked — muted, with a small bar
-                      through the corner — and explain themselves on tap.
+                      receives. They read as routed through us rather than as errors, and
+                      explain themselves on tap.
                     */}
                     {localOnlyMember
-                        ? <BlockedAction icon={MessageCircle} label={`Messaging ${member.name || 'this profile'} is unavailable`} onClick={() => setStatus(facilitationMessage(member))} />
+                        ? <FacilitatedAction icon={MessageCircle} label={`Message ${member.name || 'this member'} through our team`} onClick={() => setStatus(facilitationMessage(member))} />
                         : <Link href={`/messages/${member.id}`} className="h-12 rounded-2xl flex items-center justify-center bg-secondary text-white shadow-lg" aria-label="Message"><MessageCircle size={18} /></Link>}
                     <button onClick={() => sendGift((wallet.giftCatalog || [])[0] || GIFTS[0])} className="h-12 rounded-2xl flex items-center justify-center bg-amber-500 text-white shadow-lg" aria-label="Send gift"><Gift size={18} /></button>
                     {!isSelfProfile && (localOnlyMember
-                        ? <BlockedAction icon={PhoneCall} label="Voice calls are unavailable on this listing" onClick={() => setStatus(facilitationMessage(member))} />
+                        ? <FacilitatedAction icon={PhoneCall} label="Arrange a voice call through our team" onClick={() => setStatus(facilitationMessage(member))} />
                         : <Link href={`/calls/${member.id}?type=voice`} className="h-12 rounded-2xl flex items-center justify-center bg-sky-600 text-white shadow-lg" aria-label="Voice call"><PhoneCall size={18} /></Link>)}
                     {!isSelfProfile && (localOnlyMember
-                        ? <BlockedAction icon={Video} label="Video calls are unavailable on this listing" onClick={() => setStatus(facilitationMessage(member))} />
+                        ? <FacilitatedAction icon={Video} label="Arrange a video call through our team" onClick={() => setStatus(facilitationMessage(member))} />
                         : <Link href={`/calls/${member.id}?type=video`} className="h-12 rounded-2xl flex items-center justify-center bg-teal-600 text-white shadow-lg" aria-label="Video call"><Video size={18} /></Link>)}
                     <Link href="/packages" className="h-12 rounded-2xl flex items-center justify-center bg-gray-900 text-white shadow-lg" aria-label="Packages"><Lock size={18} /></Link>
                 </section>

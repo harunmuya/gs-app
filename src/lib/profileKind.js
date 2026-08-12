@@ -22,11 +22,27 @@ export const PROFILE_KIND = {
     WORDPRESS: 'wordpress',
 };
 
-export const FACILITATION_LABEL = 'Facilitation Required';
+/*
+  What a member sees on one of these profiles.
+
+  This label used to read "Facilitation Required" and the notice began "Direct
+  messaging is not available". Both are accurate and both were the wrong choice.
+  "Required" is the language of a form you have to fill in before you are
+  allowed to proceed, and leading with what is not available tells somebody
+  browsing a dating app that the profile in front of them is a dead end.
+
+  Neither is what is happening. Our team arranged the introduction and our team
+  carries the first message, which is a service rather than a restriction. Said
+  that way it is the same fact and it reads as somebody helping.
+
+  The wording stays honest about the route. It does not claim the person is
+  online, and it does not promise a reply.
+*/
+export const FACILITATION_LABEL = 'Introduced by our team';
 
 export const FACILITATION_NOTICE =
-    'This profile is introduced through our facilitation service. Direct messaging is not available — '
-    + 'contact support to arrange an introduction.';
+    'Messages to this member go through our team rather than straight to an inbox. '
+    + 'Ask for an introduction and we pass yours on, then come back to you either way.';
 
 /** Determine provenance from a `users` row. */
 export function profileKindFor(member = {}) {

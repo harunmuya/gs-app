@@ -1,79 +1,86 @@
 'use client';
 
 import Link from 'next/link';
-import { Ban, Headphones, MessageCircle, ShieldCheck } from '@/components/icons';
+import { ArrowRight, Check, HeartHandshake, ShieldCheck } from '@/components/icons';
 
 /**
- * The red block shown on profiles that have no account behind them.
+ * How you reach a profile our team introduced.
  *
- * Seeded and WordPress-imported profiles are listings, not members: nobody is
- * signed in to receive a message, so a sent message would go nowhere. The app
- * already refused to deliver, but it refused *after* the tap, with a grey icon
- * and a sentence at the bottom of the page — so the member found out by trying.
+ * This used to be a red panel with a Ban icon and the heading "You cannot text
+ * this profile", followed by the line "nobody is signed in behind it". Every
+ * word of that was true and the whole thing was wrong. Red with a strike
+ * through symbol is the language a bank uses for a blocked card and a browser
+ * uses for a bad certificate, so a member reading it did not learn "this one
+ * works differently", they learned "something here is not right". On a dating
+ * product where people are already scanning for scams, that is expensive: it
+ * makes the app look like it is warning you about its own listings.
  *
- * This states it before the attempt, in red, near the actions. The message icon
- * stays where it is: removing it would make these profiles look broken rather
- * than different, and the icon is what tells you the action exists at all.
+ * The same fact told the other way round is a service, which is what it
+ * actually is. Our team arranged this introduction and our team passes the
+ * first message on. That is a real thing we do, so it is described as a real
+ * thing we do, in the app's own colours, leading with what happens next rather
+ * than with what is forbidden.
  *
- * Being explicit here is also the honest thing. A member paying for Silver
- * partly to message people is entitled to know which profiles that buys access
- * to before they spend.
- *
- * Colours come from the tint utilities rather than inline rgba, so the panel
- * keeps its background in the dark theme — see globals.css.
+ * What it must never do is overclaim. It does not say the person is online, it
+ * does not invent a reason they prefer introductions, and it does not promise a
+ * reply. Reassurance built on something untrue collapses the first time a
+ * member notices, and takes the rest of the app's credibility with it.
  */
-export default function FacilitationNotice({ member, className = '', compact = false }) {
-    const label = member?.facilitationLabel || 'Facilitation Required';
-
-    if (compact) {
-        return (
-            <div className={`tint-danger border-danger-soft flex items-start gap-2 rounded-xl px-3 py-2 ${className}`} role="note">
-                <Ban size={14} className="mt-0.5 shrink-0 text-danger" />
-                <p className="type-caption font-semibold text-danger">
-                    Direct messages are off for this listing — only verified members can be texted.
-                </p>
-            </div>
-        );
-    }
+export default function FacilitationNotice({ member, className = '' }) {
+    const name = String(member?.name || '').trim().split(/\s+/)[0];
+    const who = name || 'This member';
 
     return (
         <section
-            className={`border-danger-soft tint-danger overflow-hidden rounded-2xl ${className}`}
-            role="note"
-            aria-label="Direct messaging unavailable"
+            className={`overflow-hidden rounded-2xl ${className}`}
+            style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}
+            aria-label="How to reach this profile"
         >
-            <div className="tint-danger-strong flex items-center gap-2 px-4 py-2.5">
-                <Ban size={15} className="shrink-0 text-danger" />
-                <h2 className="type-body-strong text-danger">You cannot text this profile</h2>
+            <div className="flex items-center gap-2.5 px-4 py-3 tint-primary">
+                <HeartHandshake size={17} className="shrink-0 text-primary" />
+                <h2 className="type-body-strong text-text-primary">Introduced by our team</h2>
             </div>
 
-            <div className="space-y-3 p-4">
+            <div className="space-y-3.5 p-4">
                 <p className="type-body text-text-secondary">
-                    This is a <strong className="text-text-primary">{label.toLowerCase()}</strong> listing, not a member
-                    account. Nobody is signed in behind it, so a message, call or gift sent here would not reach anyone.
+                    {who} is listed with us rather than chatting in the app, so the first message goes through our
+                    team instead of straight to an inbox. Tell us you are interested and we pass it on.
                 </p>
 
-                <div className="space-y-2">
-                    <p className="flex items-start gap-2 type-caption text-text-secondary">
-                        <MessageCircle size={14} className="mt-0.5 shrink-0 text-danger" />
-                        <span>Messaging, voice and video are available on <strong className="text-text-primary">verified member profiles only</strong>.</span>
-                    </p>
-                    <p className="flex items-start gap-2 type-caption text-text-secondary">
-                        <ShieldCheck size={14} className="mt-0.5 shrink-0 text-success" />
-                        <span>Member profiles carry a verified badge and show a real last-seen time.</span>
-                    </p>
-                </div>
+                {/*
+                  Three lines, each one a commitment we can actually keep. The
+                  middle one matters most: an introduction with no reply is the
+                  outcome people quietly fear, and saying we come back either
+                  way is the difference between waiting and being left hanging.
+                */}
+                <ul className="space-y-2">
+                    {[
+                        'Passing on a first message is free. You are never charged for an introduction.',
+                        'We come back to you either way, including when the answer is no.',
+                        'Your number and email stay with us until you decide to share them.',
+                    ].map((line) => (
+                        <li key={line} className="flex items-start gap-2.5">
+                            <Check size={15} className="mt-0.5 shrink-0 text-success" />
+                            <span className="min-w-0 type-caption text-text-secondary">{line}</span>
+                        </li>
+                    ))}
+                </ul>
 
                 <Link
                     href="/contact"
-                    className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl type-body-strong text-white gradient-primary"
+                    className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl type-body-strong text-white gradient-primary"
                 >
-                    <Headphones size={16} /> Ask us to arrange an introduction
+                    Ask for an introduction <ArrowRight size={16} />
                 </Link>
 
-                <p className="type-micro text-text-muted">
-                    Our team contacts the person on your behalf. We never charge to pass on a first message.
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Link href="/facilitation" className="inline-flex min-h-11 items-center type-caption font-semibold text-primary">
+                        How introductions work
+                    </Link>
+                    <span className="inline-flex items-center gap-1.5 type-micro text-text-muted">
+                        <ShieldCheck size={13} className="text-success" /> Handled by Admin Mary G
+                    </span>
+                </div>
             </div>
         </section>
     );
