@@ -40,6 +40,8 @@ next-env.d.ts
 /android/app/build/
 /android/.gradle/
 /android/keystores/
+# Holds the release signing password. Never commit this.
+/android/keystore.properties
 
 
 # Scratch: pasted SQL dump, 531KB, not part of the app

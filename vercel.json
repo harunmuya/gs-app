@@ -5,12 +5,11 @@
   "env": {
     "NEXT_TELEMETRY_DISABLED": "1"
   },
-  "rewrites": [
-    { "source": "/base-release.apk", "destination": "/downloads/genuine-sugar-mummies.apk" },
-    { "source": "/base-realese.apk", "destination": "/downloads/genuine-sugar-mummies.apk" },
-    { "source": "/downloads/genuine-sugar-mummies-kenya.apk", "destination": "/downloads/genuine-sugar-mummies.apk" }
-  ],
+  "rewrites": [],
   "crons": [
-    { "path": "/api/digest?send=1", "schedule": "0 6 * * *" }
+    {
+      "path": "/api/digest?send=1",
+      "schedule": "0 6 * * *"
+    }
   ]
 }

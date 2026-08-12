@@ -1,5 +1,31 @@
 apply plugin: 'com.android.application'
 
+/*
+  Release signing, read from a file that is never committed.
+
+  Signing was done by hand in Android Studio, which meant the password was
+  typed on every release and nothing in the project recorded which key was
+  correct. A first V1 release establishes the key for every future update: once
+  members have installed it, an APK signed with anything else can never update
+  them, so getting this wrong is permanent.
+
+  Create android/keystore.properties, which .gitignore already covers through
+  the keystores directory rule extended below:
+
+    storeFile=keystores/gsm-release.jks
+    storePassword=...
+    keyAlias=...
+    keyPassword=...
+
+  Without that file the release build is simply unsigned rather than broken, so
+  a checkout with no secrets still builds.
+*/
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "ke.co.genuinesugarmummies.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -42,10 +68,26 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystoreProperties['storeFile']) {
+                storeFile rootProject.file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Unsigned rather than failing when the properties file is absent,
+            // so a fresh checkout still builds.
+            if (keystoreProperties['storeFile']) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
