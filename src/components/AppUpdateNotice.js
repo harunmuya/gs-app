@@ -136,8 +136,13 @@ export default function AppUpdateNotice() {
                 )}
 
                 <div className="space-y-2 p-4">
+                    {/* rel and target matter here: the shell hands an
+                        off-host link to the system browser, which is the only
+                        thing in the picture that can download an APK. */}
                     <a
                         href={update.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl type-body-strong text-white gradient-primary"
                     >
                         Download the update <ArrowRight size={16} />

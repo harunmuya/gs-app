@@ -58,6 +58,7 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
 
         announceShellVersion();
+        acceptDownloads();
 
         /*
           Answer the WebView's permission questions instead of letting them fall
@@ -181,6 +182,61 @@ public class MainActivity extends BridgeActivity {
             // A missing package info is not worth failing to start over. The web
             // layer treats an absent version as "cannot tell" and stays quiet.
         }
+    }
+
+    /**
+     * Let a link actually download something.
+     *
+     * An Android WebView has no download capability of its own. A link to a
+     * file it cannot render, an APK being the obvious case, does nothing at
+     * all: no download, no error, no navigation. To the member the button
+     * simply does not work, which is exactly how the update prompt behaved.
+     *
+     * A DownloadListener is the hook for this. The URL is handed to the system
+     * download manager, which shows progress in the notification shade and puts
+     * the file where the package installer can find it, the same as a download
+     * from any browser.
+     */
+    private void acceptDownloads() {
+        getBridge().getWebView().setDownloadListener(
+            (url, userAgent, contentDisposition, mimeType, contentLength) -> {
+                try {
+                    android.app.DownloadManager.Request request =
+                        new android.app.DownloadManager.Request(android.net.Uri.parse(url));
+
+                    String name = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType);
+                    request.setTitle(name);
+                    request.setDescription("Genuine Sugar Mummies");
+                    request.setNotificationVisibility(
+                        android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                    request.setDestinationInExternalPublicDir(
+                        android.os.Environment.DIRECTORY_DOWNLOADS, name);
+                    // Cookies are needed for anything behind a session. The APK
+                    // is public, but this listener serves every download.
+                    request.addRequestHeader("Cookie", android.webkit.CookieManager.getInstance().getCookie(url));
+                    request.addRequestHeader("User-Agent", userAgent);
+
+                    android.app.DownloadManager manager =
+                        (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                    if (manager != null) manager.enqueue(request);
+
+                    android.widget.Toast.makeText(this, "Downloading " + name, android.widget.Toast.LENGTH_LONG).show();
+                } catch (Exception error) {
+                    /*
+                      If the download manager refuses, hand the URL to whatever
+                      else can open it rather than leaving the member with a
+                      button that silently does nothing, which is the failure
+                      this method exists to remove.
+                    */
+                    try {
+                        startActivity(new android.content.Intent(
+                            android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)));
+                    } catch (Exception ignored) {
+                        android.widget.Toast.makeText(this, "Could not start the download.", android.widget.Toast.LENGTH_LONG).show();
+                    }
+                }
+            }
+        );
     }
 
     private boolean has(String permission) {

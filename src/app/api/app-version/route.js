@@ -28,9 +28,25 @@ export const dynamic = 'force-dynamic';
 const CURRENT = {
     versionCode: 4,
     versionName: '1.0.4',
-    // Stable path on purpose. Replacing the file behind it updates every link
-    // that has ever been shared, so the download URL never has to change.
-    url: '/base-release.apk',
+    /*
+      Served from the VPS rather than from this deployment, and that is the
+      whole point.
+
+      An Android WebView cannot download. A link to an APK does nothing at all,
+      which is exactly how the update button behaved: no download, no error,
+      apparently not even clickable. Version 4 adds a DownloadListener that
+      fixes it properly, but the shells already on people's phones do not have
+      one and no web deploy can give them one.
+
+      Capacitor opens a link to a different host in the system browser instead
+      of the WebView. genuinesugarmummies.co.ke is a different host, so this URL
+      escapes the app and lands somewhere that can actually download it. That
+      works on the shells already installed, which are the ones that need it.
+
+      Keep both copies in step. /base-release.apk on the deployment is still the
+      link to share outside the app.
+    */
+    url: 'https://genuinesugarmummies.co.ke/app/genuine-sugar-mummies.apk',
     /*
       What changed, in the words a member would use. Not a changelog of
       commits: somebody deciding whether to spend data on an update wants to
