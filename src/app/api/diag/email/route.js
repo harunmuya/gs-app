@@ -68,10 +68,25 @@ export async function GET(request) {
 
     if (!to.includes('@')) return NextResponse.json({ error: 'That does not look like an address.' }, { status: 400 });
 
+    /*
+      An optional sender override, which is the only way to tell two very
+      different problems apart from behind a send-only key.
+
+      Resend rejects with "the associated domain with your API key is not
+      verified" both when the domain genuinely is not verified and when the key
+      is scoped to some other domain. The dashboard can show verified while the
+      key still points elsewhere, because verifying a domain does not
+      retroactively re-associate a key that was issued against a different one.
+      Sending the same message from Resend's own test sender separates them: if
+      that goes through, the key works and the scope is the problem.
+    */
+    const fromOverride = String(url.searchParams.get('from') || '').trim();
+
     const attempt = await sendEmail({
         to,
         subject: 'GS delivery test',
         text: 'This is a delivery test from Genuine Sugar Mummies. Nothing is wrong with your account.',
+        ...(fromOverride ? { from: fromOverride } : {}),
     });
 
     return NextResponse.json({
@@ -80,6 +95,7 @@ export async function GET(request) {
         keyValid,
         domains,
         sentTo: to,
+        sentFrom: fromOverride || from,
         // Whatever the provider said, passed through rather than summarised, so
         // a scoping problem is distinguishable from a verification one.
         providerSaid: attempt.ok ? 'accepted' : (attempt.error || 'unknown'),
