@@ -57,6 +57,8 @@ public class MainActivity extends BridgeActivity {
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         super.onCreate(savedInstanceState);
 
+        announceShellVersion();
+
         /*
           Answer the WebView's permission questions instead of letting them fall
           on the floor. BridgeWebChromeClient is extended rather than replaced so
@@ -154,6 +156,31 @@ public class MainActivity extends BridgeActivity {
         }
 
         super.onRequestPermissionsResult(requestCode, permissions, results);
+    }
+
+    /**
+     * Tell the web layer which shell it is running inside.
+     *
+     * The site is loaded from a remote URL, so the web app updates itself on
+     * every launch and the native shell does not. That means the two can drift:
+     * a member can be running the newest web build inside an APK from months
+     * ago, which is fine until something needs a native change, and then the
+     * app has no way to know it is the old part.
+     *
+     * The version is appended to the WebView user agent because it is the one
+     * channel that needs no plugin, no dependency and no bridge call, and it is
+     * readable from the first line of JavaScript that runs. The web layer
+     * compares it against what the server says is current.
+     */
+    private void announceShellVersion() {
+        try {
+            int versionCode = getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
+            android.webkit.WebSettings settings = getBridge().getWebView().getSettings();
+            settings.setUserAgentString(settings.getUserAgentString() + " GSApp/" + versionCode);
+        } catch (Exception ignored) {
+            // A missing package info is not worth failing to start over. The web
+            // layer treats an absent version as "cannot tell" and stays quiet.
+        }
     }
 
     private boolean has(String permission) {

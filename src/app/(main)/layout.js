@@ -5,6 +5,7 @@ import IncomingCallManager from '@/components/IncomingCallManager';
 import LocationPermissionManager from '@/components/LocationPermissionManager';
 import ProfileCompletionModal from '@/components/ProfileCompletionModal';
 import HelpCentre from '@/components/HelpCentre';
+import AppUpdateNotice from '@/components/AppUpdateNotice';
 
 /**
  * Everything in this route group is behind AuthGuard, which runs on the client —
@@ -33,6 +34,9 @@ export default function MainLayout({ children }) {
                 <ProfileCompletionModal />
                 {/* Help reaches every signed-in screen from here. It leads with the
                     answer and only becomes a ticket if that does not settle it. */}
+                {/* Only ever visible inside the Android shell, and only when
+                    that shell is older than the one the server reports. */}
+                <AppUpdateNotice />
                 <HelpCentre />
                 <BottomNav />
             </div>
