@@ -58,6 +58,25 @@ const queued = rows.filter((r) => r.status === 'queued').length;
 
 console.log(`        ${rows.length} attempts: ${sent} sent, ${failed} failed, ${queued} queued`);
 
+/*
+  History is not the same as current state, and this cannot tell them apart.
+
+  After the DNS records went live this still reported "82% failing", because
+  every row in the window predated the fix by half an hour and nothing new had
+  been attempted since. The numbers were true and the impression was wrong.
+
+  There is no way for a script reading a log to know when somebody changed a
+  DNS record, so it does not guess. It prints the timestamp of the newest
+  attempt in UTC, which is the one fact needed to decide whether these results
+  say anything about now, and points at the endpoint that asks the provider
+  directly rather than inferring from history.
+*/
+const newest = rows[0]?.created_at ? new Date(rows[0].created_at) : null;
+if (newest) {
+    console.log(`        newest attempt: ${newest.toISOString().slice(0, 16)} UTC`);
+    console.log('        if that predates your last fix, these numbers are history, not now');
+}
+
 if (!rows.length) {
     console.log('        nothing attempted, so there is nothing to judge');
 } else {
@@ -109,7 +128,11 @@ console.log('\nConfiguration');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) {
-    console.log('\nDelivery is broken. The fix is on the Resend dashboard, not in this repo:');
-    console.log('  verify the sending domain, or issue an API key with full access.');
+    console.log('\nThis window contains failures. Whether they describe now depends on the');
+    console.log('timestamp above. To ask the provider directly, which sends nothing:');
+    console.log('\n  curl -H "Authorization: Bearer $CRON_SECRET" \\');
+    console.log('    https://genuine-sugarmummies-app.vercel.app/api/diag/email\n');
+    console.log('The Resend key is only on the deployment, so that is the one place that can');
+    console.log('answer whether the domain is verified and the key is scoped to it.');
 }
 process.exit(fail ? 1 : 0);
