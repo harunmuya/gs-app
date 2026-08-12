@@ -307,10 +307,19 @@ export default function MatchesPage() {
                                     <div className="flex flex-wrap gap-1"><span className="px-2 py-0.5 rounded-full text-[10px] font-semibold text-primary bg-primary/10">{member.score}% fit</span>{member.isBoosted && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold text-white bg-secondary">Boosted</span>}<span className="px-2 py-0.5 rounded-full text-[10px] font-semibold text-secondary bg-secondary/10">{member.reason}</span></div>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-3 border-t" style={{ borderColor: 'rgba(15,118,110,0.08)' }}>
-                                <Link href={memberPath(member)} className="py-2 text-xs font-semibold text-primary flex items-center justify-center gap-1"><Eye size={14} /> View</Link>
-                                <Link href={memberPath(member, '#message')} className="py-2 text-xs font-semibold text-sky-700 flex items-center justify-center gap-1"><MessageCircle size={14} /> Message</Link>
-                                <Link href="/packages" className="py-2 text-xs font-semibold text-gold flex items-center justify-center gap-1"><BadgeCheck size={14} /> Pro</Link>
+                            {/*
+                              Two actions, both about this person.
+
+                              The third slot was a link to the packages page
+                              labelled Pro, sitting in the row where View and
+                              Message live. It looked like something you could
+                              do with the member you were reading about, and it
+                              was an advert. Repeating it on every card taught
+                              people to ignore the whole row.
+                            */}
+                            <div className="grid grid-cols-2 border-t" style={{ borderColor: 'rgba(15,118,110,0.08)' }}>
+                                <Link href={memberPath(member)} className="min-h-11 py-2 text-xs font-semibold text-primary flex items-center justify-center gap-1"><Eye size={14} /> View profile</Link>
+                                <Link href={memberPath(member, '#message')} className="min-h-11 py-2 text-xs font-semibold text-sky-700 flex items-center justify-center gap-1"><MessageCircle size={14} /> Message</Link>
                             </div>
                         </motion.article>
                     ))}

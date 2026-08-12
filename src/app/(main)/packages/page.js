@@ -186,8 +186,11 @@ function currentTier(user) {
 function toneClasses(color, active = false) {
     if (color === 'gold') {
         return {
-            icon: 'text-gold bg-amber-100',
-            pill: 'bg-amber-100 text-gold',
+            // bg-amber-100 is a fixed Tailwind light swatch. It stays pale on the
+            // dark surface while text-gold lightens to #D2A758, so the gold tier
+            // rendered as pale on pale. tint-gold follows the theme.
+            icon: 'text-gold tint-gold',
+            pill: 'tint-gold text-gold',
             border: active ? '2px solid rgba(201,130,9,0.65)' : '1px solid rgba(201,130,9,0.22)',
             glow: '0 20px 50px rgba(201,130,9,0.16)',
         };
@@ -844,46 +847,64 @@ function TierCard({ tier, active, onSelect, selected }) {
     return (
         <div className="rounded-[28px] overflow-hidden transition-all" style={{ background: 'var(--color-bg-card)', border: tone.border, boxShadow: active ? tone.glow : 'var(--shadow-card)' }}>
             <button onClick={onSelect} className="relative w-full p-4 text-left transition-all active:scale-[0.99]">
-                {tier.recommended && <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-semibold text-white gradient-primary"><BadgeCheck size={11} /> Best Value</span>}
+                {tier.recommended && <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full px-3 py-1 type-micro font-semibold text-white gradient-primary"><BadgeCheck size={11} /> Best Value</span>}
                 <div className="flex items-start gap-3 pr-24">
                     <div className={`h-13 w-13 rounded-2xl flex items-center justify-center ${tone.icon}`}><Icon size={24} /></div>
                     <div className="min-w-0">
-                        <p className={`mb-1 inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${tone.pill}`}>{tier.label}</p>
+                        <p className={`mb-1 inline-flex rounded-full px-2.5 py-1 type-micro font-semibold ${tone.pill}`}>{tier.label}</p>
                         <h2 className="text-2xl font-black text-text-primary">{tier.name}</h2>
                         <p className="text-lg font-black text-primary">KSh {tier.price.toLocaleString()}</p>
                         <p className="mt-1 text-xs font-bold text-text-muted">{tier.bestFor}</p>
                     </div>
                 </div>
+                {/* The captions were 9px, which is smaller than anything on a
+                    phone should be, on the row that is meant to sell the tier. */}
                 <div className="mt-4 grid grid-cols-3 gap-2">
                     {tier.highlights.map((item) => {
                         const FeatureIcon = item.icon;
                         return (
-                            <div key={item.title} className="rounded-2xl p-2 text-center" style={{ background: 'var(--color-surface)' }}>
-                                <FeatureIcon size={17} className={`mx-auto mb-1 ${tier.color === 'gold' ? 'text-gold' : tier.color === 'secondary' ? 'text-secondary' : 'text-primary'}`} />
-                                <p className="text-[11px] font-semibold text-text-primary">{item.title}</p>
-                                <p className="text-[9px] font-bold text-text-muted">{item.caption}</p>
+                            <div key={item.title} className="rounded-2xl p-2.5 text-center" style={{ background: 'var(--color-surface)' }}>
+                                <FeatureIcon size={18} className={`mx-auto mb-1.5 ${tier.color === 'gold' ? 'text-gold' : tier.color === 'secondary' ? 'text-secondary' : 'text-primary'}`} />
+                                <p className="type-caption font-semibold text-text-primary">{item.title}</p>
+                                <p className="type-micro text-text-muted">{item.caption}</p>
                             </div>
                         );
                     })}
                 </div>
                 <div className="mt-4 flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-success"><Check size={14} /> Lifetime access</span>
-                    <span className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${active ? 'gradient-primary text-white' : 'text-text-secondary'}`} style={!active ? { background: 'var(--color-surface)' } : {}}>{active ? '✓ Selected' : 'Choose'}</span>
+                    <span className="inline-flex items-center gap-1 type-caption font-semibold text-success"><Check size={14} /> Pay once, keep it</span>
+                    <span className={`inline-flex min-h-9 items-center rounded-full px-4 type-caption font-semibold transition-all ${active ? 'gradient-primary text-white' : 'text-text-secondary'}`} style={!active ? { background: 'var(--color-surface)' } : {}}>
+                        {active ? 'Selected' : 'Choose'}
+                    </span>
                 </div>
             </button>
+
+            {/*
+              The expanded panel.
+
+              It was a numbered list of thirteen rows, each one its own boxed
+              tile, on a hardcoded rgba(255,255,255,0.7). Two problems. The white
+              stayed white on the dark theme, so the text on it disappeared. And
+              a numbered list implies an order that does not exist: these are
+              things you get, not steps to follow, and presenting them as a wall
+              of thirteen makes a member scroll past the two that would have
+              convinced them.
+
+              It reads as a checklist now, on a surface that follows the theme.
+            */}
             {active && selected && selected.id === tier.id && (
-                <div className="px-4 pb-4 space-y-3" style={{ borderTop: '1px dashed rgba(155,44,94,0.15)' }}>
-                    <p className="pt-3 text-sm leading-relaxed text-text-secondary">{selected.summary}</p>
+                <div className="space-y-3 px-4 pb-4" style={{ borderTop: 'var(--card-border)' }}>
+                    <p className="pt-3 type-body text-text-secondary">{selected.summary}</p>
                     <div className="rounded-2xl p-3" style={{ background: 'var(--color-surface)' }}>
-                        <p className="mb-2 text-xs font-semibold text-text-primary">{selected.sectionTitle || 'What you get'}</p>
-                        <ol className="space-y-1.5">
-                            {selected.services.map((service, index) => (
-                                <li key={service} className="flex gap-2.5 items-start rounded-xl p-2" style={{ background: 'rgba(255,255,255,0.7)' }}>
-                                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full gradient-primary text-[10px] font-semibold text-white">{index + 1}</span>
-                                    <span className="text-[13px] font-bold leading-snug text-text-secondary">{service}</span>
+                        <p className="mb-2.5 type-caption font-semibold text-text-primary">{selected.sectionTitle || 'What you get'}</p>
+                        <ul className="space-y-2">
+                            {selected.services.map((service) => (
+                                <li key={service} className="flex items-start gap-2.5">
+                                    <Check size={15} className="mt-0.5 shrink-0 text-success" />
+                                    <span className="min-w-0 type-body text-text-secondary">{service}</span>
                                 </li>
                             ))}
-                        </ol>
+                        </ul>
                     </div>
                 </div>
             )}

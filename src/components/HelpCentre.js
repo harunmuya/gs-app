@@ -40,7 +40,7 @@ const IMMERSIVE = [/^\/calls\//, /^\/live\/[^/]+$/];
 
 function Header({ title, onBack, onClose }) {
     return (
-        <div className="flex items-center gap-2 border-b px-4 py-3" style={{ borderColor: 'var(--color-border)' }}>
+        <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: 'var(--card-border)' }}>
             {onBack ? (
                 <button type="button" onClick={onBack} aria-label="Back" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-text-secondary">
                     <ArrowLeft size={18} />

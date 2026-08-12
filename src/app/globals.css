@@ -33,6 +33,10 @@
   /* Was #7D7488 — 4.44:1 on white, just under AA. */
   --color-text-muted: #756C80;
   --color-gold: #8A6620;
+  /* The text that sits on a gold or silver badge. Both flip with the theme,
+     so the readable pairing has to be declared per theme, not per component. */
+  --color-on-gold: #FFFFFF;
+  --color-on-silver: #FFFFFF;
   --color-success: #047857;
   --color-danger: #C81E1E;
   /* Semantic colours have two jobs that pull in opposite directions: a fill
@@ -95,6 +99,8 @@
   --color-primary-light: #F7B9CE;
   --color-secondary: #D2A758;
   --color-gold: #D2A758;
+  --color-on-gold: #2A1E05;
+  --color-on-silver: #14101A;
   /* Lifted for the same reason as --color-primary above. The fill tokens stay
      dark so white text on a success or danger button still reads. */
   --color-success-text: #34D399;
@@ -225,6 +231,25 @@
   }
   .tint-success {
     background-color: color-mix(in srgb, var(--color-success-text) 10%, transparent);
+  }
+  /*
+     The package badges.
+
+     Gold flips between a dark ochre in the light theme and a pale one in the
+     dark theme, so a fixed text colour is legible in exactly one of them. The
+     pair is defined here per theme instead, which is the only place that can
+     know which way round the surface is.
+  */
+  .badge-gold {
+    background-color: var(--color-gold);
+    color: var(--color-on-gold);
+  }
+  .badge-silver {
+    background-color: var(--color-text-muted);
+    color: var(--color-on-silver);
+  }
+  .tint-gold {
+    background-color: color-mix(in srgb, var(--color-gold) 14%, transparent);
   }
   .tint-primary {
     background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);

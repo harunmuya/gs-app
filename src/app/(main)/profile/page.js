@@ -15,7 +15,8 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { PRECISE_POSITION_OPTIONS, resolvePlaceName } from '@/lib/placeName';
 import UserAvatar from '@/components/UserAvatar';
-import VerifiedBadge from '@/components/VerifiedBadge';
+import VerifiedBadge, { TierBadge } from '@/components/VerifiedBadge';
+import { useEntitlements } from '@/lib/useEntitlements';
 import StoriesStrip from '@/components/StoriesStrip';
 import AccountActivityPanel from '@/components/AccountActivityPanel';
 import { unreadMessageValue } from '@/lib/inboxCounts';
@@ -149,6 +150,9 @@ export default function ProfilePage() {
         signOut, updateProfile, addPhoto, removePhoto,
         updateSettings, updatePreference, verifyProfile, clearVerification, deleteAccount, addMessage,
     } = useAuth();
+
+    // The effective package, which accounts for approval, locks and expiry.
+    const entitlements = useEntitlements(user?.id);
 
     /**
      * Which account area is open.
@@ -443,9 +447,15 @@ export default function ProfilePage() {
                     <UserAvatar name={displayName} src={profile?.avatar_url} size={80} />
                 </div>
                 <div>
-                    <h2 className="text-xl font-black text-text-primary flex items-center justify-center gap-1.5">
+                    {/* The package badge sits beside the name, and comes from
+                        entitlements rather than subscription_tier. That column
+                        records the package a member asked for, so reading it
+                        straight would badge somebody whose payment was never
+                        approved. */}
+                    <h2 className="text-xl font-black text-text-primary flex flex-wrap items-center justify-center gap-1.5">
                         {displayName}
                         {effectiveVerificationStatus === 'verified' && <VerifiedBadge size={18} />}
+                        <TierBadge tier={entitlements.tierId} />
                     </h2>
                     {isLoggedIn && <p className="text-xs text-text-muted">@{username} - {profile?.location || 'Location not set'}</p>}
                     {isLoggedIn && user?.email && <p className="text-[11px] text-text-muted/70">{user.email}</p>}
