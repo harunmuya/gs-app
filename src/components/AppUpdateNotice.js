@@ -151,6 +151,26 @@ export default function AppUpdateNotice() {
                         It installs over the app you already have. Your account, messages and photos stay where
                         they are, and you do not sign in again.
                     </p>
+                    {/*
+                      The one failure people cannot work out on their own.
+
+                      Android refuses an install when a package of the same name
+                      is already there with a different signature, and words it
+                      as "package conflicts with an existing package". Nothing in
+                      that phrase suggests what to do, and the obvious readings,
+                      that the download is corrupt or the phone is out of space,
+                      are both wrong. It happens to anybody who installed a build
+                      signed with a different key, which is every test build.
+
+                      Account data lives on the server, so uninstalling costs
+                      nothing but the trouble of signing in again. Saying so is
+                      the difference between a member retrying and giving up.
+                    */}
+                    <p className="type-micro text-text-muted">
+                        If it says the package conflicts with an existing one, uninstall Genuine Sugar Mummies
+                        first, then open this link again. Nothing is lost. Your account lives on our servers,
+                        not on the phone.
+                    </p>
                 </div>
             </div>
         </div>
