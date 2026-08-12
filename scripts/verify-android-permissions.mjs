@@ -110,15 +110,12 @@ if (!existsSync(ACTIVITY) || !existsSync(MANIFEST)) {
             capacitor.server?.url || '');
 
         /*
-          The shell version and the version the server advertises are kept by
-          hand in two files, because nothing in the build reads one from the
-          other. If they drift the update notice either never appears or never
-          goes away, and both look like the feature is broken.
+          The version numbers are compared in verify-apk-identity instead, which
+          reads them from the published APK with aapt rather than from a config
+          file. Two scripts checking the same pair meant fixing the same comment
+          reading bug twice, and only one of them was looking at reality.
         */
         const route = readFileSync(join('src', 'app', 'api', 'app-version', 'route.js'), 'utf8');
-        const advertised = Number((route.match(/versionCode:\s*(\d+)/) || [])[1] || 0);
-        check('the advertised version matches the build', advertised === versionCode,
-            `gradle says ${versionCode}, the endpoint says ${advertised}`);
 
         // An update that downloads and then cannot install reads as a failure.
         check('the app may install its own update',
@@ -128,8 +125,11 @@ if (!existsSync(ACTIVITY) || !existsSync(MANIFEST)) {
         check('the shell reports its version to the web layer',
             /GSApp\\\/\(\\d\+\)/.test(notice) && /GSApp\/" \+ versionCode/.test(activity),
             'the user agent is the one channel that needs no plugin');
-        check('the notice is silent outside the Android app',
-            /if \(!installed\) return undefined;/.test(notice));
+        // A browser is null, an old shell is 0. Testing falsiness would skip
+        // every shell already installed, which is the group that needs telling.
+        check('the notice is silent in a browser but not in an old shell',
+            /if \(installed === null\) return undefined;/.test(notice)
+            && /window\.Capacitor \? 0 : null/.test(notice));
         check('a dismissal is remembered per version', /DISMISS_KEY/.test(notice));
         check('the update points at the stable download path',
             /'\/base-release\.apk'/.test(route),
