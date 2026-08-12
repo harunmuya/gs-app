@@ -1,0 +1,92 @@
+DONE. These records were added to the VPS zone on 12 August 2026 and are live.
+Kept as a record of what was changed, and for the next time a sending domain
+needs adding. Backup of the previous zone:
+  /root/db.genuinesugarmummies.co.ke.bak-before-resend-20260812
+
+========================================================================
+
+Resend DNS records for genuinesugarmummies.co.ke
+================================================
+
+Why this file exists: the DKIM value is 218 characters of base64. Retyping it
+is the most likely way this fails, and a single wrong character produces a
+record that looks right and silently will not verify. Copy from here.
+
+Zone is served by your own BIND on the VPS:
+  ns1.genuinesugarmummies.co.ke -> 102.68.86.59
+  ns2.genuinesugarmummies.co.ke -> 102.68.86.59
+  primary  ns1.genuinesugarmummies.co.ke
+  serial   2026073001   (cPanel style YYYYMMDDnn, so the next one is below)
+
+
+THE THREE RECORDS
+-----------------
+Paste these at the end of the zone file, each on one line.
+
+resend._domainkey	IN	TXT	"p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC+kemJJsYaIayT9sunA/EILrFyGb0wIt9MjxX+J4TL3GGxxodDXzL8TB0O805vGadDzV5UIqu3+duXEsslQo2PiRpBaiC3oue0Kv+9SpBAXfwlHtGUzbBZLSl+XzMBEhhAIEDlHdL8vYQtFk5AanW1tnwpWCSU7GNejDy7meODqQIDAQAB"
+send	IN	MX	10 feedback-smtp.us-east-1.amazonses.com.
+send	IN	TXT	"v=spf1 include:amazonses.com ~all"
+
+
+THREE THINGS THAT BREAK THIS
+----------------------------
+1. The trailing dot after amazonses.com. Without it BIND appends the zone name
+   and the MX points at feedback-smtp.us-east-1.amazonses.com.genuinesugarmummies.co.ke
+
+2. The serial. Change 2026073001 to 2026081201 on the SOA line. BIND will not
+   serve the new records to anything until the serial goes up.
+
+3. The root SPF. Leave it alone. You already have one at the root and two SPF
+   records at the same name invalidates SPF completely. The record above is on
+   the send subdomain, which is a different name, so there is no conflict.
+
+
+IF YOU USE THE WEBMIN INTERFACE INSTEAD
+---------------------------------------
+Servers > BIND DNS Server > genuinesugarmummies.co.ke
+
+  TXT record   name: resend._domainkey    value: the p=... string above
+  MX record    name: send                 priority: 10
+                                          mail server: feedback-smtp.us-east-1.amazonses.com.
+  TXT record   name: send                 value: v=spf1 include:amazonses.com ~all
+
+Webmin bumps the serial for you. Click Apply Zone when finished.
+
+Some interfaces add the domain automatically. If a field already shows
+".genuinesugarmummies.co.ke" beside it, enter only "resend._domainkey" and
+"send", not the full name.
+
+
+SHELL, ONE COMMAND AT A TIME
+----------------------------
+Find the zone file:
+  ls /var/named/*genuinesugarmummies*
+
+Back it up before touching it:
+  cp /var/named/genuinesugarmummies.co.ke.db /root/zone-backup.db
+
+Append the records (adjust the path if the first command showed a different one):
+  cat >> /var/named/genuinesugarmummies.co.ke.db
+
+Then paste the three lines, press Enter, then Ctrl+D.
+
+Bump the serial:
+  sed -i 's/2026073001/2026081201/' /var/named/genuinesugarmummies.co.ke.db
+
+Check the file is still valid before reloading. This catches a bad paste:
+  named-checkzone genuinesugarmummies.co.ke /var/named/genuinesugarmummies.co.ke.db
+
+Reload only if that said OK:
+  rndc reload genuinesugarmummies.co.ke
+
+
+WHEN IT IS DONE
+---------------
+From this project:
+  node scripts/check-email-dns.mjs
+
+It asks your nameserver directly, so it tells you the moment the records are
+live rather than waiting out a public resolver cache. When all three pass,
+press Verify in the Resend dashboard, then:
+
+  npm run verify -- email-delivery
