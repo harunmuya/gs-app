@@ -132,11 +132,19 @@ if (!existsSync(ACTIVITY) || !existsSync(MANIFEST)) {
             && /window\.Capacitor \? 0 : null/.test(notice));
         check('a dismissal is remembered per version', /DISMISS_KEY/.test(notice));
         /*
-          Nothing is advertised while the only APK available belongs to the V2
-          app, so there is no download URL to check. What still matters is that
-          the shell can download at all when there is one.
+          The in app download must be off host.
+
+          A WebView cannot download, so a same host link does nothing at all.
+          Capacitor hands an off host link to the system browser, which can.
+          This was briefly switched to a same host path on the reasoning that
+          version 2 adds a DownloadListener, which is circular: version 2 is
+          what the button downloads, so nobody tapping it has the listener yet.
+          It can only move on host once no shell without one is left.
         */
-        check('the shell accepts downloads from version 4 on',
+        check('the in app download is off host',
+            /https:\/\/genuinesugarmummies\.co\.ke\/app\//.test(route),
+            'a same host link cannot download inside a WebView');
+        check('the shell accepts downloads from version 2 on',
             /setDownloadListener/.test(code));
     }
 

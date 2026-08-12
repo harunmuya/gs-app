@@ -39,12 +39,25 @@ const CURRENT = {
     versionCode: 2,
     versionName: '1.1',
     /*
-      Served from this deployment. A same host link cannot download inside a
-      WebView, which is why the button appeared dead, so version 2 carries a
-      DownloadListener that hands the URL to the system download manager. Every
-      install from here has that listener, so the plain path is right.
+      Served from the VPS, on a different host from the app, and it has to stay
+      that way for now.
+
+      An Android WebView cannot download. A link on the same host as the app is
+      handled inside the WebView, which drops it: no download, no error, a
+      button that looks dead. Capacitor hands an off host link to the system
+      browser instead, which can download it.
+
+      Version 2 adds a DownloadListener that fixes this properly, so a same host
+      link would work from an install of version 2 onward. That reasoning is
+      circular and this was briefly switched back on the strength of it: version
+      2 is the thing being downloaded, so nobody tapping this button has the
+      listener yet. It goes back off host, and can only move once no shell
+      without a DownloadListener is left in the wild.
+
+      /base-release.apk on this deployment serves the same file, byte for byte,
+      and is the link to share outside the app where a normal browser handles it.
     */
-    url: '/base-release.apk',
+    url: 'https://genuinesugarmummies.co.ke/app/genuine-sugar-mummies.apk',
     notes: [
         'Camera, microphone and location now work for calls, going live and nearby matches.',
         'The app asks for each one when you use it, rather than all at once on opening.',
