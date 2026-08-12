@@ -169,6 +169,175 @@ export const EMAIL_TEMPLATES = {
  * interruption, and an app that emails about everything gets filtered to spam,
  * taking the messages that did matter with it.
  */
+/*
+  The digest, and the nudge.
+
+  Everything above fires on a single event, which means a member who gets three
+  likes and two views in a day either receives five separate emails or, if the
+  event templates are throttled, none at all. Neither is what brings somebody
+  back. A digest says what happened while they were away, once, with real
+  numbers taken from their own rows.
+
+  The nudge is for the member with nothing waiting. There is no honest event to
+  report, so it does not invent one. It says what is on the app right now and
+  leaves it there.
+
+  Both are separate from EMAILABLE on purpose. That set governs event mail,
+  which is triggered by another member's action. These are sent by us, and the
+  rules for that are stricter: never to a member who has been active recently,
+  never more than the cadence in the digest route, and never with a number that
+  is not real.
+*/
+
+/** "3 likes, 2 profile views" from a counts object, skipping the zeroes. */
+function countLine(counts = {}) {
+    const parts = [];
+    const add = (n, one, many) => { if (n > 0) parts.push(`${n} ${n === 1 ? one : many}`); };
+    add(counts.messages, 'unread message', 'unread messages');
+    add(counts.likes, 'like', 'likes');
+    add(counts.views, 'profile view', 'profile views');
+    add(counts.matches, 'new match', 'new matches');
+    add(counts.followers, 'new follower', 'new followers');
+    if (!parts.length) return '';
+    if (parts.length === 1) return parts[0];
+    return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
+
+export const DIGEST_TEMPLATES = {
+    /**
+     * What happened while they were away. Only sent when something did.
+     */
+    activityDigest: ({ recipientName, counts = {}, topLikerName = '' }) => {
+        const summary = countLine(counts);
+        if (!summary) return null;
+        return {
+            subject: `You have ${summary} waiting`,
+            preview: 'Here is what happened while you were away.',
+            title: 'While you were away',
+            body: [
+                `Hello ${firstName(recipientName)},`,
+                '',
+                `You have ${summary} on Genuine Sugar Mummies.`,
+                topLikerName ? `\n${topLikerName} is one of the people who liked your profile.` : '',
+                '',
+                'Everything is waiting in your account. Nobody can see that you read this.',
+            ].filter(Boolean).join('\n'),
+            actionLabel: 'See what is waiting',
+            actionUrl: '/alerts',
+        };
+    },
+};
+
+/*
+  The nudges.
+
+  Five of them, rotated so a member who goes quiet for a month does not get the
+  same sentence four times. Each one is a true statement about the app rather
+  than a claim about them: none of these says somebody is waiting, or that they
+  have been missed, or invents a number. A dating product that lies to get an
+  open is a product people stop trusting the moment they open it.
+*/
+export const NUDGE_TEMPLATES = [
+    ({ recipientName }) => ({
+        subject: 'New members joined near you',
+        preview: 'Profiles in your area have changed since you last looked.',
+        title: 'New members near you',
+        body: [
+            `Hello ${firstName(recipientName)},`,
+            '',
+            'People have joined and updated their profiles since you last opened the app.',
+            'Nearby shows who is closest to you, and the distances update as members set their towns.',
+        ].join('\n'),
+        actionLabel: 'See who is nearby',
+        actionUrl: '/discover',
+    }),
+    ({ recipientName }) => ({
+        subject: 'Your profile works harder when it is complete',
+        preview: 'A photo and a few lines change how often you are seen.',
+        title: 'Finish your profile',
+        body: [
+            `Hello ${firstName(recipientName)},`,
+            '',
+            'Profiles with a clear photo and a few honest lines get seen more often than ones without.',
+            'It takes about a minute, and you can change it whenever you want.',
+        ].join('\n'),
+        actionLabel: 'Update my profile',
+        actionUrl: '/profile',
+    }),
+    ({ recipientName }) => ({
+        subject: 'Get the verified badge on your profile',
+        preview: 'Verification tells other members you are real.',
+        title: 'Verification is open',
+        body: [
+            `Hello ${firstName(recipientName)},`,
+            '',
+            'Verified profiles carry a badge that tells other members somebody checked they are real.',
+            'It is a single photo, reviewed by our team, and it stays on your profile once approved.',
+        ].join('\n'),
+        actionLabel: 'How verification works',
+        actionUrl: '/verification',
+    }),
+    ({ recipientName }) => ({
+        subject: 'Calls and live streaming are on Silver and Gold',
+        preview: 'What the paid packages open up.',
+        title: 'What the packages open',
+        body: [
+            `Hello ${firstName(recipientName)},`,
+            '',
+            'Voice calls, video calls and going live are on the Silver and Gold packages.',
+            'Both are paid once and stay on the account. There is no monthly charge.',
+        ].join('\n'),
+        actionLabel: 'See the packages',
+        actionUrl: '/packages',
+    }),
+    ({ recipientName }) => ({
+        subject: 'A reminder about staying safe here',
+        preview: 'Nobody genuine will ask you to send money.',
+        title: 'Staying safe',
+        body: [
+            `Hello ${firstName(recipientName)},`,
+            '',
+            'Nobody genuine will ask you to send money, and we never ask for your PIN or your password.',
+            'If someone does, report the profile. Our team acts on those.',
+        ].join('\n'),
+        actionLabel: 'Read the safety guidance',
+        actionUrl: '/safety',
+    }),
+];
+
+/**
+ * Pick a nudge that is not the one this member last received.
+ *
+ * Rotating by a stored index rather than at random is deliberate. Random
+ * repeats: over five sends there is better than a two in three chance of seeing
+ * the same one twice, and a member who gets the same sentence twice reads the
+ * whole thing as automated and stops opening it.
+ */
+export function buildNudgeEmail(data = {}, lastIndex = -1) {
+    /*
+      `Number(lastIndex) || -1` looks equivalent and is not: 0 is falsy, so a
+      member who last received nudge 0 was read as having received none, and got
+      nudge 0 again. Forever. The rotation never left the first template.
+    */
+    const previous = Number.isInteger(Number(lastIndex)) ? Number(lastIndex) : -1;
+    const next = (previous + 1) % NUDGE_TEMPLATES.length;
+    try {
+        return { index: next, email: NUDGE_TEMPLATES[next](data) };
+    } catch {
+        return null;
+    }
+}
+
+export function buildDigestEmail(type, data) {
+    const template = DIGEST_TEMPLATES[type];
+    if (!template) return null;
+    try {
+        return template(data || {});
+    } catch {
+        return null;
+    }
+}
+
 export const EMAILABLE = new Set([
     'message', 'member_message', 'missedCall', 'call_status',
     'like', 'superlike', 'match', 'live', 'followed_live', 'follow', 'gift',
