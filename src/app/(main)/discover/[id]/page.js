@@ -71,7 +71,7 @@ export default function ProfileDetailPage({ params }) {
     const {
         user, guest, addLike, addMatch, likes, saveProfile, unsaveProfile,
         isProfileSaved, logProfileView, requestConnection,
-        computeMatchScore, shouldMatchProfile, settings,
+        settings,
     } = useAuth();
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);

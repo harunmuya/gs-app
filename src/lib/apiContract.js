@@ -70,18 +70,13 @@ export const ANDROID_PERMISSION_MATRIX = [
         requestWhen: ['profile_photo_upload', 'message_attachment', 'gif_and_sticker_picker', 'voice_note_playback'],
         required: false,
     },
-    {
-        key: 'contacts',
-        android: 'android.permission.READ_CONTACTS',
-        requestWhen: ['invite_contacts', 'trusted_contact_picker'],
-        required: false,
-    },
-    {
-        key: 'phone',
-        android: 'android.permission.CALL_PHONE',
-        requestWhen: ['direct_phone_call_from_silver_unlock'],
-        required: false,
-    },
+    /*
+      contacts and phone used to be listed here, for an invite_contacts screen,
+      a trusted_contact_picker and a direct_phone_call flow. None of those
+      exist. The manifest no longer declares either permission, and this list is
+      meant to describe what the app actually asks for, not what it might one
+      day want.
+    */
 ];
 
 export const API_ENDPOINTS = {
