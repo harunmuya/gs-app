@@ -81,14 +81,29 @@ if (!rows.length) {
     console.log('        nothing attempted, so there is nothing to judge');
 } else {
     /*
-      A single bounce is normal. Everything failing is an outage, and that is
-      the state this check exists to catch. The threshold is deliberately
-      generous: below half is worth looking at, all of it is an emergency.
+      Judge the present, and report the week as context.
+
+      An earlier version failed on the seven day rate, which meant that after
+      the August outage was fixed it went on reporting "78% failing" from a
+      window still dominated by the fourteen failures that caused all this. A
+      check that stays red for a week after the fix teaches people to ignore it,
+      and an ignored check is worse than no check.
+
+      What matters is whether mail is going out now. The most recent attempts
+      answer that; the week only says how much damage was done.
     */
-    check('some mail is getting through', sent > 0,
-        sent === 0 ? 'NOTHING has been delivered in seven days' : '');
-    check('the failure rate is not an outage', failed === 0 || failed / rows.length < 0.5,
-        `${Math.round((failed / rows.length) * 100)}% failing`);
+    const RECENT = 5;
+    const recent = rows.slice(0, RECENT);
+    const recentFailed = recent.filter((r) => r.status === 'failed').length;
+
+    check('the most recent attempt succeeded', rows[0].status === 'sent',
+        rows[0].status === 'sent' ? '' : `it ${rows[0].status}`);
+    check(`the last ${recent.length} attempts are not all failing`, recentFailed < recent.length,
+        `${recent.length - recentFailed} of ${recent.length} delivered`);
+
+    if (failed) {
+        console.log(`        for context, ${failed} of ${rows.length} failed across the whole week`);
+    }
 }
 
 // Whatever the provider said, said back plainly.
@@ -135,4 +150,14 @@ if (fail) {
     console.log('The Resend key is only on the deployment, so that is the one place that can');
     console.log('answer whether the domain is verified and the key is scoped to it.');
 }
-process.exit(fail ? 1 : 0);
+/*
+  Set the exit code rather than calling process.exit.
+
+  process.exit tears the process down immediately, and if an undici socket from
+  the fetch above is still closing, Node aborts with
+  'Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)' on Windows. That
+  happens after every check has already passed, so the runner saw a non-zero
+  exit and reported FAIL directly beneath '0 failed'. Letting Node exit on its
+  own lets the socket finish closing first.
+*/
+process.exitCode = fail ? 1 : 0;

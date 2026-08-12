@@ -95,5 +95,8 @@ try {
     if (made.viewerId) await db.from('users').update({ is_live: false }).eq('id', made.viewerId);
     console.log('  probe rows removed');
     console.log(`\n${pass} passed, ${fail} failed`);
-    process.exit(fail ? 1 : 0);
+    // Not process.exit: it tears down while an undici socket from the fetch
+    // above may still be closing, which aborts Node on Windows after the
+    // checks have already passed. See verify-email-delivery for the detail.
+    process.exitCode = fail ? 1 : 0;
 }
