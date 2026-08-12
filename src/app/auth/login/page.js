@@ -11,6 +11,7 @@ import Logo from '@/components/Logo';
 import { labelFromCoordinates } from '@/lib/geo';
 import { SUPPORT } from '@/lib/support';
 import { AGE_RANGE } from '@/lib/copy';
+import { compressImageFile } from '@/lib/imageFile';
 
 /**
  * Authentication — one page, three modes.
@@ -386,31 +387,14 @@ export default function LoginPage() {
             setError('Choose an image file.');
             return;
         }
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            const img = new window.Image();
-            img.onload = () => {
-                if (img.width < 180 || img.height < 180) {
-                    setError('Use a clear photo at least 180 x 180 pixels.');
-                    return;
-                }
-                const max = 720;
-                let { width, height } = img;
-                if (width > max || height > max) {
-                    if (width > height) { height = Math.round(height * max / width); width = max; }
-                    else { width = Math.round(width * max / height); height = max; }
-                }
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-                setProfilePhoto(canvas.toDataURL('image/webp', 0.82));
-                setError('');
-            };
-            img.onerror = () => setError('Could not read that image.');
-            img.src = ev.target.result;
-        };
-        reader.readAsDataURL(file);
+        /*
+          The shared helper decodes with createImageBitmap first, which handles
+          the HEIC an iPhone hands over by default. This used to reject those
+          outright, so the commonest phone could not set a photo at signup.
+        */
+        compressImageFile(file, { max: 720, quality: 0.82 })
+            .then((dataUrl) => { setProfilePhoto(dataUrl); setError(''); })
+            .catch((err) => setError(err.message || 'Could not read that image.'));
     }
 
     /* -------------------------------------------------------------- */

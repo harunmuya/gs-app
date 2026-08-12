@@ -15,6 +15,7 @@ import VoiceRecorder from '@/components/VoiceRecorder';
 import { QUICK_REPLIES, REACTION_REPLIES } from '@/lib/quickReplies';
 import { GIF_NEEDS_SILVER, IMAGE_NEEDS_BASIC } from '@/lib/copy';
 import { apiFetch } from '@/lib/apiFetch';
+import { compressImageFile } from '@/lib/imageFile';
 
 const EMOJI_CHOICES = ['😊', '😍', '😘', '❤️', '😂', '🔥', '👍', '💋', '🌹', '✨'];
 const FALLBACK_STICKERS = [
@@ -141,9 +142,15 @@ export default function MessageThreadPage({ params }) {
             return;
         }
         if (!file || !file.type.startsWith('image/')) return;
-        const reader = new FileReader();
-        reader.onload = (event) => setAttachment({ url: event.target.result, type: 'image', name: file.name || 'Image' });
-        reader.readAsDataURL(file);
+        /*
+          Resized before it is attached. This used to send the file exactly as
+          it came off the camera, so a normal phone photo became several
+          megabytes of base64 in the request body, and a decode failure was
+          silent because there was no error handler on the read.
+        */
+        compressImageFile(file, { max: 1280, quality: 0.82 })
+            .then((url) => setAttachment({ url, type: 'image', name: file.name || 'Image' }))
+            .catch((err) => setStatus(err.message || 'That picture could not be attached.'));
     }
 
     function addEmoji(emoji) {

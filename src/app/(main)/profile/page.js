@@ -22,6 +22,7 @@ import AccountActivityPanel from '@/components/AccountActivityPanel';
 import { unreadMessageValue } from '@/lib/inboxCounts';
 import { SUPPORT } from '@/lib/support';
 import { AGE_RANGE, NAME_REQUIRED, PHONE_REQUIRED } from '@/lib/copy';
+import { compressImageFile } from '@/lib/imageFile';
 
 const PREFERENCE_LABELS = {
     sugar_mummy_looking_for_toyboy: 'Sugar Mummy seeking Sugar Guy / Toyboy',
@@ -239,73 +240,66 @@ export default function ProfilePage() {
         return () => clearInterval(interval);
     }, [verificationStatus, verificationTimer]);
 
-    // Photo upload
-    const handlePhotoUpload = (e) => {
+    /*
+      Photo upload.
+
+      This used to build its own canvas pipeline with an img.onload handler and
+      no onerror beside it, so a picture the browser could not decode produced
+      no error, no status and no spinner. An iPhone HEIC does exactly that, and
+      it is the default camera format on iOS, so the commonest way to add a
+      photo on the commonest phone failed in total silence.
+    */
+    const handlePhotoUpload = async (e) => {
         const file = e.target.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            const canvas = document.createElement('canvas');
-            const img = new Image();
-            img.onload = async () => {
-                const MAX = 800;
-                let w = img.width, h = img.height;
-                if (w > MAX || h > MAX) {
-                    if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-                    else { w = Math.round(w * MAX / h); h = MAX; }
-                }
-                canvas.width = w; canvas.height = h;
-                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                setPhotoBusy(true);
-                setPhotoStatus('Saving photo...');
-                try {
-                    await addPhoto(canvas.toDataURL('image/webp', 0.85));
-                    setPhotoStatus('Photo saved to your account.');
-                } catch (error) {
-                    setPhotoStatus(error.message || 'Photo could not be saved. Try again.');
-                } finally {
-                    setPhotoBusy(false);
-                }
-            };
-            img.src = ev.target.result;
-        };
-        reader.readAsDataURL(file);
         e.target.value = '';
+        if (!file) return;
+
+        setPhotoBusy(true);
+        setPhotoStatus('Preparing photo...');
+        try {
+            const dataUrl = await compressImageFile(file, { max: 800, quality: 0.85 });
+            setPhotoStatus('Saving photo...');
+            await addPhoto(dataUrl);
+            setPhotoStatus('Photo saved to your account.');
+        } catch (error) {
+            setPhotoStatus(error.message || 'Photo could not be saved. Try again.');
+        } finally {
+            setPhotoBusy(false);
+        }
     };
 
-    const readCompressedImage = (file, callback) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const MAX = 900;
-                let w = img.width, h = img.height;
-                if (w > MAX || h > MAX) {
-                    if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-                    else { w = Math.round(w * MAX / h); h = MAX; }
-                }
-                canvas.width = w;
-                canvas.height = h;
-                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                callback(canvas.toDataURL('image/webp', 0.82));
-            };
-            img.src = ev.target.result;
-        };
-        reader.readAsDataURL(file);
+    /*
+      Same helper for the verification selfie and the ID photo. These had the
+      identical silent failure, which is worse here: a member who cannot submit
+      verification has no way to tell whether the app is thinking or broken.
+    */
+    const readCompressedImage = async (file, callback, onFailure) => {
+        try {
+            callback(await compressImageFile(file, { max: 900, quality: 0.82 }));
+        } catch (error) {
+            onFailure?.(error.message || 'That picture could not be read. Try another one.');
+        }
     };
 
     const handleSelfieCapture = (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        readCompressedImage(file, (dataUrl) => setVerificationForm((current) => ({ ...current, selfieDataUrl: dataUrl })));
+        readCompressedImage(
+            file,
+            (dataUrl) => setVerificationForm((current) => ({ ...current, selfieDataUrl: dataUrl })),
+            (message) => setEditStatus(message),
+        );
         e.target.value = '';
     };
 
     const handleDocumentCapture = (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        readCompressedImage(file, (dataUrl) => setVerificationForm((current) => ({ ...current, documentDataUrl: dataUrl })));
+        readCompressedImage(
+            file,
+            (dataUrl) => setVerificationForm((current) => ({ ...current, documentDataUrl: dataUrl })),
+            (message) => setEditStatus(message),
+        );
         e.target.value = '';
     };
 
