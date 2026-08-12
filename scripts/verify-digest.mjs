@@ -139,5 +139,28 @@ check('it never emails an active member', /lt\('last_seen_at', awayBefore\)/.tes
 check('it honours a minimum gap', /MIN_GAP_DAYS \* DAY/.test(route));
 check('the batch is capped', /const BATCH = \d+;/.test(route));
 
+/*
+  Sending etiquette, which only matters on a real run and so is easy to leave
+  out. Resend allows two requests a second; an unpaced loop collects 429s that
+  land in the outbox looking exactly like the outage this all started with.
+*/
+check('sends are paced under the provider rate limit', /const GAP_MS = (\d+);/.test(route)
+    && Number(route.match(/const GAP_MS = (\d+);/)[1]) >= 500,
+    `${route.match(/const GAP_MS = (\d+);/)?.[1] || 0}ms between sends`);
+check('a run gives up if the provider keeps refusing', /consecutiveFailures >= GIVE_UP_AFTER/.test(route));
+check('a success resets the failure run', /sent \+= 1; consecutiveFailures = 0;/.test(route));
+check('what it abandoned is reported', /abandoned,/.test(route));
+
+// The batch has to fit the function budget at that pace, or it is killed
+// mid-run and the outbox is left with no record of what happened next.
+{
+    const batch = Number(route.match(/const BATCH = (\d+);/)?.[1] || 0);
+    const gap = Number(route.match(/const GAP_MS = (\d+);/)?.[1] || 0);
+    const budget = Number(route.match(/maxDuration = (\d+)/)?.[1] || 0);
+    const worstCase = (batch * (gap + 400)) / 1000;
+    check('the batch fits inside the function budget', budget > 0 && worstCase < budget * 0.8,
+        `about ${Math.round(worstCase)}s of a ${budget}s budget`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

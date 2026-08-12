@@ -28,13 +28,23 @@ import { NUDGE_TEMPLATES, buildDigestEmail, buildNudgeEmail } from '@/lib/emailT
  */
 
 export const dynamic = 'force-dynamic';
+// Paced sending needs more than the default budget.
+export const maxDuration = 60;
 
 /** How long since a member was last seen before away mail is appropriate. */
 const AWAY_AFTER_DAYS = 7;
 /** The floor between any two pieces of away mail to the same address. */
 const MIN_GAP_DAYS = 10;
-/** Never work through more than this in one run. */
-const BATCH = 60;
+/*
+  How many to work through in one run.
+
+  Sixty at a 600ms gap is roughly a minute of wall clock, which is the whole
+  function budget with nothing spare. Twenty five leaves room, and the backlog
+  is not urgent: nobody can receive away mail twice inside ten days anyway, so
+  spreading the first pass over a few days costs nothing and spreads the
+  sending reputation load rather than spiking it.
+*/
+const BATCH = 25;
 
 const DAY = 24 * 60 * 60 * 1000;
 const NUDGE_SUBJECTS = NUDGE_TEMPLATES.map((build) => build({ recipientName: 'x' }).subject);
@@ -166,9 +176,34 @@ export async function GET(request) {
         });
     }
 
+    /*
+      Paced, and willing to stop.
+
+      Resend allows two requests a second. This loop had no gap in it at all, so
+      the first live batch would have run at whatever rate the network allowed
+      and collected 429s for its trouble, filling the outbox with failures that
+      look exactly like the outage we just spent a day on.
+
+      It also gives up after a run of consecutive failures. If the provider
+      starts refusing, working through the remaining fifty is not going to
+      change its mind, and every extra attempt is another failed row obscuring
+      whatever the real cause was.
+    */
+    const GAP_MS = 600;
+    const GIVE_UP_AFTER = 5;
+
     let sent = 0;
     let failed = 0;
-    for (const item of planned) {
+    let consecutiveFailures = 0;
+    let abandoned = 0;
+
+    for (const [index, item] of planned.entries()) {
+        if (consecutiveFailures >= GIVE_UP_AFTER) {
+            abandoned = planned.length - index;
+            break;
+        }
+        if (index > 0) await new Promise((resolve) => { setTimeout(resolve, GAP_MS); });
+
         const result = await sendAndLogEmail(db, {
             to: item.member.email,
             subject: item.email.subject,
@@ -183,8 +218,18 @@ export async function GET(request) {
                 secondaryActionUrl: '/',
             }),
         });
-        if (result?.ok) sent += 1; else failed += 1;
+        if (result?.ok) { sent += 1; consecutiveFailures = 0; }
+        else { failed += 1; consecutiveFailures += 1; }
     }
 
-    return NextResponse.json({ ok: true, dryRun: false, considered: members?.length || 0, skippedRecent, sent, failed });
+    return NextResponse.json({
+        ok: true,
+        dryRun: false,
+        considered: members?.length || 0,
+        skippedRecent,
+        sent,
+        failed,
+        // Non zero means the run stopped early because the provider kept refusing.
+        abandoned,
+    });
 }
