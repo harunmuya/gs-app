@@ -418,7 +418,7 @@ export default function MemberProfilePage({ params }) {
             <section className="relative min-h-[330px] bg-primary/5 overflow-hidden">
                 <img src={getProfileImageSrc(member)} alt={member.name} className="absolute inset-0 w-full h-full object-cover" onError={(event) => useProfileImageFallback(event, member.name, member.profileLabel, member.isSeedProfile)} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/25 to-black/35" />
-                <button onClick={() => router.back()} className="absolute top-4 left-4 w-10 h-10 rounded-full flex items-center justify-center bg-black/55 text-white" aria-label="Back"><ArrowLeft size={21} /></button>
+                <button onClick={() => router.back()} className="absolute top-4 left-4 w-11 h-11 rounded-full flex items-center justify-center bg-black/55 text-white" aria-label="Back"><ArrowLeft size={21} /></button>
                 <div className="absolute bottom-0 left-0 right-0 p-5 text-white space-y-2">
                     <div className="flex items-center gap-2"><PresenceDot member={member} size={14} className="ring-2 ring-white/75" /><h1 className="text-3xl font-black truncate">{member.name}</h1><VerifiedBadge verified={member.verified} size={22} /></div>
                     <div className="flex flex-wrap items-center gap-2 text-sm opacity-90">{member.age && <span>{member.age}</span>}{member.location && <span className="inline-flex items-center gap-1"><MapPin size={14} /> {member.location}</span>}{memberDistanceText && <span className="inline-flex items-center gap-1"><MapPin size={14} /> {memberDistanceText}</span>}</div>
@@ -472,8 +472,8 @@ export default function MemberProfilePage({ params }) {
                 <section id="message" className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                     <h2 className="text-sm font-bold text-text-primary">Message</h2>
                     <div className="flex flex-wrap gap-2">
-                        {QUICK_REPLIES.map((reply) => <button key={reply.label} type="button" onClick={() => setMessage(reply.text)} className="px-3 h-9 rounded-xl bg-primary/10 text-primary text-xs font-semibold">{reply.label}</button>)}
-                        {REACTION_REPLIES.map((reply) => <button key={reply.name} type="button" onClick={() => setMessage(reply.text)} className="px-3 h-9 rounded-xl bg-amber-100 text-gold text-xs font-semibold">{reply.name}</button>)}
+                        {QUICK_REPLIES.map((reply) => <button key={reply.label} type="button" onClick={() => setMessage(reply.text)} className="px-3 h-11 rounded-xl bg-primary/10 text-primary text-xs font-semibold">{reply.label}</button>)}
+                        {REACTION_REPLIES.map((reply) => <button key={reply.name} type="button" onClick={() => setMessage(reply.text)} className="px-3 h-11 rounded-xl bg-amber-100 text-gold text-xs font-semibold">{reply.name}</button>)}
                     </div>
                     {attachment?.type === 'image' && <div className="relative w-24"><img src={attachment.url} alt="" className="w-24 h-24 rounded-xl object-cover"  loading="lazy" decoding="async" /><button type="button" onClick={() => setAttachment(null)} className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-danger text-white flex items-center justify-center"><X size={14} /></button></div>}
                     {attachment?.type === 'gif' && <div className="inline-flex items-center gap-2 rounded-xl bg-amber-100 text-gold px-3 py-2 text-xs font-semibold">GIF {attachment.name}<button type="button" onClick={() => setAttachment(null)}><X size={13} /></button></div>}

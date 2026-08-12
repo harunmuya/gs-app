@@ -180,7 +180,7 @@ export default function StoriesStrip({ title = 'Stories' }) {
             {activeStory && (
                 <div className="fixed inset-0 z-50 bg-black/80 p-4 flex items-center justify-center">
                     <div className="relative w-full max-w-sm overflow-hidden rounded-3xl bg-gray-950 text-white">
-                        <button onClick={() => setActiveStory(null)} className="absolute right-3 top-3 z-10 h-9 w-9 rounded-full bg-black/50 flex items-center justify-center" aria-label="Close story"><X size={18} /></button>
+                        <button onClick={() => setActiveStory(null)} className="absolute right-3 top-3 z-10 h-11 w-11 rounded-full bg-black/50 flex items-center justify-center" aria-label="Close story"><X size={18} /></button>
                         <div className="min-h-[460px] flex flex-col">
                             <div className="flex items-center gap-2 p-3">
                                 <UserAvatar name={activeStory.user?.display_name || 'Member'} src={storyPhoto(activeStory)} size={38} />

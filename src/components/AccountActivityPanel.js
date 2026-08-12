@@ -97,7 +97,7 @@ export default function AccountActivityPanel() {
                 </div>
             )}
 
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <Metric icon={Heart} label="Likes" value={data?.likes?.length || 0} locked={locked} />
                 <Metric icon={Eye} label="Views" value={data?.views?.length || 0} locked={locked} />
                 <Metric icon={Users} label="Followers" value={data?.followers?.length || 0} locked={locked} />

@@ -126,7 +126,7 @@ export default function VoiceRecorder({ disabled = false, onRecorded, onError })
                 onKeyUp={(event) => {
                     if (event.code === 'Space' || event.code === 'Enter') stopRecording(event);
                 }}
-                className={`w-10 h-10 rounded-2xl flex items-center justify-center transition ${recording ? 'bg-danger text-white animate-pulse' : 'bg-sky-100 text-sky-700'} disabled:opacity-50`}
+                className={`w-11 h-11 rounded-2xl flex items-center justify-center transition ${recording ? 'bg-danger text-white animate-pulse' : 'bg-sky-100 text-sky-700'} disabled:opacity-50`}
                 aria-label={recording ? 'Release to send voice note preview' : 'Hold to record voice note'}
                 title={recording ? 'Release to attach voice note' : 'Hold to record'}
             >
@@ -139,7 +139,7 @@ export default function VoiceRecorder({ disabled = false, onRecorded, onError })
                             <span className="h-2.5 w-2.5 rounded-full bg-danger animate-pulse" />
                             Recording {secondsText(seconds)}
                         </span>
-                        <button type="button" onPointerDown={cancelRecording} className="h-7 w-7 rounded-full bg-danger/10 text-danger flex items-center justify-center" aria-label="Cancel recording">
+                        <button type="button" onPointerDown={cancelRecording} className="h-11 w-11 rounded-full bg-danger/10 text-danger flex items-center justify-center" aria-label="Cancel recording">
                             <X size={13} />
                         </button>
                     </div>

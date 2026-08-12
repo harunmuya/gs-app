@@ -326,7 +326,7 @@ export default function ProfileCompletionModal() {
                                     <p className="text-xs text-gray-500 mt-0.5">{step.subtitle}</p>
                                 </div>
                             </div>
-                            <button onClick={handleDismiss} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors">
+                            <button onClick={handleDismiss} className="w-11 h-11 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors">
                                 <X size={18} className="text-gray-400" />
                             </button>
                         </div>

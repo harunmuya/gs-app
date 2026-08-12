@@ -69,7 +69,7 @@ export default function PermissionSheet({ permission, onResolved, onClose }) {
                         <h2 id="perm-title" className="type-title text-text-primary">{spec.title}</h2>
                         <p className="mt-1 type-caption text-text-secondary">{denied ? spec.deniedHelp : spec.why}</p>
                     </div>
-                    <button type="button" onClick={dismiss} aria-label="Close" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-muted">
+                    <button type="button" onClick={dismiss} aria-label="Close" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-text-muted">
                         <X size={16} />
                     </button>
                 </div>

@@ -314,7 +314,7 @@ export default function MembersPage() {
                         <h1 className="text-xl font-black text-text-primary">Members</h1>
                         <p className="text-xs text-text-muted mt-0.5">{visibleMembers.length} visible profiles</p>
                     </div>
-                    <Link href="/profile" className="w-10 h-10 rounded-full flex items-center justify-center text-white gradient-primary shadow-lg" aria-label="Create profile">
+                    <Link href="/profile" className="w-11 h-11 rounded-full flex items-center justify-center text-white gradient-primary shadow-lg" aria-label="Create profile">
                         <UserPlus size={18} />
                     </Link>
                 </div>
@@ -370,7 +370,7 @@ export default function MembersPage() {
                             <RefreshCw size={13} /> Shuffle
                         </button>
                     </div>
-                    <div className="grid grid-cols-4 gap-1.5">
+                    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                         {FEED_MODES.map((item) => (
                             <button
                                 key={item.id}
@@ -400,7 +400,7 @@ export default function MembersPage() {
                                 key={item.id}
                                 type="button"
                                 onClick={() => setLabel(item.id)}
-                                className={`shrink-0 min-h-10 rounded-xl px-3 text-xs font-semibold transition-all active:scale-[0.97] ${label === item.id ? 'text-white gradient-primary shadow-sm' : 'text-text-secondary'}`}
+                                className={`shrink-0 min-h-11 rounded-xl px-3 text-xs font-semibold transition-all active:scale-[0.97] ${label === item.id ? 'text-white gradient-primary shadow-sm' : 'text-text-secondary'}`}
                                 style={label === item.id ? {} : { background: 'var(--color-surface)' }}
                             >
                                 {item.label}

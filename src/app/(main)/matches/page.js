@@ -275,7 +275,7 @@ export default function MatchesPage() {
                     <h1 className="text-xl font-black text-text-primary">Smart Matches</h1>
                     <p className="text-xs text-text-muted">Ranked by location, preference, interactions, verification, and profile intent.</p>
                 </div>
-                <button onClick={() => window.location.reload()} className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center" aria-label="Refresh"><RefreshCw size={18} /></button>
+                <button onClick={() => window.location.reload()} className="w-11 h-11 rounded-full bg-primary/10 text-primary flex items-center justify-center" aria-label="Refresh"><RefreshCw size={18} /></button>
             </div>
 
             <StoriesStrip title="Match Stories" />

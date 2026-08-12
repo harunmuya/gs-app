@@ -471,8 +471,8 @@ export default function AdminPage() {
                                 <EvidenceCard title="ID / Passport" src={user.verification_document_url} fileName={`${user.display_name || user.id}-document`} />
                             </div>
                             <div className="flex flex-wrap gap-2">
-                                <button onClick={() => adminAction({ action: 'approve_verification', userId: user.id }, 'Verification approved')} className="min-h-10 flex-1 rounded-xl px-3 py-2 text-xs font-semibold text-white bg-success flex items-center justify-center gap-1"><Check size={14} /> Approve Badge</button>
-                                <button onClick={() => adminAction({ action: 'reject_verification', userId: user.id, reason: 'Please upload clearer verification documents.' }, 'Verification rejected')} className="min-h-10 flex-1 rounded-xl px-3 py-2 text-xs font-semibold text-white bg-danger flex items-center justify-center gap-1"><X size={14} /> Reject</button>
+                                <button onClick={() => adminAction({ action: 'approve_verification', userId: user.id }, 'Verification approved')} className="min-h-11 flex-1 rounded-xl px-3 py-2 text-xs font-semibold text-white bg-success flex items-center justify-center gap-1"><Check size={14} /> Approve Badge</button>
+                                <button onClick={() => adminAction({ action: 'reject_verification', userId: user.id, reason: 'Please upload clearer verification documents.' }, 'Verification rejected')} className="min-h-11 flex-1 rounded-xl px-3 py-2 text-xs font-semibold text-white bg-danger flex items-center justify-center gap-1"><X size={14} /> Reject</button>
                             </div>
                         </article>
                     ))}

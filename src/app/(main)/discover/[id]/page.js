@@ -186,7 +186,7 @@ export default function ProfileDetailPage({ params }) {
                 {/* Back button */}
                 <button
                     onClick={() => router.back()}
-                    className="absolute top-4 left-4 w-10 h-10 rounded-full flex items-center justify-center shadow-lg"
+                    className="absolute top-4 left-4 w-11 h-11 rounded-full flex items-center justify-center shadow-lg"
                     style={{ background: 'rgba(0,0,0,0.7)' }}
                 >
                     <ArrowLeft size={22} className="text-white" />
@@ -195,13 +195,13 @@ export default function ProfileDetailPage({ params }) {
                 {/* Actions */}
                 <div className="absolute top-4 right-4 flex gap-2">
                     <button onClick={handleShare}
-                        className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg"
+                        className="w-11 h-11 rounded-full flex items-center justify-center shadow-lg"
                         style={{ background: 'rgba(0,0,0,0.6)' }}
                     >
                         <Share2 size={20} className="text-white" />
                     </button>
                     <button onClick={handleSave}
-                        className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg"
+                        className="w-11 h-11 rounded-full flex items-center justify-center shadow-lg"
                         style={{ background: saved ? 'rgba(124,58,237,0.8)' : 'rgba(0,0,0,0.6)' }}
                     >
                         {saved ? <BookmarkCheck size={20} className="text-white" /> : <Bookmark size={20} className="text-white" />}

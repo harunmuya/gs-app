@@ -463,7 +463,7 @@ export default function ProfilePage() {
                 </div>
 
                 {/* Stats */}
-                <div className="grid grid-cols-4 gap-2 pt-2">
+                <div className="grid grid-cols-2 gap-2 pt-2 sm:grid-cols-4">
                     {premiumStats.map((s) => {
                         const content = (
                             <>
@@ -574,7 +574,7 @@ export default function ProfilePage() {
                                             setPhotoBusy(false);
                                         }
                                     }}
-                                    className="absolute top-1 right-1 w-7 h-7 rounded-full bg-black/70 flex items-center justify-center"
+                                    className="absolute top-1 right-1 w-9 h-9 rounded-full bg-black/70 flex items-center justify-center"
                                 >
                                     <X size={14} className="text-white" />
                                 </button>
@@ -769,7 +769,7 @@ export default function ProfilePage() {
                                 type="button"
                                 aria-label={`${setting.label}: ${settings[setting.key] ? 'On' : 'Off'}`}
                                 onClick={() => updateSettings({ [setting.key]: !settings[setting.key] })}
-                                className={`w-10 h-6 rounded-full transition-all duration-300 ${settings[setting.key] ? 'bg-primary' : 'bg-gray-300'}`}
+                                className={`w-12 h-7 rounded-full transition-all duration-300 ${settings[setting.key] ? 'bg-primary' : 'bg-gray-300'}`}
                             >
                                 <div className={`w-4 h-4 bg-white rounded-full shadow transition-all duration-300 ${settings[setting.key] ? 'translate-x-5' : 'translate-x-1'}`} />
                             </button>

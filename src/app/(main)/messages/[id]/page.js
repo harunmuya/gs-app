@@ -290,7 +290,7 @@ export default function MessageThreadPage({ params }) {
                 </div>
             </div>}
             <header className="sticky top-0 z-20 flex items-center gap-3 p-3 backdrop-blur-xl" style={{ background: 'rgba(255,255,255,0.92)', borderBottom: '1px solid rgba(15,118,110,0.12)' }}>
-                <button onClick={() => router.back()} className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center" aria-label="Back"><ArrowLeft size={19} /></button>
+                <button onClick={() => router.back()} className="w-11 h-11 rounded-full bg-primary/10 text-primary flex items-center justify-center" aria-label="Back"><ArrowLeft size={19} /></button>
                 <Link href={`/members/${peerId}`} className="min-w-0 flex flex-1 items-center gap-3">
                     <div className="relative shrink-0">
                         <UserAvatar name={peer?.display_name || 'Member'} src={peerPhoto} size={44} />
@@ -348,16 +348,16 @@ export default function MessageThreadPage({ params }) {
             <form onSubmit={sendMessage} className="fixed bottom-[72px] left-0 right-0 z-30 px-3">
                 <div className="max-w-md mx-auto rounded-3xl p-2 shadow-xl space-y-2" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
                     <div className="flex flex-wrap gap-1 px-1">
-                        {QUICK_REPLIES.map((reply) => <button key={reply.label} type="button" onClick={() => setText(reply.text)} className="px-2 h-8 rounded-xl bg-primary/10 text-primary text-[10px] font-semibold">{reply.label}</button>)}
-                        {REACTION_REPLIES.map((reply) => <button key={reply.name} type="button" onClick={() => setText(reply.text)} className="px-2 h-8 rounded-xl bg-amber-100 text-gold text-[10px] font-semibold">{reply.name}</button>)}
-                        <button type="button" onClick={() => setGiftPanelOpen((open) => !open)} className="px-2 h-8 rounded-xl bg-secondary/10 text-secondary text-[10px] font-semibold flex items-center gap-1"><Gift size={12} /> Gifts</button>
+                        {QUICK_REPLIES.map((reply) => <button key={reply.label} type="button" onClick={() => setText(reply.text)} className="px-3 h-11 rounded-xl bg-primary/10 text-primary type-caption font-semibold">{reply.label}</button>)}
+                        {REACTION_REPLIES.map((reply) => <button key={reply.name} type="button" onClick={() => setText(reply.text)} className="px-3 h-11 rounded-xl bg-amber-100 text-gold type-caption font-semibold">{reply.name}</button>)}
+                        <button type="button" onClick={() => setGiftPanelOpen((open) => !open)} className="px-3 h-11 rounded-xl bg-secondary/10 text-secondary type-caption font-semibold flex items-center gap-1"><Gift size={12} /> Gifts</button>
                     </div>
                     <div className="flex items-center gap-1 overflow-x-auto px-1 pb-1">
                         <span className="shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary"><Smile size={14} /></span>
                         {EMOJI_CHOICES.map((emoji) => (
-                            <button key={emoji} type="button" onClick={() => addEmoji(emoji)} className="shrink-0 h-8 w-8 rounded-xl bg-white/80 text-base shadow-sm ring-1 ring-black/5" aria-label={`Add ${emoji}`}>{emoji}</button>
+                            <button key={emoji} type="button" onClick={() => addEmoji(emoji)} className="shrink-0 h-11 w-11 rounded-xl bg-white/80 text-base shadow-sm ring-1 ring-black/5" aria-label={`Add ${emoji}`}>{emoji}</button>
                         ))}
-                        <button type="button" onClick={() => { setStickerPanelOpen((open) => !open); setGiftPanelOpen(false); }} className="shrink-0 h-8 rounded-xl px-2 bg-primary/10 text-primary text-[10px] font-semibold flex items-center gap-1">
+                        <button type="button" onClick={() => { setStickerPanelOpen((open) => !open); setGiftPanelOpen(false); }} className="shrink-0 h-11 rounded-xl px-3 bg-primary/10 text-primary type-caption font-semibold flex items-center gap-1">
                             <Sticker size={12} /> Stickers/GIFs
                         </button>
                     </div>
@@ -366,7 +366,7 @@ export default function MessageThreadPage({ params }) {
                             <p className="text-[10px] font-semibold text-text-primary">Stickers and GIFs</p>
                             <Link href="/packages" className="text-[10px] font-semibold text-primary">Unlock media</Link>
                         </div>
-                        <div className="grid grid-cols-4 gap-2 max-h-48 overflow-auto">
+                        <div className="grid grid-cols-3 gap-2 max-h-48 overflow-auto sm:grid-cols-4">
                             {stickerItems.map((item) => {
                                 const url = item.gif_url || item.gifUrl || item.icon_url || item.iconUrl || item.url || '';
                                 const type = item.gif_url || item.gifUrl || item.type === 'gif' ? 'gif' : 'image';
@@ -401,9 +401,9 @@ export default function MessageThreadPage({ params }) {
                     {voiceNote?.url && <Preview onClear={() => setVoiceNote(null)}><div className="flex items-center gap-2"><audio src={voiceNote.url} controls className="max-w-[210px]" /><span className="text-[10px] font-semibold text-primary">{voiceNote.durationSeconds || 0}s</span></div></Preview>}
                     <div className="flex items-center gap-2">
                         <input value={text} onChange={handleTextChange} placeholder={canMessage ? 'Type a message' : 'Recharge or upgrade to continue'} enterKeyHint="send" className="min-w-0 flex-1 rounded-2xl px-3 py-3 text-sm" style={{ background: 'var(--color-surface)' }} />
-                        <button type="button" disabled={!canMessage || !canSendImages} onClick={() => fileInputRef.current?.click()} className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center disabled:opacity-45" aria-label="Attach image"><ImagePlus size={17} /></button>
+                        <button type="button" disabled={!canMessage || !canSendImages} onClick={() => fileInputRef.current?.click()} className="w-11 h-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center disabled:opacity-45" aria-label="Attach image"><ImagePlus size={17} /></button>
                         <VoiceRecorder disabled={!canMessage || !canSendVoice} onRecorded={setVoiceNote} onError={setStatus} />
-                        <button className="w-11 h-10 rounded-2xl gradient-primary text-white flex items-center justify-center" aria-label="Send"><Send size={17} /></button>
+                        <button className="w-11 h-11 rounded-2xl gradient-primary text-white flex items-center justify-center" aria-label="Send"><Send size={17} /></button>
                     </div>
                     {!canMessage && <p className="px-2 text-[10px] font-bold text-text-muted flex items-center gap-1"><Lock size={11} /> Daily quota reached. Subscribe to Basic, Silver, or Gold for unlimited messaging.</p>}
                     <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => { attachImage(event.target.files?.[0]); event.target.value = ''; }} />
@@ -414,7 +414,7 @@ export default function MessageThreadPage({ params }) {
 }
 
 function Preview({ children, onClear }) {
-    return <div className="mx-1 flex items-center justify-between gap-2 rounded-2xl bg-primary/10 p-2">{children}<button type="button" onClick={onClear} className="w-7 h-7 rounded-full bg-danger text-white flex items-center justify-center"><X size={13} /></button></div>;
+    return <div className="mx-1 flex items-center justify-between gap-2 rounded-2xl bg-primary/10 p-2">{children}<button type="button" onClick={onClear} className="w-11 h-11 rounded-full bg-danger text-white flex items-center justify-center"><X size={13} /></button></div>;
 }
 
 function GiftMessageCard({ gift, mine }) {
