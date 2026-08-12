@@ -8,5 +8,8 @@
   "rewrites": [
     { "source": "/base-release.apk", "destination": "/downloads/genuine-sugar-mummies-kenya.apk" },
     { "source": "/base-realese.apk", "destination": "/downloads/genuine-sugar-mummies-kenya.apk" }
+  ],
+  "crons": [
+    { "path": "/api/digest?send=1", "schedule": "0 6 * * *" }
   ]
 }
