@@ -259,7 +259,7 @@ export default function ProfileCompletionModal() {
                 setCurrentStep(currentStep + 1);
             } else {
                 // All done
-                setSuccess('Profile complete! Welcome aboard.');
+                setSuccess('Profile complete. Welcome aboard.');
                 setTimeout(() => {
                     setVisible(false);
                     setDismissed(true);
@@ -351,7 +351,7 @@ export default function ProfileCompletionModal() {
                                         <textarea
                                             value={bio}
                                             onChange={(e) => { setBio(e.target.value); setError(''); }}
-                                            placeholder="Tell members about yourself — who you are, what makes you special..."
+                                            placeholder="Tell members about yourself. Who you are, and what makes you worth knowing."
                                             rows={4}
                                             autoFocus
                                             className="w-full rounded-2xl p-4 text-sm resize-none outline-none transition-all"

@@ -97,7 +97,7 @@ export async function GET(request) {
                     .select('id')
                     .maybeSingle();
                 if (!e2 && d2) {
-                    diagnostics[`without_${field}`] = 'SUCCESS - this field might be the problem';
+                    diagnostics[`without_${field}`] = 'SUCCESS. This field might be the problem';
                     await supabase.from('users').delete().eq('id', d2.id);
                     break;
                 }

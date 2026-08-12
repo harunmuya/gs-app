@@ -14,6 +14,7 @@ import { triggerGiftEffect } from '@/components/GiftEffects';
 import VoiceRecorder from '@/components/VoiceRecorder';
 import { QUICK_REPLIES, REACTION_REPLIES } from '@/lib/quickReplies';
 import { GIF_NEEDS_SILVER, IMAGE_NEEDS_BASIC } from '@/lib/copy';
+import { apiFetch } from '@/lib/apiFetch';
 
 const EMOJI_CHOICES = ['😊', '😍', '😘', '❤️', '😂', '🔥', '👍', '💋', '🌹', '✨'];
 const FALLBACK_STICKERS = [
@@ -56,8 +57,11 @@ export default function MessageThreadPage({ params }) {
         if (!user?.id || !peerId) return;
         if (!silent) setLoading(true);
         try {
-            const res = await fetch(`/api/chat?userId=${encodeURIComponent(user.id)}&peerId=${encodeURIComponent(peerId)}`);
+            const res = await apiFetch(`/api/chat?userId=${encodeURIComponent(user.id)}&peerId=${encodeURIComponent(peerId)}`);
             const data = await res.json().catch(() => ({}));
+            // Same reason as the conversation list: a signed-in member must not
+            // be told to sign in because a token quietly expired.
+            if (res.sessionExpired) { setStatus('Your session has ended. Sign in again to continue this chat.'); return; }
             if (!res.ok) throw new Error(data.error || 'Could not open chat.');
             setPeer(data.peer || null);
             setConversation(data.conversation || null);

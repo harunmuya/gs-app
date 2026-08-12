@@ -187,7 +187,7 @@ const LIFE_LINES = [
 
 const WANT_LINES = [
     (t, q) => `Looking for a ${t} who is ${q}.`,
-    (t, q) => `I want to meet a ${t} — ${q} matters more to me than anything else.`,
+    (t, q) => `I want to meet a ${t}. ${q.charAt(0).toUpperCase()}${q.slice(1)} matters more to me than anything else.`,
     (t, q) => `Hoping to find a ${t} who is ${q}. No games.`,
     (t, q) => `If you are a ${t} and you are ${q}, say hello.`,
     (t, q) => `Would like something steady with a ${t} who is ${q}.`,
@@ -199,7 +199,7 @@ const CLOSERS = [
     'I do not do time wasters.',
     'Discretion is important to me.',
     'Happy to take it slow.',
-    'I answer when I can — I work long hours.',
+    'I answer when I can. I work long hours.',
     'Serious enquiries.',
     '',
     '',

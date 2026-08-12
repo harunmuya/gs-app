@@ -23,8 +23,8 @@ export const PERMISSIONS = {
     location: {
         id: 'location',
         title: 'Find members near you',
-        why: 'We use your location to show who is close by and to sort matches by distance. Your exact position is never shown to other members — they only ever see a town and an approximate distance.',
-        deniedHelp: 'Location is blocked for this app. Open your device Settings, find GS App, and allow Location — or add your town in Profile instead.',
+        why: 'We use your location to show who is close by and to sort matches by distance. Your exact position is never shown to other members. They only ever see a town and an approximate distance.',
+        deniedHelp: 'Location is blocked for this app. Open your device Settings, find GS App, and allow Location. You can also just add your town in Profile instead.',
     },
     microphone: {
         id: 'microphone',

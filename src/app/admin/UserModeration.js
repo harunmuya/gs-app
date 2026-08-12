@@ -116,7 +116,7 @@ export default function UserModeration({ user, onAction, busy }) {
                 <span className="type-micro shrink-0 text-text-muted">Permanent</span>
                 <ActionButton
                     icon={Trash2}
-                    label={confirming === 'del' ? 'Confirm — cannot be undone' : 'Delete forever'}
+                    label={confirming === 'del' ? 'Confirm. This cannot be undone' : 'Delete forever'}
                     tone="danger"
                     busy={busy}
                     onClick={() => confirm('del', () => onAction('delete_user_forever', 'Account deleted permanently'))}

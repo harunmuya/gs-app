@@ -11,6 +11,7 @@ import LiveNowStrip from '@/components/LiveNowStrip';
 import BoostedMembersStrip from '@/components/BoostedMembersStrip';
 import StoriesStrip from '@/components/StoriesStrip';
 import { useAuth } from '@/contexts/AuthContext';
+import { apiFetch } from '@/lib/apiFetch';
 
 function timeText(date) {
     if (!date) return '';
@@ -41,9 +42,20 @@ export default function MessagesPage() {
         async function load() {
             setError('');
             try {
-                const res = await fetch(`/api/chat?userId=${encodeURIComponent(user.id)}`);
+                const res = await apiFetch(`/api/chat?userId=${encodeURIComponent(user.id)}`);
                 const data = await res.json().catch(() => ({}));
                 if (!alive) return;
+                /*
+                  A 401 here used to print "Sign in to continue" into the error
+                  banner of a screen that was showing the member's own name.
+                  apiFetch refreshes and retries first, so this only runs when
+                  the session is genuinely gone, and then it says so in words
+                  that match what actually happened.
+                */
+                if (res.sessionExpired) {
+                    setError('Your session has ended. Sign in again to see your messages.');
+                    return;
+                }
                 if (!res.ok) throw new Error(data.error || 'Could not load messages.');
                 setConversations(data.conversations || []);
             } catch (err) {
