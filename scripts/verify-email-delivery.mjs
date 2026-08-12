@@ -1,0 +1,115 @@
+/**
+ * Is mail actually reaching anybody?
+ *
+ * Every email the app sends is written to email_outbox with a status, and
+ * nothing anywhere reads that status back. So when delivery broke, it broke
+ * completely and silently: 102 emails sent cleanly up to 8 August 2026, then
+ * every single one from 9 August onward failed, and nobody found out for four
+ * days. The app kept generating them, kept logging them, and kept reporting
+ * success to the code that asked.
+ *
+ * The provider had been saying exactly what was wrong the whole time, in the
+ * provider_response column of every failed row:
+ *
+ *   "The associated domain with your API key is not verified."
+ *
+ * That is a dashboard problem rather than a code one, which is precisely why a
+ * check belongs here. Nothing in the codebase can fix it, and nothing in the
+ * codebase was noticing it.
+ */
+import { readFileSync } from 'node:fs';
+import { createClient } from '@supabase/supabase-js';
+
+const env = Object.fromEntries(
+    readFileSync('.env.local', 'utf8')
+        .split(/\r?\n/)
+        .filter((l) => l && !l.startsWith('#') && l.includes('='))
+        .map((l) => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim().replace(/^["']|["']$/g, '')]; })
+);
+const db = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
+
+let pass = 0;
+let fail = 0;
+const check = (label, ok, detail = '') => {
+    if (ok) { pass++; console.log(`  ok    ${label}${detail ? `  ${detail}` : ''}`); }
+    else { fail++; console.log(`  FAIL  ${label}${detail ? `  ${detail}` : ''}`); }
+};
+
+const DAY = 24 * 60 * 60 * 1000;
+const since = new Date(Date.now() - 7 * DAY).toISOString();
+
+console.log('\nDelivery over the last seven days');
+
+const { data: recent, error } = await db
+    .from('email_outbox')
+    .select('subject, status, provider_response, created_at')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false });
+
+if (error) {
+    console.log(`\nCould not read email_outbox: ${error.message}`);
+    process.exit(1);
+}
+
+const rows = recent || [];
+const sent = rows.filter((r) => r.status === 'sent').length;
+const failed = rows.filter((r) => r.status === 'failed').length;
+const queued = rows.filter((r) => r.status === 'queued').length;
+
+console.log(`        ${rows.length} attempts: ${sent} sent, ${failed} failed, ${queued} queued`);
+
+if (!rows.length) {
+    console.log('        nothing attempted, so there is nothing to judge');
+} else {
+    /*
+      A single bounce is normal. Everything failing is an outage, and that is
+      the state this check exists to catch. The threshold is deliberately
+      generous: below half is worth looking at, all of it is an emergency.
+    */
+    check('some mail is getting through', sent > 0,
+        sent === 0 ? 'NOTHING has been delivered in seven days' : '');
+    check('the failure rate is not an outage', failed === 0 || failed / rows.length < 0.5,
+        `${Math.round((failed / rows.length) * 100)}% failing`);
+}
+
+// Whatever the provider said, said back plainly.
+if (failed) {
+    const reasons = new Map();
+    for (const row of rows.filter((r) => r.status === 'failed')) {
+        let message = 'unknown';
+        try { message = JSON.parse(row.provider_response || '{}').message || 'unknown'; } catch { /* not json */ }
+        reasons.set(message, (reasons.get(message) || 0) + 1);
+    }
+    console.log('\n        why they failed:');
+    for (const [message, count] of [...reasons].sort((a, b) => b[1] - a[1])) {
+        console.log(`          ${count}x  ${message.slice(0, 110)}`);
+    }
+}
+
+console.log('\nConfiguration');
+{
+    // A missing key is not a failure here, because it is normal locally. It is
+    // reported so that a run with no key is not mistaken for a healthy one.
+    const hasKey = Boolean(env.RESEND_API_KEY);
+    console.log(`        RESEND_API_KEY in .env.local: ${hasKey ? 'present' : 'absent, this machine cannot send'}`);
+    console.log(`        RESEND_FROM_EMAIL: ${env.RESEND_FROM_EMAIL || '(not set, falls back to feedback@genuinesugarmummies.co.ke)'}`);
+
+    if (hasKey) {
+        const res = await fetch('https://api.resend.com/domains', { headers: { Authorization: `Bearer ${env.RESEND_API_KEY}` } });
+        const data = await res.json().catch(() => ({}));
+        if (Array.isArray(data.data)) {
+            const verified = data.data.filter((d) => d.status === 'verified');
+            check('at least one sending domain is verified', verified.length > 0,
+                data.data.map((d) => `${d.name}=${d.status}`).join(', ') || 'no domains registered');
+        } else {
+            check('the API key is accepted by the provider', false, data.message || `HTTP ${res.status}`);
+        }
+    }
+}
+
+console.log(`\n${pass} passed, ${fail} failed`);
+if (fail) {
+    console.log('\nDelivery is broken. The fix is on the Resend dashboard, not in this repo:');
+    console.log('  verify the sending domain, or issue an API key with full access.');
+}
+process.exit(fail ? 1 : 0);

@@ -359,6 +359,7 @@ export function buildDigestEmail(type, data) {
 export const EMAILABLE = new Set([
     'message', 'member_message', 'missedCall', 'call_status',
     'like', 'superlike', 'match', 'live', 'followed_live', 'follow', 'gift',
+    'profileView', 'profile_view',
 ]);
 
 export function buildNotificationEmail(type, data) {

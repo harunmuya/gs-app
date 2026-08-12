@@ -2926,6 +2926,58 @@ export async function POST(request) {
                     source: 'member',
                 });
             } catch {}
+
+            /*
+              Tell the member somebody looked at them.
+
+              This was the one activity that recorded a row and told nobody. A
+              profileView email template existed and nothing ever called it, so
+              167 views produced no notification and no mail.
+
+              Once a day per viewer, not once per view. Somebody who opens a
+              profile, backs out and opens it again has not viewed it three
+              times, and a notification per refresh is how an alerts list
+              becomes something people mute. notifyMember suppresses the email
+              on its own if the member has been active in the last five minutes,
+              so this only reaches an inbox when they are actually away.
+            */
+            if (String(viewerId) !== String(memberId)) {
+                const dayStart = new Date();
+                dayStart.setUTCHours(0, 0, 0, 0);
+                const { count: viewsToday } = await supabase
+                    .from('profile_views')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('viewed_id', memberId)
+                    .eq('viewer_id', viewerId)
+                    .gte('created_at', dayStart.toISOString());
+
+                if ((viewsToday ?? 0) <= 1) {
+                    /*
+                      Neither the notification nor the email names the viewer.
+
+                      Seeing who viewed your profile is a Silver feature. Putting
+                      the name in the alert would hand a paying feature to every
+                      free account, and worse, it would arrive by email where the
+                      paywall cannot reach it at all. The count is the honest
+                      thing to send: it says something happened without giving
+                      away the thing people pay for.
+                    */
+                    const { count: viewersToday } = await supabase
+                        .from('profile_views')
+                        .select('viewer_id', { count: 'exact', head: true })
+                        .eq('viewed_id', memberId)
+                        .gte('created_at', dayStart.toISOString());
+
+                    await notifyMember(supabase, {
+                        userId: memberId,
+                        type: 'profile_view',
+                        title: 'Someone viewed your profile',
+                        body: 'Open the app to see who has been looking.',
+                        metadata: { actionLink: '/profile?section=activity' },
+                        email: { template: 'profileView', data: { viewerCount: viewersToday ?? 1 } },
+                    });
+                }
+            }
         }
         const result = await incrementUserCounter(supabase, memberId, 'total_profile_views');
         if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
