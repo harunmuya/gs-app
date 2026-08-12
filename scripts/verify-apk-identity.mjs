@@ -1,28 +1,29 @@
 /**
- * Is the APK in the downloads folder even this application?
+ * Would a release from this project update the app members already have?
  *
- * It is not, and finding that out the hard way is why this exists.
+ * Three things decide it: the package name, a version code above theirs, and
+ * the same signing certificate. Android enforces all three silently, and each
+ * one has been wrong here at least once.
  *
- * public/downloads holds com.genuinesugarmummies.global, labelled GS Global,
- * loading https://genuinesugarmummies-com-v2.vercel.app. That is the V2 app,
- * built from the separate genuinesugarmummies.com project. This project is V1:
- * ke.co.genuinesugarmummies.app, loading its own deployment.
+ * The package name. public/downloads once held com.genuinesugarmummies.global,
+ * the V2 app from the separate genuinesugarmummies.com project. Reading it as
+ * this project's published build led to changing this project's applicationId
+ * to match, which would have shipped V1 over V2 on every phone that had V2.
  *
- * So the download link on the V1 site hands out the V2 app. Anyone installing
- * from it gets the other product, and none of the work on this site reaches
- * them.
+ * The signing key. V1 is published at
+ * https://genuinesugarmummies.co.ke/base-release.apk as versionCode 1, signed
+ * with 6b698972..., which is the key in gsm-release.jks. A fresh key was
+ * generated on 2026-08-12 in the belief that V1 had never shipped. That belief
+ * came from checking local disk and the Vercel deployment, and never the
+ * WordPress site, which is where the published APK actually lives. Builds
+ * signed with that new key cannot update a single existing member: Android
+ * refuses, and the only way through is uninstalling, which most people will
+ * not do.
  *
- * The first version of this script assumed the APK it found was this project's
- * published build, and concluded that the project's applicationId was wrong.
- * Acting on that changed V1 to identify as V2, which would have shipped V1 over
- * V2 on every phone that had it. A checker that reads one artefact and infers
- * intent from it can be confidently wrong; it now reports the mismatch and
- * names both possibilities rather than picking one.
- *
- * When a real V1 APK exists, three things must line up for it to update an
- * install: the package name, a higher versionCode, and the same signing
- * certificate. The last cannot be corrected afterwards, because without the
- * original key those installs can never be updated by anybody again.
+ * The lesson in both is the same. Every one of those conclusions came from
+ * looking at one artefact and inferring the rest. This reads the APK that is
+ * actually being served and reports what it finds, rather than deciding what
+ * it must mean.
  */
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -161,8 +162,23 @@ if (!existsSync(APK) || !existsSync(GRADLE)) {
           gitignored, so it lives on one machine and nowhere else unless
           somebody backs it up.
         */
+        /*
+          The key the published app is already signed with.
+
+          https://genuinesugarmummies.co.ke/base-release.apk is V1 versionCode 1,
+          signed with this fingerprint, and members are running it. Android only
+          lets an app be replaced by one signed with the same key, so a release
+          signed with anything else forces every member to uninstall before they
+          can update, and most will not.
+
+          A key was generated on 2026-08-12 in the belief that V1 had never been
+          published. That belief came from checking local disk and the Vercel
+          deployment and never the WordPress site, which is where the published
+          APK actually lives. Builds signed with that key are unusable for
+          updating anybody.
+        */
         const EXPECTED_SIGNER = process.env.GS_EXPECTED_SIGNER
-            || 'ccfdd9a8f5d856d1f0b4bcc8890635237b801bedd47018fd9c555dd245addbd9';
+            || '6b698972405d7e00856c368e0643ce964385f7ac96fba2ef27816ca2cdc538bc';
         const apksigner = aapt.replace(/aapt(\.exe)?$/, (m) => (m.endsWith('.exe') ? 'apksigner.bat' : 'apksigner'));
 
         /*
