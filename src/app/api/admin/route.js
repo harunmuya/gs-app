@@ -14,6 +14,7 @@ import {
     verifyAdminCredentials,
 } from '@/lib/adminSession';
 import { allDefaultPackageTiers, getPackageTier, normalizeTierId } from '@/lib/packageAccess';
+import { ADMIN_ENV_MISSING } from '@/lib/copy';
 
 const PACKAGE_TIERS = Object.fromEntries(allDefaultPackageTiers().map((tier) => [tier.id, {
     name: tier.name,
@@ -278,7 +279,7 @@ export async function POST(request) {
 
     if (!isAuthed(request)) return jsonError('Unauthorized.', 401);
     const supabase = createServerSupabaseClient({ admin: true });
-    if (!supabase) return jsonError('Supabase admin env missing.', 503);
+    if (!supabase) return jsonError(ADMIN_ENV_MISSING, 503);
 
     const userId = body.userId;
 
@@ -807,7 +808,7 @@ export async function POST(request) {
 export async function GET(request) {
     if (!isAuthed(request)) return jsonError('Unauthorized.', 401);
     const supabase = createServerSupabaseClient({ admin: true });
-    if (!supabase) return jsonError('Supabase admin env missing.', 503);
+    if (!supabase) return jsonError(ADMIN_ENV_MISSING, 503);
 
     /*
       The users list, without the verification imagery.

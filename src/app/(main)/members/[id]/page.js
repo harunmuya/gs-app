@@ -13,7 +13,7 @@ import { triggerGiftEffect } from '@/components/GiftEffects';
 import { getProfileImageSrc, useProfileImageFallback } from '@/lib/profileImages';
 import { distanceText as profileDistanceText } from '@/lib/geo';
 import { QUICK_REPLIES, REACTION_REPLIES } from '@/lib/quickReplies';
-import { QUOTA_EXHAUSTED } from '@/lib/copy';
+import { MIC_BLOCKED, QUOTA_EXHAUSTED, VOICE_UNSUPPORTED } from '@/lib/copy';
 
 const GIFTS = [
     { name: 'Rose', label: 'Rose', icon_url: '/gifts/rose.webp', credit_cost: 1 },
@@ -334,7 +334,7 @@ export default function MemberProfilePage({ params }) {
         }
         try {
             if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-                setStatus('Voice notes are not supported on this device.');
+                setStatus(VOICE_UNSUPPORTED);
                 return;
             }
             const stream = await navigator.mediaDevices.getUserMedia({ audio: VOICE_AUDIO_CONSTRAINTS });
@@ -353,7 +353,7 @@ export default function MemberProfilePage({ params }) {
             recorder.start();
             setRecording(true);
         } catch {
-            setStatus('Microphone is blocked. Open GS App permissions on your device and allow Microphone, then try again.');
+            setStatus(MIC_BLOCKED);
         }
     }
 

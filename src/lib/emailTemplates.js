@@ -1,3 +1,4 @@
+import { LIKE_BACK_PROMPT, MATCH_BOTH_LIKED } from '@/lib/copy';
 /**
  * Typed notification emails.
  *
@@ -66,7 +67,7 @@ export const EMAIL_TEMPLATES = {
     /** Somebody liked the recipient. */
     like: ({ recipientName, likerName, isSuperLike }) => ({
         subject: isSuperLike ? `${likerName} super liked you` : `${likerName} liked your profile`,
-        preview: 'Like them back to start talking.',
+        preview: LIKE_BACK_PROMPT,
         title: isSuperLike ? `${likerName} super liked you` : `${likerName} liked your profile`,
         body: [
             `Hello ${firstName(recipientName)},`,
@@ -82,7 +83,7 @@ export const EMAIL_TEMPLATES = {
     /** Both sides liked each other. */
     match: ({ recipientName, matchName }) => ({
         subject: `You matched with ${matchName}`,
-        preview: 'You both liked each other. You can message now.',
+        preview: MATCH_BOTH_LIKED,
         title: `You and ${matchName} matched`,
         body: [
             `Hello ${firstName(recipientName)},`,

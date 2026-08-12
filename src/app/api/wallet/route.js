@@ -4,6 +4,7 @@ import { requireMember } from '@/lib/authSession';
 import { notifyMember } from '@/lib/notifyMember';
 import { consumeQuota } from '@/lib/entitlementGuard';
 import { accountRestrictionMessage, canUseFeature, dailyLimitForFeature, getUserPackageAccess, isAccountRestricted } from '@/lib/packageAccess';
+import { ADMIN_ENV_MISSING, MEMBER_UNAVAILABLE, SESSION_USER_MISSING } from '@/lib/copy';
 
 function jsonError(message, status = 500) {
     return NextResponse.json({ error: message }, { status });
@@ -279,14 +280,14 @@ function uniqueGiftCatalog(rows = []) {
 
 export async function GET(request) {
     const supabase = createServerSupabaseClient({ admin: true });
-    if (!supabase) return jsonError('Supabase admin env missing.', 503);
+    if (!supabase) return jsonError(ADMIN_ENV_MISSING, 503);
     // The wallet is always the caller's own. The ?userId= parameter is ignored:
     // reading it let any caller enumerate another member's balances and history.
     const { member, response } = await requireMember();
     if (response) return response;
     const userId = member.id;
     const user = await getUser(supabase, userId);
-    if (!user?.id) return jsonError('Signed-in user was not found.', 404);
+    if (!user?.id) return jsonError(SESSION_USER_MISSING, 404);
     if (isAccountRestricted(user)) return jsonError(accountRestrictionMessage(user), 403);
     const access = await getUserPackageAccess(supabase, user);
     await ensureWallets(supabase, userId);
@@ -318,7 +319,7 @@ export async function GET(request) {
 
 export async function POST(request) {
     const supabase = createServerSupabaseClient({ admin: true });
-    if (!supabase) return jsonError('Supabase admin env missing.', 503);
+    if (!supabase) return jsonError(ADMIN_ENV_MISSING, 503);
     const body = await request.json().catch(() => ({}));
     const action = body.action;
     // Actor is the signed-in member, never body.userId — that allowed spending
@@ -327,7 +328,7 @@ export async function POST(request) {
     if (response) return response;
     const userId = member.id;
     const user = await getUser(supabase, userId);
-    if (!user?.id) return jsonError('Signed-in user was not found.', 404);
+    if (!user?.id) return jsonError(SESSION_USER_MISSING, 404);
     if (isAccountRestricted(user)) return jsonError(accountRestrictionMessage(user), 403);
     await ensureWallets(supabase, userId);
     await ensureDefaultGiftCatalog(supabase);
@@ -364,7 +365,7 @@ export async function POST(request) {
         if (!receiverId) return jsonError('Gift receiver is required.', 400);
         if (receiverId === userId) return jsonError('Choose another member before sending a gift.', 400);
         const [sender, receiver] = await Promise.all([getUser(supabase, userId), getUser(supabase, receiverId)]);
-        if (!receiver?.id || isAccountRestricted(receiver)) return jsonError('This member is unavailable.', 404);
+        if (!receiver?.id || isAccountRestricted(receiver)) return jsonError(MEMBER_UNAVAILABLE, 404);
         const access = await getUserPackageAccess(supabase, sender);
         if (!canUseFeature(access.tier, 'gifts')) return NextResponse.json({ error: 'Gifts require an approved Basic, Silver, or Gold package.', redirectTo: '/packages' }, { status: 402 });
         const gift = await findGift(supabase, body);

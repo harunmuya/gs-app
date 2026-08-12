@@ -5,6 +5,7 @@ import { createBrowserSupabaseClient, isSupabaseConfigured } from '@/lib/supabas
 import { clearEntitlements } from '@/lib/useEntitlements';
 import { POLL } from '@/lib/usePolling';
 import { TELEGRAM_MENTION } from '@/lib/support';
+import { RESET_CODE_REQUIRED, WELCOME_TITLE } from '@/lib/copy';
 
 const AuthContext = createContext({});
 
@@ -1002,7 +1003,7 @@ export function AuthProvider({ children }) {
         const cleanEmail = String(email || '').trim().toLowerCase();
         if (!cleanEmail || !cleanEmail.includes('@')) throw new Error('Enter the email on your account.');
         const cleanCode = normalizeResetCode(code);
-        if (!/^\d{6}$/.test(cleanCode)) throw new Error('Enter the 6-digit reset code.');
+        if (!/^\d{6}$/.test(cleanCode)) throw new Error(RESET_CODE_REQUIRED);
         if (String(password || '').length < 6) throw new Error('New password must be at least 6 characters.');
         const res = await fetch('/api/members', {
             method: 'POST',
@@ -1100,7 +1101,7 @@ export function AuthProvider({ children }) {
             setTimeout(() => {
                 addMessage({
                     type: 'gs_support', sender: 'GS Support', senderImage: '',
-                    title: 'Welcome to Genuine Sugar Mummies',
+                    title: WELCOME_TITLE,
                     body: `Hi ${merged.display_name}! Your free account is ready. Basic unlocks unlimited messages, photo chat, 50 GS Credits, and one direct connection request after admin approval. Silver unlocks phone reveal, calls, GIFs, voice notes, activity insights, and stronger visibility.`,
                     countsAsUnread: false,
                 });

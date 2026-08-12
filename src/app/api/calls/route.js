@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
 import { accountRestrictionMessage, canUseFeature, getUserPackageAccess, isAccountRestricted } from '@/lib/packageAccess';
 import { requireMember } from '@/lib/authSession';
 import { notifyMember } from '@/lib/notifyMember';
+import { ADMIN_ENV_MISSING, CANNOT_CALL_SELF, MEMBER_UNAVAILABLE, SESSION_USER_MISSING } from '@/lib/copy';
 
 const LIVE_CALL_STATUSES = ['ringing', 'accepted', 'active'];
 const CLOSED_CALL_STATUSES = ['ended', 'rejected', 'declined', 'missed'];
@@ -127,7 +128,7 @@ async function writeCallMessage(supabase, session, actorId, status, durationSeco
 
 export async function GET(request) {
     const supabase = createServerSupabaseClient({ admin: true });
-    if (!supabase) return jsonError('Supabase admin env missing.', 503);
+    if (!supabase) return jsonError(ADMIN_ENV_MISSING, 503);
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get('sessionId');
     if (!sessionId) {
@@ -136,7 +137,7 @@ export async function GET(request) {
         if (response) return response;
         const userId = member.id;
         const viewer = await getUser(supabase, userId);
-        if (!viewer?.id) return jsonError('Signed-in user was not found.', 404);
+        if (!viewer?.id) return jsonError(SESSION_USER_MISSING, 404);
         if (isAccountRestricted(viewer)) return jsonError(accountRestrictionMessage(viewer), 403);
         const { data, error } = await supabase
             .from('call_sessions')
@@ -200,7 +201,7 @@ export async function GET(request) {
     if (response) return response;
     const userId = member.id;
     const viewer = await getUser(supabase, userId);
-    if (!viewer?.id) return jsonError('Signed-in user was not found.', 404);
+    if (!viewer?.id) return jsonError(SESSION_USER_MISSING, 404);
     if (isAccountRestricted(viewer)) return jsonError(accountRestrictionMessage(viewer), 403);
 
     const [sessionResult, signalResult] = await Promise.all([
@@ -220,7 +221,7 @@ export async function GET(request) {
 
 export async function POST(request) {
     const supabase = createServerSupabaseClient({ admin: true });
-    if (!supabase) return jsonError('Supabase admin env missing.', 503);
+    if (!supabase) return jsonError(ADMIN_ENV_MISSING, 503);
     const body = await request.json().catch(() => ({}));
     const action = body.action || 'start';
     // Caller is the signed-in member; body.userId let calls be placed as someone else.
@@ -232,11 +233,11 @@ export async function POST(request) {
         const peerId = body.peerId;
         const callType = String(body.callType || 'voice').slice(0, 20);
         if (!peerId) return jsonError('Receiver is required.', 400);
-        if (userId === peerId) return jsonError('You cannot call yourself.', 400);
+        if (userId === peerId) return jsonError(CANNOT_CALL_SELF, 400);
         const [caller, receiver] = await Promise.all([getUser(supabase, userId), getUser(supabase, peerId)]);
         if (!caller?.id || !receiver?.id) return jsonError('Caller or receiver was not found.', 404);
         if (isAccountRestricted(caller)) return jsonError(accountRestrictionMessage(caller), 403);
-        if (isAccountRestricted(receiver)) return jsonError('This member is unavailable.', 404);
+        if (isAccountRestricted(receiver)) return jsonError(MEMBER_UNAVAILABLE, 404);
         const access = await getUserPackageAccess(supabase, caller);
         if (!canUseFeature(access.tier, 'calls')) return NextResponse.json({ error: 'Voice and video calls require an active Silver or Gold package.', redirectTo: '/packages' }, { status: 402 });
         const { data: existing } = await supabase
@@ -276,7 +277,7 @@ export async function POST(request) {
         if (!sessionId || !userId || !receiverId || !signalType) return jsonError('Signal details are required.', 400);
         if (userId === receiverId) return jsonError('You cannot signal yourself.', 400);
         const actor = await getUser(supabase, userId);
-        if (!actor?.id) return jsonError('Signed-in user was not found.', 404);
+        if (!actor?.id) return jsonError(SESSION_USER_MISSING, 404);
         if (isAccountRestricted(actor)) return jsonError(accountRestrictionMessage(actor), 403);
         const sessionCheck = await supabase.from('call_sessions').select('*').eq('id', sessionId).maybeSingle();
         if (sessionCheck.error) return jsonError(sessionCheck.error.message);
@@ -307,7 +308,7 @@ export async function POST(request) {
         if (!sessionId || !status) return jsonError('Session and status are required.', 400);
         if (userId) {
             const actor = await getUser(supabase, userId);
-            if (!actor?.id) return jsonError('Signed-in user was not found.', 404);
+            if (!actor?.id) return jsonError(SESSION_USER_MISSING, 404);
             if (isAccountRestricted(actor)) return jsonError(accountRestrictionMessage(actor), 403);
         }
         const current = await supabase.from('call_sessions').select('*').eq('id', sessionId).maybeSingle();

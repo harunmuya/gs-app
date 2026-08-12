@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
 import { accountRestrictionMessage, activeTierId, isAccountRestricted } from '@/lib/packageAccess';
 import { getSessionMember, requireMember } from '@/lib/authSession';
 import { uploadStoryMedia } from '@/lib/storyMedia';
+import { ADMIN_ENV_MISSING } from '@/lib/copy';
 
 const SILVER_PLUS = new Set(['silver', 'gold', 'diamond']);
 
@@ -194,7 +195,7 @@ async function activityOverview(supabase, user) {
 
 export async function GET(request) {
     const supabase = createServerSupabaseClient({ admin: true });
-    if (!supabase) return jsonError('Supabase admin env missing.', 503);
+    if (!supabase) return jsonError(ADMIN_ENV_MISSING, 503);
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'overview';
     // Activity — who viewed you, who liked you, your stories feed — is personal.
@@ -221,7 +222,7 @@ export async function GET(request) {
 
 export async function POST(request) {
     const supabase = createServerSupabaseClient({ admin: true });
-    if (!supabase) return jsonError('Supabase admin env missing.', 503);
+    if (!supabase) return jsonError(ADMIN_ENV_MISSING, 503);
     const body = await request.json().catch(() => ({}));
     const action = String(body.action || '').trim();
     // Actor is the signed-in member, not body.userId.

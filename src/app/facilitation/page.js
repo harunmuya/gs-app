@@ -1,24 +1,28 @@
 import PolicyPage, { Section, Rules } from '@/components/PolicyPage';
 
 export const metadata = {
-    title: 'Facilitated introductions | Genuine Sugar Mummies',
-    description: 'Why some profiles cannot be messaged directly, and how an introduction works instead.',
+    title: 'Introductions | Genuine Sugar Mummies',
+    description: 'How our team introduces you to a profile, what it costs, and what happens next.',
 };
 
 /**
- * What "Facilitation Required" means.
+ * How an introduction works.
  *
- * The app labels certain profiles that way and blocks direct messaging to them,
- * and until now nothing explained why. A member who taps a message icon and is
- * told they cannot use it deserves the reason on a page they can read, not a
- * one line notice.
+ * This page was written when the app still put a red notice on these profiles,
+ * so it opened by explaining the restriction: "Some profiles carry a red notice
+ * saying you cannot message them directly." That sentence is now wrong twice
+ * over. There is no red notice, and describing a service by what it forbids was
+ * the whole problem.
+ *
+ * The content below it was already honest, including the part that says we do
+ * not promise a reply. Only the framing needed changing.
  */
 export default function FacilitationPage() {
     return (
         <PolicyPage
-            title="Facilitated introductions"
-            updated="9 August 2026"
-            intro="Some profiles carry a red notice saying you cannot message them directly. This explains what those profiles are and what happens if you ask for an introduction."
+            title="Introductions"
+            updated="12 August 2026"
+            intro="Some profiles here are introduced by our team rather than messaged directly. This explains what those profiles are, what happens when you ask for an introduction, and what it costs."
         >
             <Section n="1" title="Two kinds of profile">
                 <p>
@@ -73,11 +77,14 @@ export default function FacilitationPage() {
             </Section>
 
             <Section n="6" title="Telling the two apart">
+{/* This described a red notice that no longer exists. Anything here has to
+    match what is actually on screen, or the page teaches people to look for
+    the wrong thing and they end up trusting neither. */}
                 <p>
                     A member account shows a real last seen time and, if they have verified, a badge. A listing
-                    shows neither, and carries the red notice near the top of the profile. If you are unsure,
-                    the messaging button is the test: on a member it opens a conversation, on a listing it
-                    explains itself.
+                    shows neither, and carries a small chip reading By introduction on the photo and again near
+                    the top of the profile. If you are unsure, the messaging button is the test: on a member it
+                    opens a conversation, on a listing it tells you we will pass the message on.
                 </p>
             </Section>
         </PolicyPage>

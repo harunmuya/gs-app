@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { accountRestrictionMessage, accountStatus, isAccountRestricted } from '@/lib/packageAccess';
+import { ACCOUNT_RESTRICTED } from '@/lib/copy';
 
 /**
  * Server-side session layer.
@@ -306,7 +307,7 @@ export async function requireMember(options = {}) {
         return {
             member: null,
             response: forbidden(
-                accountRestrictionMessage(member) || 'Your account cannot be used right now.',
+                accountRestrictionMessage(member) || ACCOUNT_RESTRICTED,
                 'ACCOUNT_RESTRICTED',
                 { accountStatus: accountStatus(member) }
             ),

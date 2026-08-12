@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import Logo from '@/components/Logo';
 import { labelFromCoordinates } from '@/lib/geo';
 import { SUPPORT } from '@/lib/support';
+import { AGE_RANGE } from '@/lib/copy';
 
 /**
  * Authentication — one page, three modes.
@@ -185,7 +186,7 @@ export default function LoginPage() {
 
         const ageNumber = Number(age);
         if (!Number.isInteger(ageNumber) || ageNumber < 18 || ageNumber > 80) {
-            errors.age = 'Age must be between 18 and 80.';
+            errors.age = AGE_RANGE;
         }
         if (location.trim().length < 2) errors.location = 'Enter your city or area.';
         if (cleanPhone(phone).replace(/\D/g, '').length < 7) errors.phone = 'Enter a reachable phone number.';

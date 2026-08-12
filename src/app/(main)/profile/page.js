@@ -21,6 +21,7 @@ import StoriesStrip from '@/components/StoriesStrip';
 import AccountActivityPanel from '@/components/AccountActivityPanel';
 import { unreadMessageValue } from '@/lib/inboxCounts';
 import { SUPPORT } from '@/lib/support';
+import { AGE_RANGE, NAME_REQUIRED, PHONE_REQUIRED } from '@/lib/copy';
 
 const PREFERENCE_LABELS = {
     sugar_mummy_looking_for_toyboy: 'Sugar Mummy seeking Sugar Guy / Toyboy',
@@ -131,7 +132,10 @@ function AccountMenu({
                 <MenuRow icon={Shield} label="Safety centre" href="/safety" />
                 <MenuRow icon={FileText} label="Community guidelines" href="/community-guidelines" />
                 <MenuRow icon={BadgeCheck} label="How verification works" value="What the badge proves" href="/verification" />
-                <MenuRow icon={Users} label="Facilitated introductions" value="Why some profiles cannot be messaged" href="/facilitation" last />
+                {/* This row described the feature as a restriction: "Why some
+                    profiles cannot be messaged". It is an introduction service,
+                    and the menu is where a member first meets the idea. */}
+                <MenuRow icon={Users} label="Introductions" value="How our team connects you" href="/facilitation" last />
             </MenuGroup>
 
             <MenuGroup title="Support">
@@ -371,18 +375,18 @@ export default function ProfilePage() {
             return;
         }
         if (editField === 'display_name' && (value.length < 2 || value.includes('@') || /^\d+$/.test(value))) {
-            setEditStatus('Add your real first name or public name.');
+            setEditStatus(NAME_REQUIRED);
             return;
         }
         if (editField === 'age') {
             const ageValue = Number(value);
             if (!Number.isInteger(ageValue) || ageValue < 18 || ageValue > 80) {
-                setEditStatus('Age must be between 18 and 80.');
+                setEditStatus(AGE_RANGE);
                 return;
             }
         }
         if (editField === 'phone_number' && value.replace(/\D/g, '').length < 7) {
-            setEditStatus('Add a valid phone number.');
+            setEditStatus(PHONE_REQUIRED);
             return;
         }
         if (editField === 'bio' && value.length < 12) {

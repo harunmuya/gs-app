@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
 import { getSessionMember, requireMember } from '@/lib/authSession';
 import { notifyMember } from '@/lib/notifyMember';
+import { ADMIN_ENV_MISSING } from '@/lib/copy';
 
 function jsonError(message, status = 500) {
     return NextResponse.json({ error: message }, { status });
@@ -27,7 +28,7 @@ async function refreshCounts(supabase, userId) {
 
 export async function GET(request) {
     const supabase = createServerSupabaseClient({ admin: true });
-    if (!supabase) return jsonError('Supabase admin env missing.', 503);
+    if (!supabase) return jsonError(ADMIN_ENV_MISSING, 503);
     const { searchParams } = new URL(request.url);
     // Follower/following lists for a target are public, but "am I following this
     // profile" is answered for the signed-in member only. Anonymous callers get false.
@@ -58,7 +59,7 @@ export async function GET(request) {
 
 export async function POST(request) {
     const supabase = createServerSupabaseClient({ admin: true });
-    if (!supabase) return jsonError('Supabase admin env missing.', 503);
+    if (!supabase) return jsonError(ADMIN_ENV_MISSING, 503);
     const body = await request.json().catch(() => ({}));
     // Follower is the signed-in member, not whoever the body claims.
     const { member, response } = await requireMember();

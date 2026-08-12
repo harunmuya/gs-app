@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Mic, StopCircle, X } from '@/components/icons';
+import { MIC_BLOCKED, VOICE_UNSUPPORTED } from '@/lib/copy';
 
 function supportedMimeType() {
     const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
@@ -52,7 +53,7 @@ export default function VoiceRecorder({ disabled = false, onRecorded, onError })
         event?.preventDefault?.();
         if (disabled || recording) return;
         if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-            onError?.('Voice notes are not supported on this device.');
+            onError?.(VOICE_UNSUPPORTED);
             return;
         }
         try {
@@ -91,7 +92,7 @@ export default function VoiceRecorder({ disabled = false, onRecorded, onError })
         } catch {
             stopTracks();
             setRecording(false);
-            onError?.('Microphone is blocked. Open GS App permissions on your device and allow Microphone, then try again.');
+            onError?.(MIC_BLOCKED);
         }
     }
 

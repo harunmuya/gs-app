@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { fetchComments, submitComment } from '@/lib/wordpress';
+import { COMMENT_FAILED } from '@/lib/copy';
 
 export async function GET(request) {
     try {
@@ -54,14 +55,14 @@ export async function POST(request) {
         } else {
             return NextResponse.json({
                 success: false,
-                message: result.error || 'Comment submission failed. Please try again.',
+                message: result.error || COMMENT_FAILED,
             }, { status: 502 });
         }
     } catch (error) {
         console.error('Comments POST error:', error);
         return NextResponse.json({
             success: false,
-            message: 'Comment submission failed. Please try again.',
+            message: COMMENT_FAILED,
         }, { status: 500 });
     }
 }

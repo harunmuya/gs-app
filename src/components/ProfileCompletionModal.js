@@ -8,6 +8,7 @@ import {
     User, MapPin, Phone, FileText, Heart, Sparkles, Calendar,
     ArrowRight, ArrowLeft, Check, X, Target, Star,
 } from '@/components/icons';
+import { AGE_RANGE, PHONE_REQUIRED } from '@/lib/copy';
 
 const LOOKING_FOR_OPTIONS = [
     { value: 'sugar_mummy_looking_for_toyboy', label: 'I am a Sugar Mummy', desc: 'Looking for a sugar guy / toyboy', color: '#E11D48' },
@@ -201,13 +202,13 @@ export default function ProfileCompletionModal() {
                 break;
             case 'age':
                 const n = Number(age);
-                if (!Number.isInteger(n) || n < 18 || n > 80) return 'Age must be between 18 and 80.';
+                if (!Number.isInteger(n) || n < 18 || n > 80) return AGE_RANGE;
                 break;
             case 'location':
                 if (location.trim().length < 2) return 'Add your city or area.';
                 break;
             case 'phone':
-                if (cleanPhone(phone).replace(/\D/g, '').length < 7) return 'Add a valid phone number.';
+                if (cleanPhone(phone).replace(/\D/g, '').length < 7) return PHONE_REQUIRED;
                 break;
             case 'wants':
                 if (wants.trim().length < 3) return 'Describe what you\'re looking for.';

@@ -2,6 +2,7 @@ import { apiError, apiOk, ERROR_CODES } from '@/lib/apiContract';
 import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
 import { accountRestrictionMessage, canUseFeature, dailyLimitForFeature, evaluateFeatureAccess, getUserPackageAccess, isAccountRestricted } from '@/lib/packageAccess';
 import { requireMember } from '@/lib/authSession';
+import { ADMIN_ENV_MISSING } from '@/lib/copy';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,7 +51,7 @@ function accessPayload(access) {
 
 export async function GET(request) {
     const supabase = createServerSupabaseClient({ admin: true });
-    if (!supabase) return apiError(ERROR_CODES.SERVER_MISCONFIGURED, 'Supabase admin env missing.', 503);
+    if (!supabase) return apiError(ERROR_CODES.SERVER_MISCONFIGURED, ADMIN_ENV_MISSING, 503);
     // Entitlements are reported for the signed-in member only. Accepting ?userId=
     // let anyone read another member's package state.
     const { member, response } = await requireMember();
@@ -65,7 +66,7 @@ export async function GET(request) {
 
 export async function POST(request) {
     const supabase = createServerSupabaseClient({ admin: true });
-    if (!supabase) return apiError(ERROR_CODES.SERVER_MISCONFIGURED, 'Supabase admin env missing.', 503);
+    if (!supabase) return apiError(ERROR_CODES.SERVER_MISCONFIGURED, ADMIN_ENV_MISSING, 503);
     const body = await request.json().catch(() => ({}));
     const { member, response } = await requireMember();
     if (response) return response;

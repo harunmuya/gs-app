@@ -5,7 +5,7 @@ import { requireMember } from '@/lib/authSession';
 import { notifyMember } from '@/lib/notifyMember';
 import { consumeQuota } from '@/lib/entitlementGuard';
 import { FACILITATION_NOTICE, profileKindFor, requiresFacilitation } from '@/lib/profileKind';
-import { GIF_NEEDS_SILVER, IMAGE_NEEDS_BASIC } from '@/lib/copy';
+import { ADMIN_ENV_MISSING, GIF_NEEDS_SILVER, IMAGE_NEEDS_BASIC, MEDIA_NEEDS_SILVER, MEMBER_UNAVAILABLE, SESSION_USER_MISSING, VOICE_NOTES_NEED_SILVER } from '@/lib/copy';
 
 const LIMIT_NOTICE = 'Daily quota reached. Subscribe to Basic, Silver, or Gold for unlimited messaging.';
 
@@ -136,7 +136,7 @@ async function conversationRows(supabase, userId) {
 
 export async function GET(request) {
     const supabase = createServerSupabaseClient({ admin: true });
-    if (!supabase) return jsonError('Supabase admin env missing.', 503);
+    if (!supabase) return jsonError(ADMIN_ENV_MISSING, 503);
     const { searchParams } = new URL(request.url);
     // Conversations are read as the signed-in member. Taking ?userId= from the
     // query allowed anyone to read another member's full message history.
@@ -145,7 +145,7 @@ export async function GET(request) {
     const userId = member.id;
     const peerId = searchParams.get('peerId');
     const viewer = await getUser(supabase, userId);
-    if (!viewer?.id) return jsonError('Signed-in user was not found.', 404);
+    if (!viewer?.id) return jsonError(SESSION_USER_MISSING, 404);
     if (isAccountRestricted(viewer)) return jsonError(accountRestrictionMessage(viewer), 403);
 
     if (!peerId) {
@@ -156,7 +156,7 @@ export async function GET(request) {
 
     const [user, peer] = await Promise.all([Promise.resolve(viewer), getUser(supabase, peerId)]);
     if (!user?.id || !peer?.id) return jsonError('User or member was not found.', 404);
-    if (isAccountRestricted(peer)) return jsonError('This member is unavailable.', 404);
+    if (isAccountRestricted(peer)) return jsonError(MEMBER_UNAVAILABLE, 404);
     const conversation = await ensureConversation(supabase, userId, peerId);
     if (conversation.error) return jsonError(conversation.error.message);
     const { data: messages, error } = await supabase
@@ -181,7 +181,7 @@ export async function GET(request) {
 
 export async function POST(request) {
     const supabase = createServerSupabaseClient({ admin: true });
-    if (!supabase) return jsonError('Supabase admin env missing.', 503);
+    if (!supabase) return jsonError(ADMIN_ENV_MISSING, 503);
     const body = await request.json().catch(() => ({}));
     const action = body.action || 'send';
     // Sender is the signed-in member. body.userId let a caller send messages that
@@ -195,7 +195,7 @@ export async function POST(request) {
     const [user, peer] = await Promise.all([getUser(supabase, userId), getUser(supabase, peerId)]);
     if (!user?.id || !peer?.id) return jsonError('User or member was not found.', 404);
     if (isAccountRestricted(user)) return jsonError(accountRestrictionMessage(user) || 'Your account cannot send messages.', 403);
-    if (isAccountRestricted(peer)) return jsonError('This member is unavailable.', 404);
+    if (isAccountRestricted(peer)) return jsonError(MEMBER_UNAVAILABLE, 404);
     // Server-side half of the facilitation rule. The UI hides the composer for
     // seeded and imported profiles, but the endpoint has to refuse as well —
     // nobody is behind these accounts to read the message.
@@ -259,10 +259,10 @@ export async function POST(request) {
         return NextResponse.json({ error: GIF_NEEDS_SILVER, redirectTo: '/packages' }, { status: 402 });
     }
     if (attachmentUrl && !['image', 'gif'].includes(attachmentType) && !canUseFeature(access.tier, 'voiceNotes')) {
-        return NextResponse.json({ error: 'Media sharing requires Silver package or higher.', redirectTo: '/packages' }, { status: 402 });
+        return NextResponse.json({ error: MEDIA_NEEDS_SILVER, redirectTo: '/packages' }, { status: 402 });
     }
     if (voiceUrl && !canUseFeature(access.tier, 'voiceNotes')) {
-        return NextResponse.json({ error: 'Voice notes require Silver package or higher.', redirectTo: '/packages' }, { status: 402 });
+        return NextResponse.json({ error: VOICE_NOTES_NEED_SILVER, redirectTo: '/packages' }, { status: 402 });
     }
     const quota = await enforceDailyLimit(supabase, userId, access.tier, 'messages');
     if (!quota.ok) return NextResponse.json({ error: quota.message || LIMIT_NOTICE, ...quota }, { status: quota.httpStatus || 402 });

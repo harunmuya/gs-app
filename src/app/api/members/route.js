@@ -15,7 +15,7 @@ import { getSessionMember, provisionAuthUser, signInWithPassword } from '@/lib/a
 import { displayMatchPercent, interleave, scoreMember } from '@/lib/discoveryRanking';
 import { consumeQuota } from '@/lib/entitlementGuard';
 import { TELEGRAM_MENTION } from '@/lib/support';
-import { GIF_NEEDS_SILVER, IMAGE_NEEDS_BASIC } from '@/lib/copy';
+import { ACCOUNT_RESTRICTED, AGE_RANGE, GIF_NEEDS_SILVER, IMAGE_NEEDS_BASIC, LIKE_BACK_PROMPT, MATCH_BOTH_LIKED, MEDIA_NEEDS_SILVER, MEMBER_UNAVAILABLE, NAME_REQUIRED, RESET_CODE_REQUIRED, SESSION_USER_MISSING, VOICE_NOTES_NEED_SILVER, WELCOME_TITLE } from '@/lib/copy';
 
 const FULL_MEMBER_FIELDS = `
     id,
@@ -606,7 +606,7 @@ async function recordMemberLike(supabase, likerId, likedKey, { isSuperLike = fal
                 userId: likedId,
                 type: 'match',
                 title: `You matched with ${likerName}`,
-                body: 'You both liked each other. You can message now.',
+                body: MATCH_BOTH_LIKED,
                 metadata: { matchId: match.id, memberId: likerId, actionLink: `/messages/${likerId}` },
                 email: { template: 'match', data: { matchName: likerName } },
             }),
@@ -614,7 +614,7 @@ async function recordMemberLike(supabase, likerId, likedKey, { isSuperLike = fal
                 userId: likerId,
                 type: 'match',
                 title: `You matched with ${likedName}`,
-                body: 'You both liked each other. You can message now.',
+                body: MATCH_BOTH_LIKED,
                 metadata: { matchId: match.id, memberId: likedId, actionLink: `/messages/${likedId}` },
                 email: { template: 'match', data: { matchName: likedName } },
             }),
@@ -624,7 +624,7 @@ async function recordMemberLike(supabase, likerId, likedKey, { isSuperLike = fal
             userId: likedId,
             type: isSuperLike ? 'superlike' : 'like',
             title: isSuperLike ? `${likerName} super liked you` : `${likerName} liked your profile`,
-            body: 'Like them back to start talking.',
+            body: LIKE_BACK_PROMPT,
             metadata: { memberId: likerId, actionLink: `/members/${likerId}` },
             email: { template: 'like', data: { likerName, isSuperLike: Boolean(isSuperLike) } },
         });
@@ -1284,7 +1284,7 @@ async function ensureTargetAvailable(supabase, memberId) {
     }
     if (result.error) return { ok: false, error: result.error.message, status: 500 };
     if (!result.data?.id || isAccountRestricted(result.data)) {
-        return { ok: false, error: 'This member is unavailable.', status: 404 };
+        return { ok: false, error: MEMBER_UNAVAILABLE, status: 404 };
     }
     return { ok: true, member: result.data };
 }
@@ -1367,7 +1367,7 @@ function accountCompletionError(body) {
     const age = Number(body.age);
     const name = cleanDisplayName(body.display_name, body.email);
     if (!name || name === 'GS Member') return 'A real profile name is required before creating an account.';
-    if (!Number.isInteger(age) || age < 18 || age > 80) return 'Age must be between 18 and 80.';
+    if (!Number.isInteger(age) || age < 18 || age > 80) return AGE_RANGE;
     if (String(body.location || '').trim().length < 2) return 'City or area is required before creating an account.';
     if (phone.length < 7) return 'A valid phone number is required before creating an account.';
     if (String(body.bio || '').trim().length < 12) return 'A short bio is required before creating an account.';
@@ -1456,8 +1456,8 @@ function requiredProfileError(account = {}) {
     const phone = String(account.phone || account.phone_number || '').replace(/\D/g, '');
     const age = Number(account.age);
     const name = cleanDisplayName(account.display_name, account.email);
-    if (!name || name === 'GS Member') return 'Add your real first name or public name.';
-    if (!Number.isInteger(age) || age < 18 || age > 80) return 'Age must be between 18 and 80.';
+    if (!name || name === 'GS Member') return NAME_REQUIRED;
+    if (!Number.isInteger(age) || age < 18 || age > 80) return AGE_RANGE;
     if (String(account.location || '').trim().length < 2) return 'City or area is required.';
     if (phone.length < 7) return 'A valid phone number is required.';
     if (String(account.bio || account.description || '').trim().length < 12) return 'Write a short bio so members know you are real.';
@@ -1471,11 +1471,11 @@ function profileCompletionError(account = {}) {
 function validateProfilePatch(patch = {}) {
     if (Object.prototype.hasOwnProperty.call(patch, 'display_name')) {
         const name = cleanDisplayName(patch.display_name);
-        if (!name || name === 'GS Member') return 'Add your real first name or public name.';
+        if (!name || name === 'GS Member') return NAME_REQUIRED;
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'age')) {
         const age = Number(patch.age);
-        if (!Number.isInteger(age) || age < 18 || age > 80) return 'Age must be between 18 and 80.';
+        if (!Number.isInteger(age) || age < 18 || age > 80) return AGE_RANGE;
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'location') && String(patch.location || '').trim().length < 2) {
         return 'City or area is required.';
@@ -1605,7 +1605,7 @@ async function syncAuthLoginAccount(supabase, authUser, email, password) {
     const now = new Date().toISOString();
     if (existing?.id) {
         if (isAccountRestricted(existing)) {
-            const error = new Error(accountRestrictionMessage(existing) || 'Your account cannot be used right now.');
+            const error = new Error(accountRestrictionMessage(existing) || ACCOUNT_RESTRICTED);
             error.status = 403;
             error.code = 'ACCOUNT_RESTRICTED';
             return { data: existing, error };
@@ -1970,7 +1970,7 @@ export async function POST(request) {
         const normalized = normalizeMember(result.data, { canViewPhone: true, includeEmail: true });
         if (isAccountRestricted(result.data)) {
             return NextResponse.json({
-                error: accountRestrictionMessage(result.data) || 'Your account cannot be used right now.',
+                error: accountRestrictionMessage(result.data) || ACCOUNT_RESTRICTED,
                 accountStatus: normalized.accountStatus,
                 member: normalized,
             }, { status: 403 });
@@ -2168,7 +2168,7 @@ export async function POST(request) {
         const code = normalizeResetCode(body.code);
         const password = String(body.password || '');
         if (!email || !email.includes('@')) return NextResponse.json({ error: 'A valid email is required.' }, { status: 400 });
-        if (!/^\d{6}$/.test(code)) return NextResponse.json({ error: 'Enter the 6-digit reset code.' }, { status: 400 });
+        if (!/^\d{6}$/.test(code)) return NextResponse.json({ error: RESET_CODE_REQUIRED }, { status: 400 });
         if (password.length < 6) return NextResponse.json({ error: 'New password must be at least 6 characters.' }, { status: 400 });
 
         const codeHash = hashResetCode(email, code);
@@ -2268,7 +2268,7 @@ export async function POST(request) {
         if (!verifyPassword(password, result.data.password_hash)) return NextResponse.json({ error: 'Incorrect email or password.' }, { status: 401 });
         if (isAccountRestricted(result.data)) {
             return NextResponse.json({
-                error: accountRestrictionMessage(result.data) || 'Your account cannot be used right now.',
+                error: accountRestrictionMessage(result.data) || ACCOUNT_RESTRICTED,
                 accountStatus: accountStatus(result.data),
             }, { status: 403 });
         }
@@ -2488,7 +2488,7 @@ export async function POST(request) {
                     updated_at: new Date().toISOString(),
                 }, { onConflict: 'user_id' });
             } catch {}
-            const welcomeTitle = 'Welcome to Genuine Sugar Mummies';
+            const welcomeTitle = WELCOME_TITLE;
             const welcomeBody = 'Your account has been created. Complete your profile, upload a profile picture, submit manual verification, and choose a package to unlock more of the app. Basic unlocks unlimited messages, photo chat, 50 GS Credits, and one direct connection request after admin approval. Silver unlocks phone reveal, calls, GIFs, voice notes, activity insights, and stronger visibility.';
             try { await supabase.from('user_notifications').insert({ user_id: result.data.id, type: 'welcome', title: welcomeTitle, body: welcomeBody }); } catch {}
             await sendAndLogEmail(supabase, { to: email, subject: welcomeTitle, text: welcomeBody, html: emailHtml(welcomeTitle, welcomeBody) });
@@ -2575,7 +2575,7 @@ export async function POST(request) {
         if (existing.data?.id) {
             if (isAccountRestricted(existing.data)) {
                 return NextResponse.json({
-                    error: accountRestrictionMessage(existing.data) || 'Your account cannot be used right now.',
+                    error: accountRestrictionMessage(existing.data) || ACCOUNT_RESTRICTED,
                     accountStatus: accountStatus(existing.data),
                     member: normalizeMember(existing.data, { canViewPhone: true, includeEmail: true }),
                 }, { status: 403 });
@@ -2621,7 +2621,7 @@ export async function POST(request) {
                 updated_at: new Date().toISOString(),
             }, { onConflict: 'user_id' });
         } catch {}
-        const welcomeTitle = 'Welcome to Genuine Sugar Mummies';
+        const welcomeTitle = WELCOME_TITLE;
         const welcomeBody = 'Your Google sign-in is ready. Complete your profile, upload a profile picture, submit manual verification, and choose a package to unlock more of the app. Basic unlocks unlimited messages, photo chat, 50 GS Credits, and one direct connection request after admin approval. Silver unlocks phone reveal, calls, GIFs, voice notes, activity insights, and stronger visibility.';
         try { await supabase.from('user_notifications').insert({ user_id: result.data.id, type: 'welcome', title: welcomeTitle, body: welcomeBody }); } catch {}
         await sendAndLogEmail(supabase, { to: email, subject: welcomeTitle, text: welcomeBody, html: emailHtml(welcomeTitle, welcomeBody) });
@@ -2974,7 +2974,7 @@ export async function POST(request) {
                 .select('id, subscription_tier, admin_approved, package_locked, is_banned, is_suspended, account_deleted_at')
                 .eq('id', senderUserId)
                 .maybeSingle();
-            if (!sender?.id) return NextResponse.json({ error: 'Signed-in user was not found.' }, { status: 404 });
+            if (!sender?.id) return NextResponse.json({ error: SESSION_USER_MISSING }, { status: 404 });
             if (isAccountRestricted(sender)) return NextResponse.json({ error: accountRestrictionMessage(sender), redirectTo: '/auth/login' }, { status: 403 });
             senderTier = await getPackageTier(supabase, activeTierId(sender));
         }
@@ -2985,10 +2985,10 @@ export async function POST(request) {
             return NextResponse.json({ error: GIF_NEEDS_SILVER, redirectTo: '/packages' }, { status: 402 });
         }
         if (attachmentUrl && !['image', 'gif'].includes(attachmentType) && !canUseFeature(senderTier, 'voiceNotes')) {
-            return NextResponse.json({ error: 'Media sharing requires Silver package or higher.', redirectTo: '/packages' }, { status: 402 });
+            return NextResponse.json({ error: MEDIA_NEEDS_SILVER, redirectTo: '/packages' }, { status: 402 });
         }
         if (voiceUrl && !canUseFeature(senderTier, 'voiceNotes')) {
-            return NextResponse.json({ error: 'Voice notes require Silver package or higher.', redirectTo: '/packages' }, { status: 402 });
+            return NextResponse.json({ error: VOICE_NOTES_NEED_SILVER, redirectTo: '/packages' }, { status: 402 });
         }
         const quota = await enforceDailyLimit(supabase, senderUserId, 'messages');
         if (!quota.ok) return NextResponse.json({ error: quota.message || LIMIT_NOTICE, ...quota }, { status: quota.httpStatus || 402 });

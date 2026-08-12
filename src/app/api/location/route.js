@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
 import { requireMember } from '@/lib/authSession';
 import { labelFromCoordinates } from '@/lib/geo';
+import { ADMIN_ENV_MISSING } from '@/lib/copy';
 
 function jsonError(message, status = 500) {
     return NextResponse.json({ error: message }, { status });
@@ -171,7 +172,7 @@ export async function GET(request) {
 
 export async function POST(request) {
     const supabase = createServerSupabaseClient({ admin: true });
-    if (!supabase) return jsonError('Supabase admin env missing.', 503);
+    if (!supabase) return jsonError(ADMIN_ENV_MISSING, 503);
     const body = await request.json().catch(() => ({}));
     // A member may only write their own location. body.userId allowed overwriting
     // another member's coordinates, which drives the nearby/distance features.

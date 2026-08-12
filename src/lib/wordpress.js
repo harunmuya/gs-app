@@ -1,3 +1,4 @@
+import { COMMENT_FAILED } from '@/lib/copy';
 // WordPress API — uses the custom GS App API plugin for speed
 // Plugin endpoints: /wp-json/gs-app/v1/profiles, /comments/{id}, /comment, /subscribe
 
@@ -461,5 +462,5 @@ export async function submitComment({ postId, authorName, authorEmail, content }
 
     // Both endpoints failed
     console.error('[Comment Submit] All endpoints failed for post', postId);
-    return { success: false, comment_id: null, error: 'Comment submission failed. Please try again.' };
+    return { success: false, comment_id: null, error: COMMENT_FAILED };
 }

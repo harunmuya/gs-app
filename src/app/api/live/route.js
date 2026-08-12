@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
 import { accountRestrictionMessage, canUseFeature, dailyLimitForFeature, getUserPackageAccess, isAccountRestricted } from '@/lib/packageAccess';
 import { emailHtml, sendAndLogEmail } from '@/lib/email';
 import { requireMember } from '@/lib/authSession';
+import { ADMIN_ENV_MISSING, SESSION_USER_MISSING } from '@/lib/copy';
 
 function jsonError(message, status = 500) {
     return NextResponse.json({ error: message }, { status });
@@ -170,7 +171,7 @@ async function notifyFollowersLive(supabase, host, stream) {
 
 export async function GET(request) {
     const supabase = createServerSupabaseClient({ admin: true });
-    if (!supabase) return jsonError('Supabase admin env missing.', 503);
+    if (!supabase) return jsonError(ADMIN_ENV_MISSING, 503);
     const { searchParams } = new URL(request.url);
     const streamId = searchParams.get('streamId');
 
@@ -271,7 +272,7 @@ export async function GET(request) {
 
 export async function POST(request) {
     const supabase = createServerSupabaseClient({ admin: true });
-    if (!supabase) return jsonError('Supabase admin env missing.', 503);
+    if (!supabase) return jsonError(ADMIN_ENV_MISSING, 503);
     const body = await request.json().catch(() => ({}));
     const action = body.action;
     // Host/actor is the signed-in member; body.userId let streams and stream
@@ -365,7 +366,7 @@ export async function POST(request) {
         if (!streamId || !userId) return jsonError('Stream and user are required.', 400);
         if (action === 'join_stream') {
             const viewer = await getUser(supabase, userId);
-            if (!viewer?.id) return jsonError('Signed-in user was not found.', 404);
+            if (!viewer?.id) return jsonError(SESSION_USER_MISSING, 404);
             if (isAccountRestricted(viewer)) return jsonError(accountRestrictionMessage(viewer), 403);
             const { data: streamRow } = await supabase.from('live_streams').select('host_id, total_views').eq('id', streamId).maybeSingle();
             const streamHost = streamRow?.host_id ? await getUser(supabase, streamRow.host_id) : null;
@@ -396,7 +397,7 @@ export async function POST(request) {
         const content = String(body.content || '').trim().slice(0, 220);
         if (!body.streamId || !userId || !content) return jsonError('Comment details are required.', 400);
         const commenter = await getUser(supabase, userId);
-        if (!commenter?.id) return jsonError('Signed-in user was not found.', 404);
+        if (!commenter?.id) return jsonError(SESSION_USER_MISSING, 404);
         if (isAccountRestricted(commenter)) return jsonError(accountRestrictionMessage(commenter), 403);
         const { data: streamRow } = await supabase.from('live_streams').select('host_id').eq('id', body.streamId).maybeSingle();
         const host = streamRow?.host_id ? await getUser(supabase, streamRow.host_id) : null;
@@ -412,7 +413,7 @@ export async function POST(request) {
         const streamId = body.streamId;
         if (!streamId || !userId) return jsonError('Stream and user are required.', 400);
         const liker = await getUser(supabase, userId);
-        if (!liker?.id) return jsonError('Signed-in user was not found.', 404);
+        if (!liker?.id) return jsonError(SESSION_USER_MISSING, 404);
         if (isAccountRestricted(liker)) return jsonError(accountRestrictionMessage(liker), 403);
         let { data: streamRow, error: streamError } = await supabase.from('live_streams').select('id, host_id, total_likes').eq('id', streamId).maybeSingle();
         if (streamError && ['42703', 'PGRST204'].includes(streamError.code)) {
@@ -438,7 +439,7 @@ export async function POST(request) {
             supabase.from('live_streams').select('id, host_id').eq('id', body.streamId).maybeSingle(),
         ]);
         if (!streamResult.data?.id) return jsonError('Live stream not found.', 404);
-        if (!sender?.id) return jsonError('Signed-in user was not found.', 404);
+        if (!sender?.id) return jsonError(SESSION_USER_MISSING, 404);
         if (isAccountRestricted(sender)) return jsonError(accountRestrictionMessage(sender), 403);
         const host = streamResult.data?.host_id ? await getUser(supabase, streamResult.data.host_id) : null;
         if (!host?.id || isAccountRestricted(host)) return jsonError('Live stream not found.', 404);
