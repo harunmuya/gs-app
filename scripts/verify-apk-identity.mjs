@@ -91,17 +91,60 @@ if (!existsSync(APK) || !existsSync(GRADLE)) {
             `endpoint says ${advertised}, gradle says ${builtCode}`);
 
         /*
-          The signing key cannot be verified from here, because the keystore is
-          password protected and that password is not in the repo. What can be
-          done is state which certificate the installed app trusts, so the
-          release is signed with the right one rather than whichever key is to
-          hand.
+          The signature, checked on the APK rather than on the keystore.
+
+          Reading the keystore would need its password, which is not in the repo
+          and should not be. The APK carries its signing certificate in the
+          clear, so the same question is answerable from the artefact with no
+          secret involved: sign the release, drop it in, and this says whether
+          the key was right.
+
+          It matters more than the other two checks. A wrong package name or a
+          low version code can be corrected and rebuilt. A release signed with
+          the wrong key cannot update the installs that trusted the old one, and
+          if the original key is lost those installs can never be updated again
+          by anybody.
         */
-        console.log('\nThe replacement must be signed with the same certificate as the published APK.');
-        console.log('  CN=Genuine Sugar Mummies, OU=Mobile, O=Genuine Sugar Mummies, L=Nairobi, C=KE');
-        console.log('  SHA-256 6b698972405d7e00856c368e0643ce964385f7ac96fba2ef27816ca2cdc538bc');
-        console.log('\nConfirm a keystore holds it with:');
-        console.log('  keytool -list -v -keystore android/keystores/gsm-release.jks');
+        const EXPECTED_SIGNER = '6b698972405d7e00856c368e0643ce964385f7ac96fba2ef27816ca2cdc538bc';
+        const apksigner = aapt.replace(/aapt(\.exe)?$/, (m) => (m.endsWith('.exe') ? 'apksigner.bat' : 'apksigner'));
+
+        /*
+          apksigner is a shell wrapper around a Java tool, so it needs a JDK it
+          can find. JAVA_HOME is rarely set on a machine where the only Java is
+          the one bundled with Android Studio, and without it the wrapper exits
+          before doing anything, which reads as "no signature" rather than as
+          "no Java".
+        */
+        const jdk = process.env.JAVA_HOME || [
+            'C:/Program Files/Android/Android Studio/jbr',
+            'C:/Program Files/Android/Android Studio/jre',
+            join(process.env.LOCALAPPDATA || '', 'Programs', 'Android Studio', 'jbr'),
+        ].find((candidate) => existsSync(join(candidate, 'bin')));
+
+        if (existsSync(apksigner) && jdk) {
+            try {
+                // apksigner on Windows is a .bat, which cannot be executed
+                // directly and has to go through a shell.
+                const out = execFileSync(apksigner, ['verify', '--print-certs', `"${APK}"`], {
+                    encoding: 'utf8',
+                    env: { ...process.env, JAVA_HOME: jdk },
+                    shell: process.platform === 'win32',
+                });
+                const digest = (out.match(/SHA-256 digest:\s*([0-9a-f]+)/i) || [])[1] || '';
+                check('the APK is signed with the key the installed app trusts',
+                    digest.toLowerCase() === EXPECTED_SIGNER,
+                    digest ? `${digest.slice(0, 16)}...` : 'no certificate found');
+            } catch {
+                console.log('        signature could not be read from this APK');
+            }
+        } else if (!jdk) {
+            console.log('        no JDK found, so the signature was not checked');
+            console.log('        set JAVA_HOME, or run this from a machine with Android Studio');
+        }
+
+        console.log('\nIf a release is refused as "App not installed", the key is the usual reason.');
+        console.log('  expected CN=Genuine Sugar Mummies, OU=Mobile, L=Nairobi, C=KE');
+        console.log(`  expected SHA-256 ${EXPECTED_SIGNER}`);
     }
 
     console.log(`\n${pass} passed, ${fail} failed`);
