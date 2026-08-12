@@ -1,8 +1,24 @@
 ﻿'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { unreadActivityValue, unreadMessageValue } from '@/lib/inboxCounts';
+import PermissionSheet from '@/components/PermissionSheet';
+import { permissionState, wasDismissed } from '@/lib/permissions';
+
+/*
+  Where the rationale must not appear.
+
+  This component mounts in the root layout, so without this the sheet could
+  open fifteen seconds into a video call or a live broadcast, over the top of
+  the End Call control. Nothing about notifications is urgent enough to
+  interrupt a call in progress.
+*/
+const NEVER_ASK_ON = [/^\/calls\//, /^\/live\//];
+
+// Long enough that the member has looked at something before being asked.
+const ASK_AFTER_MS = 15_000;
 
 function formatBadge(count) {
     if (!count) return '';
@@ -27,6 +43,9 @@ export default function NotificationManager() {
     const permissionRef = useRef('default');
     const previousUnreadRef = useRef(0);
     const nativePermissionAskedRef = useRef(false);
+    const [askNotifications, setAskNotifications] = useState(false);
+    const pathname = usePathname() || '';
+    const onImmersiveScreen = NEVER_ASK_ON.some((pattern) => pattern.test(pathname));
 
     const unreadCount = useMemo(() => {
         const unreadAlerts = (activity || []).reduce((total, item) => total + unreadActivityValue(item), 0);
@@ -40,30 +59,58 @@ export default function NotificationManager() {
         permissionRef.current = browserPermission;
     }, [user, guest, settings.notifications]);
 
-    useEffect(() => {
-        if (!user?.id || !settings.notifications || nativePermissionAskedRef.current) return;
-        nativePermissionAskedRef.current = true;
-        const key = `gsk_native_notification_permission_${user.id}`;
-        const last = Number(localStorage.getItem(key) || 0);
-        if (Date.now() - last < 24 * 60 * 60 * 1000) return;
-        localStorage.setItem(key, String(Date.now()));
+    /*
+      Ask for notifications the same way the app asks for everything else.
 
-        getNativeNotifications()
-            .then(async (nativeNotifications) => {
-                if (!nativeNotifications) return;
-                const current = await nativeNotifications.checkPermissions().catch(() => ({ display: 'prompt' }));
-                if (current.display === 'granted') {
-                    permissionRef.current = 'granted';
-                    updateSettings?.({ notificationPermission: 'granted' });
-                    return;
-                }
-                const next = await nativeNotifications.requestPermissions().catch(() => ({ display: 'prompt' }));
-                const permission = next.display === 'granted' ? 'granted' : 'default';
-                permissionRef.current = permission;
-                updateSettings?.({ notificationPermission: permission });
-            })
-            .catch(() => {});
-    }, [settings.notifications, updateSettings, user?.id]);
+      This used to fire the OS dialog straight off the back of mount. A member
+      who had just signed in got a system prompt from an app that had not yet
+      said what it wanted to notify them about, and on Android 13 a refusal
+      there is permanent: the app cannot ask again, and the only way back is the
+      device settings screen. Reflexive denials are the predictable result.
+
+      The rationale comes first now. Declining it costs nothing because the real
+      permission has not been requested yet, and a decline is remembered for a
+      week rather than retried on the next navigation.
+
+      The delay matters as much as the sheet. Arriving fifteen seconds in, once
+      the member is actually looking at profiles, asks at a point where the
+      answer means something; arriving on first paint is just an obstacle
+      between them and the app they have not seen yet.
+    */
+    useEffect(() => {
+        if (!user?.id || !settings.notifications || nativePermissionAskedRef.current) return undefined;
+        if (onImmersiveScreen) return undefined;
+
+        const key = `gsk_native_notification_permission_${user.id}`;
+        let cancelled = false;
+
+        const timer = window.setTimeout(async () => {
+            if (cancelled) return;
+
+            const state = await permissionState('notifications');
+            if (state === 'granted') {
+                permissionRef.current = 'granted';
+                updateSettings?.({ notificationPermission: 'granted' });
+                return;
+            }
+            // Blocked at the OS level. Asking again does nothing except show a
+            // sheet whose only outcome is a dialog that never appears.
+            if (state === 'denied') {
+                updateSettings?.({ notificationPermission: 'denied' });
+                return;
+            }
+            if (wasDismissed('notifications')) return;
+
+            const last = Number(localStorage.getItem(key) || 0);
+            if (Date.now() - last < 24 * 60 * 60 * 1000) return;
+            localStorage.setItem(key, String(Date.now()));
+
+            nativePermissionAskedRef.current = true;
+            setAskNotifications(true);
+        }, ASK_AFTER_MS);
+
+        return () => { cancelled = true; window.clearTimeout(timer); };
+    }, [settings.notifications, updateSettings, user?.id, onImmersiveScreen]);
 
     async function requestPermission() {
         if (typeof window === 'undefined') return;
@@ -217,6 +264,20 @@ export default function NotificationManager() {
         return () => window.removeEventListener('gs-notification', handleNotification);
     }, [settings.notifications, unreadCount]);
 
-    return null;
+    if (!askNotifications || onImmersiveScreen) return null;
+
+    return (
+        <PermissionSheet
+            permission="notifications"
+            onResolved={(result) => {
+                setAskNotifications(false);
+                const granted = Boolean(result?.ok);
+                permissionRef.current = granted ? 'granted' : 'default';
+                updateSettings?.({ notificationPermission: granted ? 'granted' : 'default' });
+                if (granted) registerPushSubscription();
+            }}
+            onClose={() => setAskNotifications(false)}
+        />
+    );
 }
 

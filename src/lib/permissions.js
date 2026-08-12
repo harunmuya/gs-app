@@ -57,6 +57,27 @@ export async function permissionState(name) {
     if (typeof navigator === 'undefined') return 'unknown';
 
     if (name === 'notifications') {
+        /*
+          The Android shell answers this, not the WebView.
+
+          `Notification.permission` inside a Capacitor WebView does not track the
+          Android 13 POST_NOTIFICATIONS grant, so reading it there would report
+          'granted' for a member who sees nothing on their phone, and the app
+          would never offer to ask.
+        */
+        try {
+            const [{ Capacitor }, { LocalNotifications }] = await Promise.all([
+                import('@capacitor/core'),
+                import('@capacitor/local-notifications'),
+            ]);
+            if (Capacitor.isNativePlatform?.()) {
+                const current = await LocalNotifications.checkPermissions();
+                if (current?.display === 'granted') return 'granted';
+                if (current?.display === 'denied') return 'denied';
+                return 'prompt';
+            }
+        } catch { /* not a native build; the browser API answers below */ }
+
         if (typeof Notification === 'undefined') return 'unknown';
         return Notification.permission === 'default' ? 'prompt' : Notification.permission;
     }
@@ -133,7 +154,27 @@ export async function requestMedia({ audio = true, video = false } = {}) {
     }
 }
 
+/**
+ * Ask for notifications on whichever platform this is running on.
+ *
+ * The Android shell is a Capacitor WebView. `Notification.requestPermission()`
+ * there either does not exist or resolves without ever reaching the Android 13
+ * POST_NOTIFICATIONS dialog, so the web path alone would report success on a
+ * device that shows the member nothing. The native plugin is tried first and
+ * the web API is the fallback for the browser.
+ */
 export async function requestNotifications() {
+    try {
+        const [{ Capacitor }, { LocalNotifications }] = await Promise.all([
+            import('@capacitor/core'),
+            import('@capacitor/local-notifications'),
+        ]);
+        if (Capacitor.isNativePlatform?.()) {
+            const result = await LocalNotifications.requestPermissions();
+            return result?.display === 'granted' ? { ok: true } : { ok: false, reason: 'denied' };
+        }
+    } catch { /* not a native build; fall through to the browser API */ }
+
     if (typeof Notification === 'undefined') return { ok: false, reason: 'unsupported' };
     try {
         const result = await Notification.requestPermission();

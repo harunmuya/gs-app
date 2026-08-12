@@ -349,6 +349,15 @@ export function AuthProvider({ children }) {
         let alive = true;
         (async () => {
             try {
+                // The session cookie may hold an expired JWT while the refresh
+                // token is still valid. A client-side refresh rewrites the
+                // cookie so the server call below succeeds.
+                if (isSupabaseConfigured()) {
+                    try {
+                        await createBrowserSupabaseClient().auth.refreshSession();
+                    } catch { /* best effort */ }
+                }
+
                 const res = await fetch('/api/members', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -465,6 +474,15 @@ export function AuthProvider({ children }) {
                 // local state but no cookie. Rather than leaving them in an app
                 // where every request 401s, drop the stale state and re-authenticate.
                 if (res.status === 401 && !stopped) {
+                    // The session cookie may have expired while the refresh
+                    // token is still valid. Try a client-side refresh before
+                    // destroying local state.
+                    try {
+                        if (isSupabaseConfigured()) {
+                            const { data } = await createBrowserSupabaseClient().auth.refreshSession();
+                            if (data?.session) return; // refreshed — next heartbeat will succeed
+                        }
+                    } catch { /* refresh failed, fall through to signOut */ }
                     signOut?.();
                 }
             } catch {}

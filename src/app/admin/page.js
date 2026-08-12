@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import UserModeration, { UserStateBadges } from './UserModeration';
@@ -170,6 +170,24 @@ export default function AdminPage() {
         })();
         return () => { cancelled = true; };
     }, []);
+
+    // Auto-refresh admin data every 2 minutes while authenticated
+    useEffect(() => {
+        if (!authed) return;
+        const interval = setInterval(async () => {
+            try {
+                const res = await fetch('/api/admin', { credentials: 'same-origin' });
+                if (res.ok) {
+                    const body = await res.json().catch(() => null);
+                    if (body) applyAdminData(body);
+                } else if (res.status === 401) {
+                    setAuthed(false);
+                    setError('Your admin session expired. Please sign in again.');
+                }
+            } catch { /* network error, will retry next interval */ }
+        }, 120_000);
+        return () => clearInterval(interval);
+    }, [authed]);
 
     const stats = data.stats || {};
     const attention = data.attention || {};
