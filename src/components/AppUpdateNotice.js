@@ -21,11 +21,29 @@ import { ArrowRight, Radio, X } from '@/components/icons';
  * to update and the whole question is meaningless, so it renders nothing.
  */
 
-/** The shell writes `GSApp/<versionCode>` onto the user agent. */
+/**
+ * Which shell this is running in, if any.
+ *
+ * Returns a version number, or 0 for a shell that predates the version marker,
+ * or null when this is not the app at all.
+ *
+ * The marker was only added in version 4, so every shell already on a phone
+ * reports nothing. Those are the ones that most need to hear about the update,
+ * so an absent marker cannot simply mean "say nothing" or the feature would
+ * reach only the people who did not need it.
+ *
+ * `window.Capacitor` is the discriminator rather than sniffing the user agent
+ * for a WebView. Facebook and Instagram open links in a WebView too, and
+ * telling somebody browsing inside Instagram to update an app they have not
+ * installed would be nonsense.
+ */
 function installedShellVersion() {
-    if (typeof navigator === 'undefined') return null;
+    if (typeof navigator === 'undefined' || typeof window === 'undefined') return null;
+
     const match = /GSApp\/(\d+)/.exec(navigator.userAgent || '');
-    return match ? Number(match[1]) : null;
+    if (match) return Number(match[1]);
+
+    return window.Capacitor ? 0 : null;
 }
 
 const DISMISS_KEY = 'gs_update_notice_dismissed_for';
@@ -36,9 +54,10 @@ export default function AppUpdateNotice() {
 
     useEffect(() => {
         const installed = installedShellVersion();
-        // No marker means a browser, or a shell too old to report itself. Either
-        // way there is nothing useful to say, so say nothing.
-        if (!installed) return undefined;
+        // null means a browser, where there is no shell to update. 0 means an
+        // older shell that cannot report itself, which still needs telling, so
+        // this tests for null rather than falsiness.
+        if (installed === null) return undefined;
 
         let alive = true;
         (async () => {
@@ -90,7 +109,7 @@ export default function AppUpdateNotice() {
                     <div className="min-w-0 flex-1">
                         <h2 className="type-title text-text-primary">A newer app is ready</h2>
                         <p className="mt-0.5 type-caption text-text-muted">
-                            You have version {update.installed}. Version {update.versionCode} is out.
+                            {update.installed ? `You have version ${update.installed}. ` : ''}Version {update.versionCode} is out.
                         </p>
                     </div>
                     {/* A required update still closes. Trapping somebody in a

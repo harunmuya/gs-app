@@ -26,8 +26,8 @@ export const dynamic = 'force-dynamic';
   loudly and why a verification checks the two match.
 */
 const CURRENT = {
-    versionCode: 2,
-    versionName: '1.1',
+    versionCode: 4,
+    versionName: '1.0.4',
     // Stable path on purpose. Replacing the file behind it updates every link
     // that has ever been shared, so the download URL never has to change.
     url: '/base-release.apk',

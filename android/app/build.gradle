@@ -4,27 +4,43 @@ android {
     namespace = "ke.co.genuinesugarmummies.app"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "ke.co.genuinesugarmummies.app"
+        /*
+          This must match the app already on people's phones, or Android treats
+          the new APK as a different application and installs it alongside the
+          old one instead of updating it.
+
+          The published APK is com.genuinesugarmummies.global. This said
+          ke.co.genuinesugarmummies.app, so anything built here would have
+          appeared as a second, empty copy of the app while the real one sat
+          beside it untouched.
+
+          namespace above is the Java package and is unrelated; only
+          applicationId decides installed identity.
+        */
+        applicationId "com.genuinesugarmummies.global"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         /*
-          versionCode must increase for every APK that is meant to replace an
-          installed one. Android refuses an install whose versionCode is not
-          higher than the version already on the device, so a rebuild that left
-          this at 1 could not update anybody: they would see "App not installed"
-          and be told to uninstall first, which loses their local state.
+          versionCode must exceed the version already installed, or Android
+          refuses with "App not installed" and offers uninstall as the only way
+          forward, which loses local state.
 
-          It had never moved off 1. Bump it on every release, and keep the
-          signing keystore the same, because a different signature is refused
-          for the same reason.
+          The published APK is versionCode 3. This file said 1 until recently
+          and then 2, so a build from it could never have updated anybody even
+          once the package name was right.
 
-          Most changes do not need a release at all. The app loads the site from
-          a remote URL, so the whole web layer updates itself on next launch. An
-          APK is only needed when something native changes: the manifest, or
-          MainActivity. Version 2 carries the WebView permission bridge.
+          Bump on every release, and keep signing with the same keystore, since
+          a changed signature is refused for the same reason. The published APK
+          is signed CN=Genuine Sugar Mummies, OU=Mobile, SHA-256
+          6b698972405d7e00856c368e0643ce964385f7ac96fba2ef27816ca2cdc538bc.
+
+          Most changes need no release at all. The app loads the site from a
+          remote URL, so the web layer updates itself on next launch. An APK is
+          only needed when something native changes: the manifest, or
+          MainActivity. Version 4 carries the WebView permission bridge.
         */
-        versionCode 2
-        versionName "1.1"
+        versionCode 4
+        versionName "1.0.4"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
