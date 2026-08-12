@@ -1,24 +1,28 @@
 /**
- * Would a build from this project actually update the app people have?
+ * Is the APK in the downloads folder even this application?
  *
- * Three things must line up, and all three failed silently until they were
- * measured against the published APK rather than assumed.
+ * It is not, and finding that out the hard way is why this exists.
  *
- *   The package name. The published APK is com.genuinesugarmummies.global.
- *   This project built ke.co.genuinesugarmummies.app. Android treats a
- *   different applicationId as a different application, so the new APK would
- *   have installed beside the old one as a second, empty copy while the real
- *   app sat there untouched. Nothing warns about this. It just quietly happens.
+ * public/downloads holds com.genuinesugarmummies.global, labelled GS Global,
+ * loading https://genuinesugarmummies-com-v2.vercel.app. That is the V2 app,
+ * built from the separate genuinesugarmummies.com project. This project is V1:
+ * ke.co.genuinesugarmummies.app, loading its own deployment.
  *
- *   The version code. The published APK is 3. This project said 1, then 2. An
- *   install of a lower version is refused outright.
+ * So the download link on the V1 site hands out the V2 app. Anyone installing
+ * from it gets the other product, and none of the work on this site reaches
+ * them.
  *
- *   The signing certificate. A different key is refused for the same reason,
- *   and unlike the other two it cannot be corrected after the fact: without the
- *   original key there is no way to update those installs at all.
+ * The first version of this script assumed the APK it found was this project's
+ * published build, and concluded that the project's applicationId was wrong.
+ * Acting on that changed V1 to identify as V2, which would have shipped V1 over
+ * V2 on every phone that had it. A checker that reads one artefact and infers
+ * intent from it can be confidently wrong; it now reports the mismatch and
+ * names both possibilities rather than picking one.
  *
- * This reads the APK that is actually shipped, so it compares against reality
- * rather than against what a config file claims.
+ * When a real V1 APK exists, three things must line up for it to update an
+ * install: the package name, a higher versionCode, and the same signing
+ * certificate. The last cannot be corrected afterwards, because without the
+ * original key those installs can never be updated by anybody again.
  */
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -79,16 +83,38 @@ if (!existsSync(APK) || !existsSync(GRADLE)) {
         console.log(`\nShipped APK : ${shippedId} versionCode ${shippedCode}`);
         console.log(`This build   : ${builtId} versionCode ${builtCode}\n`);
 
-        check('the package name matches the published app', builtId === shippedId,
-            builtId === shippedId ? '' : 'a mismatch installs a second app instead of updating');
-        check('the version code is higher than the published one', builtCode > shippedCode,
-            builtCode > shippedCode ? `${shippedCode} to ${builtCode}` : `${builtCode} is not above ${shippedCode}`);
+        /*
+          A mismatch here does not mean the build is wrong. It can equally mean
+          the APK in the downloads folder belongs to somebody else, which is
+          exactly what happened: com.genuinesugarmummies.global is the V2 app
+          from the genuinesugarmummies.com project, loading the V2 deployment,
+          sitting in V1's download folder. Reading it as this project's
+          published build led to changing this project's identity to match, and
+          that would have shipped V1 over V2 on every phone that had it.
+
+          So the message says both possibilities rather than assuming one.
+        */
+        check('the APK in downloads is this app', builtId === shippedId,
+            builtId === shippedId
+                ? ''
+                : `downloads holds ${shippedId}, this project builds ${builtId}`);
+        // Only meaningful once the APK is actually this application.
+        if (builtId === shippedId) {
+            check('the version code is higher than the published one', builtCode > shippedCode,
+                builtCode > shippedCode ? `${shippedCode} to ${builtCode}` : `${builtCode} is not above ${shippedCode}`);
+        } else {
+            console.log('        version and signature not compared, the APK is a different application');
+        }
 
         // The endpoint tells installed apps what to expect, so it has to agree.
         const route = readFileSync(join('src', 'app', 'api', 'app-version', 'route.js'), 'utf8');
-        const advertised = Number((route.match(/versionCode:\s*(\d+)/) || [])[1] || 0);
-        check('the advertised version matches the build', advertised === builtCode,
-            `endpoint says ${advertised}, gradle says ${builtCode}`);
+        if (/const CURRENT = null;/.test(route)) {
+            console.log('        no update is advertised, which is correct while no V1 APK exists');
+        } else {
+            const advertised = Number((route.match(/versionCode:\s*(\d+)/) || [])[1] || 0);
+            check('the advertised version matches the build', advertised === builtCode,
+                `endpoint says ${advertised}, gradle says ${builtCode}`);
+        }
 
         /*
           The signature, checked on the APK rather than on the keystore.
@@ -105,7 +131,13 @@ if (!existsSync(APK) || !existsSync(GRADLE)) {
           if the original key is lost those installs can never be updated again
           by anybody.
         */
-        const EXPECTED_SIGNER = '6b698972405d7e00856c368e0643ce964385f7ac96fba2ef27816ca2cdc538bc';
+        /*
+          Left unset deliberately. The fingerprint recorded here previously was
+          read from the V2 APK, so checking a V1 release against it would have
+          failed a correct build and passed a wrong one. Fill it in from the
+          first genuine V1 release.
+        */
+        const EXPECTED_SIGNER = process.env.GS_EXPECTED_SIGNER || '';
         const apksigner = aapt.replace(/aapt(\.exe)?$/, (m) => (m.endsWith('.exe') ? 'apksigner.bat' : 'apksigner'));
 
         /*
@@ -131,9 +163,13 @@ if (!existsSync(APK) || !existsSync(GRADLE)) {
                     shell: process.platform === 'win32',
                 });
                 const digest = (out.match(/SHA-256 digest:\s*([0-9a-f]+)/i) || [])[1] || '';
-                check('the APK is signed with the key the installed app trusts',
-                    digest.toLowerCase() === EXPECTED_SIGNER,
-                    digest ? `${digest.slice(0, 16)}...` : 'no certificate found');
+                if (EXPECTED_SIGNER) {
+                    check('the APK is signed with the key the installed app trusts',
+                        digest.toLowerCase() === EXPECTED_SIGNER,
+                        digest ? `${digest.slice(0, 16)}...` : 'no certificate found');
+                } else {
+                    console.log(`        signed by ${digest.slice(0, 16)}... (no expected key recorded yet)`);
+                }
             } catch {
                 console.log('        signature could not be read from this APK');
             }
@@ -142,9 +178,13 @@ if (!existsSync(APK) || !existsSync(GRADLE)) {
             console.log('        set JAVA_HOME, or run this from a machine with Android Studio');
         }
 
-        console.log('\nIf a release is refused as "App not installed", the key is the usual reason.');
-        console.log('  expected CN=Genuine Sugar Mummies, OU=Mobile, L=Nairobi, C=KE');
-        console.log(`  expected SHA-256 ${EXPECTED_SIGNER}`);
+        if (builtId !== shippedId) {
+            console.log('\nThe V1 site is handing out the V2 app. Either put a V1 build at that');
+            console.log('path, or point the download at wherever the V2 APK is meant to live.');
+        } else if (EXPECTED_SIGNER) {
+            console.log('\nIf a release is refused as "App not installed", the key is the usual reason.');
+            console.log(`  expected SHA-256 ${EXPECTED_SIGNER}`);
+        }
     }
 
     console.log(`\n${pass} passed, ${fail} failed`);

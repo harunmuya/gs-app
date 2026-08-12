@@ -25,47 +25,30 @@ export const dynamic = 'force-dynamic';
   one from the other, so this is a hand kept pair, which is why it says so
   loudly and why a verification checks the two match.
 */
-const CURRENT = {
-    versionCode: 4,
-    versionName: '1.0.4',
-    /*
-      Served from the VPS rather than from this deployment, and that is the
-      whole point.
+/*
+  No update is advertised, on purpose.
 
-      An Android WebView cannot download. A link to an APK does nothing at all,
-      which is exactly how the update button behaved: no download, no error,
-      apparently not even clickable. Version 4 adds a DownloadListener that
-      fixes it properly, but the shells already on people's phones do not have
-      one and no web deploy can give them one.
+  The APK in public/downloads is com.genuinesugarmummies.global, labelled GS
+  Global. That is the V2 app, built from the separate genuinesugarmummies.com
+  project, and it loads https://genuinesugarmummies-com-v2.vercel.app. It is a
+  different application that shows a different website.
 
-      Capacitor opens a link to a different host in the system browser instead
-      of the WebView. genuinesugarmummies.co.ke is a different host, so this URL
-      escapes the app and lands somewhere that can actually download it. That
-      works on the shells already installed, which are the ones that need it.
+  So the update prompt was offering to install V2 over V1. Somebody who
+  accepted would have ended up in the other product, wondering where their
+  account went. A prompt that does nothing, which is what the broken download
+  amounted to, was accidentally the safer failure.
 
-      Keep both copies in step. /base-release.apk on the deployment is still the
-      link to share outside the app.
-    */
-    url: 'https://genuinesugarmummies.co.ke/app/genuine-sugar-mummies.apk',
-    /*
-      What changed, in the words a member would use. Not a changelog of
-      commits: somebody deciding whether to spend data on an update wants to
-      know what stops working if they do not.
-    */
-    notes: [
-        'Camera, microphone and location now work for calls, going live and nearby matches.',
-        'The app asks for each one when you use it, rather than all at once on opening.',
-    ],
-    /*
-      Whether the old shell is still usable. Version 1 cannot reach the camera,
-      the microphone or location at all, so calls, going live and nearby are
-      broken on it. That is worth interrupting somebody for; a cosmetic change
-      would not be.
-    */
-    required: true,
-};
+  This stays null until a real V1 APK exists at that path. Set versionCode,
+  versionName and url together when it does, and keep versionCode in step with
+  android/app/build.gradle. verify-apk-identity checks the APK actually there
+  against what this project builds, and will refuse a mismatch.
+*/
+const CURRENT = null;
 
 export async function GET() {
+    // android: null means "nothing to offer". The app treats an absent
+    // versionCode as no update and stays quiet, which is what should happen
+    // while the only APK available belongs to another application.
     return NextResponse.json(
         { ok: true, android: CURRENT },
         {
