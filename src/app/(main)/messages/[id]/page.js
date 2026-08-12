@@ -12,20 +12,9 @@ import VerifiedBadge from '@/components/VerifiedBadge';
 import GiftVisual from '@/components/GiftVisual';
 import { triggerGiftEffect } from '@/components/GiftEffects';
 import VoiceRecorder from '@/components/VoiceRecorder';
+import { QUICK_REPLIES, REACTION_REPLIES } from '@/lib/quickReplies';
+import { GIF_NEEDS_SILVER, IMAGE_NEEDS_BASIC } from '@/lib/copy';
 
-const QUICK_REPLIES = [
-    { label: 'Hello', text: 'Hello, I would like to know you better.' },
-    { label: 'Interested', text: 'I am interested in your profile.' },
-    { label: 'Sweet', text: 'You look sweet and interesting.' },
-    { label: 'Coffee', text: 'A coffee date sounds nice.' },
-    { label: 'Thanks', text: 'Thank you for replying.' },
-    { label: 'Call?', text: 'Can we plan a voice call when you are free?' },
-];
-const REACTION_REPLIES = [
-    { name: 'Sparkle', text: 'You have a bright profile.' },
-    { name: 'Heart', text: 'I like your profile.' },
-    { name: 'Smile', text: 'Your profile made me smile.' },
-];
 const EMOJI_CHOICES = ['😊', '😍', '😘', '❤️', '😂', '🔥', '👍', '💋', '🌹', '✨'];
 const FALLBACK_STICKERS = [
     { id: 'rose', name: 'Rose Sticker', url: '/gifts/rose.webp', type: 'image' },
@@ -144,7 +133,7 @@ export default function MessageThreadPage({ params }) {
 
     function attachImage(file) {
         if (!packageAccess?.can_send_images) {
-            setStatus('Image sharing requires Basic package or higher.');
+            setStatus(IMAGE_NEEDS_BASIC);
             return;
         }
         if (!file || !file.type.startsWith('image/')) return;
@@ -165,7 +154,7 @@ export default function MessageThreadPage({ params }) {
             return;
         }
         if (type === 'gif' && !canSendGifs) {
-            setStatus('GIF sharing requires Silver package or higher.');
+            setStatus(GIF_NEEDS_SILVER);
             return;
         }
         if (type === 'image' && !canSendImages) {

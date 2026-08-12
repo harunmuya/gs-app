@@ -26,6 +26,34 @@ import { ArrowRight, Check, HeartHandshake, ShieldCheck } from '@/components/ico
  * reply. Reassurance built on something untrue collapses the first time a
  * member notices, and takes the rest of the app's credibility with it.
  */
+/**
+ * The badge these profiles wear on a card.
+ *
+ * There were three of these, written separately: a red pill across the bottom
+ * of every photo in the browse grid, another on the swipe deck, and an amber
+ * one under the name on the profile. All three said some version of "No direct
+ * messages" next to a strike through symbol, on the person's face, before the
+ * member had read a word about them.
+ *
+ * That is the first thing anyone browsing sees, so it did more damage than the
+ * panel ever did: a wall of photos each stamped with a red prohibition reads as
+ * a directory of profiles the app itself does not trust.
+ *
+ * One component now, so the wording cannot drift apart again. It sits over a
+ * photo, so it is translucent dark rather than tinted, which stays legible on
+ * a bright picture and a dark one without shouting on either.
+ */
+export function FacilitationChip({ className = '' }) {
+    return (
+        <span
+            className={`inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-1 type-micro font-semibold text-white backdrop-blur-sm ${className}`}
+            title="Introductions to this profile are arranged by our team"
+        >
+            <HeartHandshake size={11} strokeWidth={2.4} /> By introduction
+        </span>
+    );
+}
+
 export default function FacilitationNotice({ member, className = '' }) {
     const name = String(member?.name || '').trim().split(/\s+/)[0];
     const who = name || 'This member';

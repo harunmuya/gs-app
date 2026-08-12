@@ -5,13 +5,15 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Calendar, Eye, Gift, GsMatch, Heart, HeartHandshake, ImagePlus, Lock, MapPin, MessageCircle, Mic, Phone, PhoneCall, Send, Shield, Smile, StopCircle, UserPlus, Video, X } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
-import FacilitationNotice from '@/components/FacilitationNotice';
+import FacilitationNotice, { FacilitationChip } from '@/components/FacilitationNotice';
 import PresenceDot from '@/components/PresenceDot';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import GiftVisual from '@/components/GiftVisual';
 import { triggerGiftEffect } from '@/components/GiftEffects';
 import { getProfileImageSrc, useProfileImageFallback } from '@/lib/profileImages';
 import { distanceText as profileDistanceText } from '@/lib/geo';
+import { QUICK_REPLIES, REACTION_REPLIES } from '@/lib/quickReplies';
+import { QUOTA_EXHAUSTED } from '@/lib/copy';
 
 const GIFTS = [
     { name: 'Rose', label: 'Rose', icon_url: '/gifts/rose.webp', credit_cost: 1 },
@@ -35,19 +37,6 @@ function supportedVoiceMimeType() {
     return types.find((type) => MediaRecorder.isTypeSupported(type)) || '';
 }
 
-const QUICK_REPLIES = [
-    { label: 'Hello', text: 'Hello, I would like to know you better.' },
-    { label: 'Sweet', text: 'You look sweet and interesting.' },
-    { label: 'Interested', text: 'I am interested in your profile.' },
-    { label: 'Coffee', text: 'A coffee date sounds nice.' },
-    { label: 'Thanks', text: 'Thank you for replying.' },
-    { label: 'Call?', text: 'Can we plan a voice call when you are free?' },
-];
-const REACTION_REPLIES = [
-    { name: 'Sparkle', text: 'You have a bright profile.' },
-    { name: 'Heart', text: 'I like your profile.' },
-    { name: 'Smile', text: 'Your profile made me smile.' },
-];
 
 function packageAccess(user) {
     const tier = String(user?.subscription_tier || user?.subscriptionTier || '').toLowerCase();
@@ -225,7 +214,7 @@ export default function MemberProfilePage({ params }) {
             .then((res) => res.json().catch(() => ({})).then((data) => ({ ok: res.ok, data })))
             .then(({ ok, data }) => {
                 if (!ok) {
-                    setStatus(data.error || 'Your daily quota has exhausted. Pay for a package to unlock unlimited access.');
+                    setStatus(data.error || QUOTA_EXHAUSTED);
                     window.setTimeout(() => router.push(data.redirectTo || '/packages'), 900);
                 }
             })
@@ -429,7 +418,7 @@ export default function MemberProfilePage({ params }) {
                 <div className="absolute bottom-0 left-0 right-0 p-5 text-white space-y-2">
                     <div className="flex items-center gap-2"><PresenceDot member={member} size={14} className="ring-2 ring-white/75" /><h1 className="text-3xl font-black truncate">{member.name}</h1><VerifiedBadge verified={member.verified} size={22} /></div>
                     <div className="flex flex-wrap items-center gap-2 text-sm opacity-90">{member.age && <span>{member.age}</span>}{member.location && <span className="inline-flex items-center gap-1"><MapPin size={14} /> {member.location}</span>}{memberDistanceText && <span className="inline-flex items-center gap-1"><MapPin size={14} /> {memberDistanceText}</span>}</div>
-                    <div className="flex flex-wrap gap-2"><span className="px-3 py-1 rounded-full text-xs font-bold bg-white/18 backdrop-blur-sm">{formatLabel(member.profileLabel)}</span>{member.lookingFor && <span className="px-3 py-1 rounded-full text-xs font-bold bg-white/18 backdrop-blur-sm">Looking for {member.lookingFor}</span>}{localOnlyMember && <span className="px-3 py-1 rounded-full text-xs font-bold bg-white/18 backdrop-blur-sm inline-flex items-center gap-1"><HeartHandshake size={12} /> {member.facilitationLabel || 'Introduced by our team'}</span>}</div>
+                    <div className="flex flex-wrap gap-2"><span className="px-3 py-1 rounded-full text-xs font-bold bg-white/18 backdrop-blur-sm">{formatLabel(member.profileLabel)}</span>{member.lookingFor && <span className="px-3 py-1 rounded-full text-xs font-bold bg-white/18 backdrop-blur-sm">Looking for {member.lookingFor}</span>}{localOnlyMember && <FacilitationChip className="px-3 text-xs" />}</div>
                 </div>
             </section>
 

@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import PermissionSheet from '@/components/PermissionSheet';
 import UserAvatar from '@/components/UserAvatar';
 import { permissionState, wasDismissed } from '@/lib/permissions';
+import { CANNOT_CALL_SELF } from '@/lib/copy';
 
 const ICE_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -99,7 +100,7 @@ export default function CallRoomPage({ params }) {
         async function setup() {
             try {
                 if (user.id === peerId) {
-                    setStatus('You cannot call yourself.');
+                    setStatus(CANNOT_CALL_SELF);
                     return;
                 }
                 let activeSession = null;

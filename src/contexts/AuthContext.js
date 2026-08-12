@@ -1100,7 +1100,7 @@ export function AuthProvider({ children }) {
             setTimeout(() => {
                 addMessage({
                     type: 'gs_support', sender: 'GS Support', senderImage: '',
-                    title: 'Welcome to Genuine Sugar Mummies!',
+                    title: 'Welcome to Genuine Sugar Mummies',
                     body: `Hi ${merged.display_name}! Your free account is ready. Basic unlocks unlimited messages, photo chat, 50 GS Credits, and one direct connection request after admin approval. Silver unlocks phone reveal, calls, GIFs, voice notes, activity insights, and stronger visibility.`,
                     countsAsUnread: false,
                 });

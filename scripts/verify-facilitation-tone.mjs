@@ -122,6 +122,36 @@ console.log('\nAnd it does not overclaim');
     check('it still says the answer may be no', /including when the answer is no/.test(notice));
 }
 
+console.log('\nThe cards carry one shared chip');
+{
+    /*
+      The badge on a card was the loudest instance of all and the easiest to
+      miss, because the panel is on the profile and the badge is on the browse
+      grid. There were three of them, written separately: a red pill across the
+      bottom of every photo in the grid, another on the swipe deck, and an amber
+      one on the profile hero. A wall of photos each stamped with a red
+      prohibition reads as a directory the app does not trust.
+    */
+    const grid = readFileSync('src/app/(main)/members/page.js', 'utf8');
+    const deck = readFileSync('src/app/(main)/discover/page.js', 'utf8');
+
+    for (const [name, source] of [['browse grid', grid], ['swipe deck', deck], ['profile hero', profile]]) {
+        const code = stripComments(source);
+        check(`the ${name} uses the shared chip`, /<FacilitationChip/.test(code));
+        check(`the ${name} has no red prohibition`,
+            !/No direct messages/.test(code) && !/<Ban\b/.test(code));
+    }
+    check('the chip is defined once', /export function FacilitationChip/.test(noticeCode));
+    check('it is not tinted danger or amber',
+        !/var\(--color-danger\)|bg-amber/.test(stripComments(readFileSync('src/components/FacilitationNotice.js', 'utf8'))));
+
+    // The notice sentence lived in three files and two of them were rewritten,
+    // so the third kept showing wording that had been replaced everywhere else.
+    const literalCopies = ['src/app/(main)/members/page.js', 'src/app/(main)/members/[id]/page.js']
+        .filter((f) => /This profile is introduced through our facilitation service/.test(readFileSync(f, 'utf8')));
+    check('no screen carries its own copy of the notice', literalCopies.length === 0, literalCopies.join(', '));
+}
+
 console.log('\nBoth profile routes use it');
 check('the member profile shows the panel', /<FacilitationNotice member=\{member\}/.test(profile));
 check('the discover profile passes the real profile', /<FacilitationNotice member=\{profile\}/.test(discover),

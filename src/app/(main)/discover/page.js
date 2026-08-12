@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion, useMotionValue, useTransform } from 'framer-motion';
-import { Ban, Eye, GsMatch, Heart, HeartHandshake, LocateFixed, MapPin, MessageCircle, Phone, Radio, RefreshCw, X } from '@/components/icons';
+import { Eye, GsMatch, Heart, HeartHandshake, LocateFixed, MapPin, MessageCircle, Phone, Radio, RefreshCw, X } from '@/components/icons';
 import UserAvatar from '@/components/UserAvatar';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import BoostedMembersStrip from '@/components/BoostedMembersStrip';
@@ -16,6 +16,8 @@ import { permissionState, wasDismissed } from '@/lib/permissions';
 import { POLL } from '@/lib/usePolling';
 import { getProfileImageSrc, useProfileImageFallback } from '@/lib/profileImages';
 import { displayDistanceKm, distanceText as profileDistanceText } from '@/lib/geo';
+import { FacilitationChip } from '@/components/FacilitationNotice';
+import { QUOTA_EXHAUSTED } from '@/lib/copy';
 
 const CACHE_KEY = 'gsk_app_discover_deck_v20';
 const CURRENT_CARD_KEY = 'gsk_app_discover_current_card_v5';
@@ -625,7 +627,7 @@ export default function DiscoverPage() {
         });
     }
 
-    function stopSwipeWithPackageNotice(result, fallback = 'Your daily quota has exhausted. Pay for a package to unlock unlimited access.') {
+    function stopSwipeWithPackageNotice(result, fallback = QUOTA_EXHAUSTED) {
         setNotice(result?.error || fallback);
         x.set(0);
         swiping.current = false;
@@ -697,7 +699,7 @@ export default function DiscoverPage() {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-            setNotice(data.error || 'Your daily quota has exhausted. Pay for a package to unlock unlimited access.');
+            setNotice(data.error || QUOTA_EXHAUSTED);
             window.setTimeout(() => router.push(data.redirectTo || '/packages'), 900);
             return;
         }
@@ -816,7 +818,7 @@ export default function DiscoverPage() {
                         <motion.div className="absolute top-7 right-5 px-5 py-2.5 rounded-2xl border-[3px] border-danger text-danger font-black text-2xl rotate-12" style={{ opacity: nopeOpacity, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(220,38,38,0.3)' }}>PASS ✗</motion.div>
                         <div className="absolute bottom-0 left-0 right-0 p-4 text-white space-y-2">
                             <div className="flex items-center gap-2"><h2 className="text-2xl font-black truncate">{current.name}</h2>{current.age && <span className="text-lg opacity-85">{current.age}</span>}<VerifiedBadge verified={current.verified} size={19} /></div>
-                            <div className="flex flex-wrap items-center gap-2 text-xs"><PresenceDot member={current} size={12} className="ring-2 ring-white/70" /><span className="px-2 py-1 rounded-full bg-white/18 font-bold">{formatLabel(current.profileLabel)}</span>{current.lookingFor && <span className="px-2 py-1 rounded-full bg-white/18 font-bold">Looking for {current.lookingFor}</span>}<span className="px-2 py-1 rounded-full bg-white/18 font-bold">{score}% match</span>{current.requiresFacilitation && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-white font-black" style={{ background: 'var(--color-danger)' }}><Ban size={11} strokeWidth={2.6} /> No direct messages</span>}</div>
+                            <div className="flex flex-wrap items-center gap-2 text-xs"><PresenceDot member={current} size={12} className="ring-2 ring-white/70" /><span className="px-2 py-1 rounded-full bg-white/18 font-bold">{formatLabel(current.profileLabel)}</span>{current.lookingFor && <span className="px-2 py-1 rounded-full bg-white/18 font-bold">Looking for {current.lookingFor}</span>}<span className="px-2 py-1 rounded-full bg-white/18 font-bold">{score}% match</span>{current.requiresFacilitation && <FacilitationChip />}</div>
                             {current.location && <p className="flex items-center gap-1 text-xs opacity-90"><MapPin size={13} /> {current.location}</p>}
                             {currentDistanceText && <p className="flex items-center gap-1 text-xs opacity-90"><LocateFixed size={13} /> {currentDistanceText}</p>}
                             <p className="text-sm leading-snug line-clamp-2 opacity-95">{compactText(current)}</p>

@@ -5,6 +5,7 @@ import { requireMember } from '@/lib/authSession';
 import { notifyMember } from '@/lib/notifyMember';
 import { consumeQuota } from '@/lib/entitlementGuard';
 import { FACILITATION_NOTICE, profileKindFor, requiresFacilitation } from '@/lib/profileKind';
+import { GIF_NEEDS_SILVER, IMAGE_NEEDS_BASIC } from '@/lib/copy';
 
 const LIMIT_NOTICE = 'Daily quota reached. Subscribe to Basic, Silver, or Gold for unlimited messaging.';
 
@@ -252,10 +253,10 @@ export async function POST(request) {
     const attachmentName = String(body.attachmentName || '').trim().slice(0, 120);
     if (!bodyText && !attachmentUrl && !voiceUrl) return jsonError('Message is empty.', 400);
     if (attachmentUrl && attachmentType === 'image' && !canUseFeature(access.tier, 'images')) {
-        return NextResponse.json({ error: 'Image sharing requires Basic package or higher.', redirectTo: '/packages' }, { status: 402 });
+        return NextResponse.json({ error: IMAGE_NEEDS_BASIC, redirectTo: '/packages' }, { status: 402 });
     }
     if (attachmentUrl && attachmentType === 'gif' && !canUseFeature(access.tier, 'gifs')) {
-        return NextResponse.json({ error: 'GIF sharing requires Silver package or higher.', redirectTo: '/packages' }, { status: 402 });
+        return NextResponse.json({ error: GIF_NEEDS_SILVER, redirectTo: '/packages' }, { status: 402 });
     }
     if (attachmentUrl && !['image', 'gif'].includes(attachmentType) && !canUseFeature(access.tier, 'voiceNotes')) {
         return NextResponse.json({ error: 'Media sharing requires Silver package or higher.', redirectTo: '/packages' }, { status: 402 });

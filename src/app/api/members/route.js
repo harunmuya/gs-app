@@ -15,6 +15,7 @@ import { getSessionMember, provisionAuthUser, signInWithPassword } from '@/lib/a
 import { displayMatchPercent, interleave, scoreMember } from '@/lib/discoveryRanking';
 import { consumeQuota } from '@/lib/entitlementGuard';
 import { TELEGRAM_MENTION } from '@/lib/support';
+import { GIF_NEEDS_SILVER, IMAGE_NEEDS_BASIC } from '@/lib/copy';
 
 const FULL_MEMBER_FIELDS = `
     id,
@@ -2978,10 +2979,10 @@ export async function POST(request) {
             senderTier = await getPackageTier(supabase, activeTierId(sender));
         }
         if (attachmentUrl && attachmentType === 'image' && !canUseFeature(senderTier, 'images')) {
-            return NextResponse.json({ error: 'Image sharing requires Basic package or higher.', redirectTo: '/packages' }, { status: 402 });
+            return NextResponse.json({ error: IMAGE_NEEDS_BASIC, redirectTo: '/packages' }, { status: 402 });
         }
         if (attachmentUrl && attachmentType === 'gif' && !canUseFeature(senderTier, 'gifs')) {
-            return NextResponse.json({ error: 'GIF sharing requires Silver package or higher.', redirectTo: '/packages' }, { status: 402 });
+            return NextResponse.json({ error: GIF_NEEDS_SILVER, redirectTo: '/packages' }, { status: 402 });
         }
         if (attachmentUrl && !['image', 'gif'].includes(attachmentType) && !canUseFeature(senderTier, 'voiceNotes')) {
             return NextResponse.json({ error: 'Media sharing requires Silver package or higher.', redirectTo: '/packages' }, { status: 402 });

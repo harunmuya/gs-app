@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Ban, Bell, Eye, Filter, Gift, Loader2, Lock, MapPin, GsMatch, MessageSquareText, Phone, PhoneCall, RefreshCw, Search, UserPlus, UserRoundCheck, Users } from '@/components/icons';
+import { Bell, Eye, Filter, Gift, Loader2, Lock, MapPin, GsMatch, MessageSquareText, Phone, PhoneCall, RefreshCw, Search, UserPlus, UserRoundCheck, Users } from '@/components/icons';
 import UserAvatar from '@/components/UserAvatar';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import LiveNowStrip from '@/components/LiveNowStrip';
@@ -15,6 +15,9 @@ import { getProfileImageSrc, useProfileImageFallback } from '@/lib/profileImages
 import { distanceText } from '@/lib/geo';
 import { useEntitlements } from '@/lib/useEntitlements';
 import PresenceDot, { PresenceLine } from '@/components/PresenceDot';
+import { FacilitationChip } from '@/components/FacilitationNotice';
+import { FACILITATION_NOTICE } from '@/lib/profileKind';
+import { QUOTA_EXHAUSTED } from '@/lib/copy';
 
 const MODES = [
     { id: 'all', label: 'Show All' },
@@ -239,7 +242,7 @@ export default function MembersPage() {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-            setNotice(data.error || 'Your daily quota has exhausted. Pay for a package to unlock unlimited access.');
+            setNotice(data.error || QUOTA_EXHAUSTED);
             window.setTimeout(() => router.push(data.redirectTo || '/packages'), 900);
             return;
         }
@@ -260,7 +263,10 @@ export default function MembersPage() {
             router.push(`/messages/${member.id}`);
             return;
         }
-        setNotice(member?.facilitationNotice || 'This profile is introduced through our facilitation service. Direct messaging is not available — contact support to arrange an introduction.');
+        // FACILITATION_NOTICE is the single source. This line used to carry its
+        // own copy of the sentence, which is why it still read "Direct messaging
+        // is not available" after that wording had been replaced everywhere else.
+        setNotice(member?.facilitationNotice || FACILITATION_NOTICE);
         openMember(member);
     }
 
@@ -449,12 +455,10 @@ export default function MembersPage() {
                                     <span className="absolute top-2 left-2 px-2 py-1 rounded-full type-micro text-white bg-black/55 backdrop-blur-sm">{labelText(member.profileLabel)}</span>
                                     {String(member.id) === String(user?.id || '') && <span className="absolute top-2 left-1/2 -translate-x-1/2 px-2 py-1 rounded-full type-micro text-white gradient-primary shadow-sm">YOU</span>}
                                     {member.isBoosted && <span className="absolute left-2 top-9 rounded-full bg-secondary px-2 py-1 type-micro text-white shadow-sm">BOOSTED</span>}
-                                    {/* Amber read as a mild caveat. Red is the honest
-                                        weight for "you cannot message this". */}
+                                    {/* One shared chip, so the wording on the grid, the
+                                        deck and the profile cannot drift apart. */}
                                     {member.requiresFacilitation && (
-                                        <span className="absolute inset-x-2 bottom-12 flex items-center justify-center gap-1 rounded-full px-2 py-1 type-micro text-white shadow-sm" style={{ background: 'var(--color-danger)' }}>
-                                            <Ban size={10} strokeWidth={2.6} /> No direct messages
-                                        </span>
+                                        <FacilitationChip className="absolute left-2 bottom-2" />
                                     )}
                                     {/* PresenceDot renders nothing for a listing — see lib/presence. */}
                                     <PresenceDot member={member} size={14} className="absolute top-2 right-2 ring-4 ring-white/80" />
