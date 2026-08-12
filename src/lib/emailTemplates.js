@@ -313,14 +313,31 @@ export const NUDGE_TEMPLATES = [
  * the same one twice, and a member who gets the same sentence twice reads the
  * whole thing as automated and stops opening it.
  */
-export function buildNudgeEmail(data = {}, lastIndex = -1) {
+export function buildNudgeEmail(data = {}, lastIndex = -1, seed = '') {
     /*
       `Number(lastIndex) || -1` looks equivalent and is not: 0 is falsy, so a
       member who last received nudge 0 was read as having received none, and got
       nudge 0 again. Forever. The rotation never left the first template.
     */
-    const previous = Number.isInteger(Number(lastIndex)) ? Number(lastIndex) : -1;
-    const next = (previous + 1) % NUDGE_TEMPLATES.length;
+    const known = Number.isInteger(Number(lastIndex)) && Number(lastIndex) >= 0;
+
+    /*
+      Where a member with no history starts.
+
+      Rotating from -1 is correct for one person and wrong for a batch: on the
+      first run nobody has a history, so every one of them starts at zero and
+      the same email goes to the whole list at once. Measured on this database
+      that was 52 identical sends. Seeding the start from the member id spreads
+      that first run across all five, and each member still advances by one from
+      wherever they began.
+    */
+    const start = seed
+        ? [...String(seed)].reduce((total, char) => (total * 31 + char.charCodeAt(0)) % NUDGE_TEMPLATES.length, 7)
+        : 0;
+
+    const next = known
+        ? (Number(lastIndex) + 1) % NUDGE_TEMPLATES.length
+        : start;
     try {
         return { index: next, email: NUDGE_TEMPLATES[next](data) };
     } catch {

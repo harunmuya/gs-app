@@ -79,6 +79,15 @@ console.log('\nThe nudge rotates rather than repeating');
     check('a full cycle shows every nudge once', new Set(seen).size === NUDGE_TEMPLATES.length,
         `${new Set(seen).size} of ${NUDGE_TEMPLATES.length}`);
     check('it wraps rather than running out', buildNudgeEmail({ recipientName: 'Ann' }, index).index === 0);
+
+    // A first run has no history for anybody, so without a seed the whole batch
+    // would receive the same email at once.
+    const firstRun = (await db.from('users').select('id').eq('is_seed_profile', false).limit(40)).data || [];
+    const spread = new Set(firstRun.map((m) => buildNudgeEmail({ recipientName: 'Ann' }, -1, m.id).index));
+    check('a first run spreads across all five', spread.size === NUDGE_TEMPLATES.length,
+        `${spread.size} distinct across ${firstRun.length} members`);
+    const sameTwice = buildNudgeEmail({ recipientName: 'Ann' }, -1, 'abc').index === buildNudgeEmail({ recipientName: 'Ann' }, -1, 'abc').index;
+    check('the seed is stable for one member', sameTwice);
 }
 
 console.log('\nWho would actually receive something');

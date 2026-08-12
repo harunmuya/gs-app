@@ -144,7 +144,7 @@ export async function GET(request) {
         // A digest when there is something to report, a nudge when there is not.
         const chosen = digest
             ? { kind: 'digest', email: digest }
-            : { kind: 'nudge', ...buildNudgeEmail({ recipientName: member.display_name }, lastIndex) };
+            : { kind: 'nudge', ...buildNudgeEmail({ recipientName: member.display_name }, lastIndex, member.id) };
 
         if (!chosen.email) continue;
         planned.push({ member, counts, ...chosen });
