@@ -135,6 +135,68 @@ export default function AppUpdateNotice() {
                     </ul>
                 )}
 
+                {/*
+                  Uninstall first, said as a step rather than as a warning.
+
+                  Android refuses to install over an app of the same name signed
+                  with a different key, and words it as "package conflicts with
+                  an existing package". Nothing in that phrase suggests what to
+                  do, and the two obvious readings, a corrupt download or a full
+                  phone, are both wrong. Everybody on the current build hits it.
+
+                  Burying that in small print under the button means most people
+                  meet the error first and give up. It is the first step, in
+                  order, with the reassurance attached to the step that needs it:
+                  uninstalling looks destructive, and the reason it is not is
+                  that accounts live on the server.
+                */}
+                <ol className="space-y-2.5 px-4 pb-1">
+                    <li className="flex gap-2.5">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full tint-primary type-micro font-bold text-primary">1</span>
+                        <span className="min-w-0 type-caption text-text-secondary">
+                            <strong className="text-text-primary">Uninstall the app you have now.</strong> Hold its icon
+                            and choose Uninstall. Nothing is lost. Your account, messages and photos are on our
+                            servers, not on the phone.
+                        </span>
+                    </li>
+                    <li className="flex gap-2.5">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full tint-primary type-micro font-bold text-primary">2</span>
+                        <span className="min-w-0 type-caption text-text-secondary">
+                            <strong className="text-text-primary">Tap the button below</strong> and open the file when
+                            it finishes downloading.
+                        </span>
+                    </li>
+                    {/*
+                      Play Protect, named before it appears.
+
+                      It warns about every app installed outside the Play Store,
+                      whoever made it, because it has no listing to check against.
+                      The wording is alarming by design and it is the commonest
+                      point at which somebody abandons a sideloaded install: they
+                      are told the app is unsafe by their own phone, moments after
+                      being told by us that it is fine.
+
+                      Saying it will happen, before it happens, is the difference.
+                      A warning you were expecting reads as a formality; the same
+                      warning unannounced reads as being caught out.
+                    */}
+                    <li className="flex gap-2.5">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full tint-primary type-micro font-bold text-primary">3</span>
+                        <span className="min-w-0 type-caption text-text-secondary">
+                            <strong className="text-text-primary">Google Play Protect will warn you.</strong> It does
+                            that for every app not installed from the Play Store. Choose More details, then Install
+                            anyway.
+                        </span>
+                    </li>
+                    <li className="flex gap-2.5">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full tint-primary type-micro font-bold text-primary">4</span>
+                        <span className="min-w-0 type-caption text-text-secondary">
+                            <strong className="text-text-primary">Sign in again</strong> with the same email and
+                            password. Everything is where you left it.
+                        </span>
+                    </li>
+                </ol>
+
                 <div className="space-y-2 p-4">
                     {/* rel and target matter here: the shell hands an
                         off-host link to the system browser, which is the only
@@ -145,31 +207,11 @@ export default function AppUpdateNotice() {
                         rel="noopener noreferrer"
                         className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl type-body-strong text-white gradient-primary"
                     >
-                        Download the update <ArrowRight size={16} />
+                        Download the new app <ArrowRight size={16} />
                     </a>
                     <p className="type-micro text-text-muted">
-                        It installs over the app you already have. Your account, messages and photos stay where
-                        they are, and you do not sign in again.
-                    </p>
-                    {/*
-                      The one failure people cannot work out on their own.
-
-                      Android refuses an install when a package of the same name
-                      is already there with a different signature, and words it
-                      as "package conflicts with an existing package". Nothing in
-                      that phrase suggests what to do, and the obvious readings,
-                      that the download is corrupt or the phone is out of space,
-                      are both wrong. It happens to anybody who installed a build
-                      signed with a different key, which is every test build.
-
-                      Account data lives on the server, so uninstalling costs
-                      nothing but the trouble of signing in again. Saying so is
-                      the difference between a member retrying and giving up.
-                    */}
-                    <p className="type-micro text-text-muted">
-                        If it says the package conflicts with an existing one, uninstall Genuine Sugar Mummies
-                        first, then open this link again. Nothing is lost. Your account lives on our servers,
-                        not on the phone.
+                        If Android says the package conflicts with an existing one, the old app is still there.
+                        Uninstall it and open this again.
                     </p>
                 </div>
             </div>

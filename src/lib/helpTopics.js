@@ -122,6 +122,20 @@ export const HELP_TOPICS = [
         subject: 'Help with an introduction',
     },
     {
+        id: 'install',
+        service: 'account_profile',
+        label: 'The app will not install',
+        blurb: 'Play Protect warnings, and the package conflict message.',
+        steps: [
+            'Google Play Protect warns about every app installed outside the Play Store, whoever made it, because there is no Play listing for it to check against. Choose More details, then Install anyway.',
+            'If Android says the package conflicts with an existing one, the older app is still on the phone. Uninstall Genuine Sugar Mummies, then open the download again.',
+            'Uninstalling loses nothing. Your account, messages, matches and photos are on our servers. You sign in again with the same email and password and everything is there.',
+            'If the download never starts, open the link in Chrome rather than inside another app. Some apps open links in a window that cannot download files.',
+        ],
+        escalateHint: 'Say what the phone shows on screen, word for word.',
+        subject: 'The app will not install',
+    },
+    {
         id: 'general',
         service: 'general',
         label: 'Something else',

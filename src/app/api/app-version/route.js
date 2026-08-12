@@ -58,8 +58,13 @@ const CURRENT = {
       and is the link to share outside the app where a normal browser handles it.
     */
     url: 'https://genuinesugarmummies.co.ke/app/genuine-sugar-mummies.apk',
+    /*
+      What changed, in the words a member would use, and short enough to read
+      above a set of instructions. Somebody deciding whether to spend data and
+      five minutes on this wants to know what stops working if they do not.
+    */
     notes: [
-        'Camera, microphone and location now work for calls, going live and nearby matches.',
+        'Camera, microphone and location now work, so calls, going live and nearby matches work.',
         'The app asks for each one when you use it, rather than all at once on opening.',
     ],
     /*
