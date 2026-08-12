@@ -26,24 +26,36 @@ export const dynamic = 'force-dynamic';
   loudly and why a verification checks the two match.
 */
 /*
-  No update is advertised, on purpose.
+  Keep versionCode in step with android/app/build.gradle. Nothing in the build
+  reads one from the other, so verify-apk-identity compares both against the
+  APK actually sitting in public/downloads and refuses a mismatch.
 
-  The APK in public/downloads is com.genuinesugarmummies.global, labelled GS
-  Global. That is the V2 app, built from the separate genuinesugarmummies.com
-  project, and it loads https://genuinesugarmummies-com-v2.vercel.app. It is a
-  different application that shows a different website.
-
-  So the update prompt was offering to install V2 over V1. Somebody who
-  accepted would have ended up in the other product, wondering where their
-  account went. A prompt that does nothing, which is what the broken download
-  amounted to, was accidentally the safer failure.
-
-  This stays null until a real V1 APK exists at that path. Set versionCode,
-  versionName and url together when it does, and keep versionCode in step with
-  android/app/build.gradle. verify-apk-identity checks the APK actually there
-  against what this project builds, and will refuse a mismatch.
+  This was null for a while, because the APK in that folder was the V2 app and
+  offering it as an update to V1 would have put people in the other product. It
+  is a real V1 build now: ke.co.genuinesugarmummies.app, signed, loading this
+  deployment.
 */
-const CURRENT = null;
+const CURRENT = {
+    versionCode: 2,
+    versionName: '1.1',
+    /*
+      Served from this deployment. A same host link cannot download inside a
+      WebView, which is why the button appeared dead, so version 2 carries a
+      DownloadListener that hands the URL to the system download manager. Every
+      install from here has that listener, so the plain path is right.
+    */
+    url: '/base-release.apk',
+    notes: [
+        'Camera, microphone and location now work for calls, going live and nearby matches.',
+        'The app asks for each one when you use it, rather than all at once on opening.',
+    ],
+    /*
+      Required, because a shell without the permission bridge cannot reach the
+      camera, the microphone or location at all. Calls, going live and nearby
+      are broken on it.
+    */
+    required: true,
+};
 
 export async function GET() {
     // android: null means "nothing to offer". The app treats an absent

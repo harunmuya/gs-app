@@ -5,7 +5,16 @@
   "env": {
     "NEXT_TELEMETRY_DISABLED": "1"
   },
-  "rewrites": [],
+  "rewrites": [
+    {
+      "source": "/base-release.apk",
+      "destination": "/downloads/genuine-sugar-mummies.apk"
+    },
+    {
+      "source": "/base-realese.apk",
+      "destination": "/downloads/genuine-sugar-mummies.apk"
+    }
+  ],
   "crons": [
     {
       "path": "/api/digest?send=1",

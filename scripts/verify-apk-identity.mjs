@@ -98,10 +98,27 @@ if (!existsSync(APK) || !existsSync(GRADLE)) {
             builtId === shippedId
                 ? ''
                 : `downloads holds ${shippedId}, this project builds ${builtId}`);
-        // Only meaningful once the APK is actually this application.
+        /*
+          Equal versions are the correct steady state, not a failure.
+
+          This asked for the build to be strictly higher than the APK in
+          downloads, which is the right question only while a release is being
+          prepared. Once that release is published the two are the same
+          artefact, and demanding "higher" fails the moment everything is
+          actually in order.
+
+          What is genuinely wrong is a build behind what is published: it means
+          the version was lowered, and an APK built from it could never install
+          over what people already have.
+        */
         if (builtId === shippedId) {
-            check('the version code is higher than the published one', builtCode > shippedCode,
-                builtCode > shippedCode ? `${shippedCode} to ${builtCode}` : `${builtCode} is not above ${shippedCode}`);
+            check('the build is not behind what is published', builtCode >= shippedCode,
+                builtCode === shippedCode
+                    ? `both at ${builtCode}, in sync`
+                    : `build is ${builtCode}, published is ${shippedCode}`);
+            if (builtCode > shippedCode) {
+                console.log(`        a release is pending: build ${builtCode} has not been copied into downloads yet`);
+            }
         } else {
             console.log('        version and signature not compared, the APK is a different application');
         }
@@ -132,12 +149,20 @@ if (!existsSync(APK) || !existsSync(GRADLE)) {
           by anybody.
         */
         /*
-          Left unset deliberately. The fingerprint recorded here previously was
-          read from the V2 APK, so checking a V1 release against it would have
-          failed a correct build and passed a wrong one. Fill it in from the
-          first genuine V1 release.
+          V1's signing key, from its first release on 2026-08-12.
+
+          The fingerprint here was briefly the V2 one, read off the wrong APK,
+          which would have failed a correct V1 build and passed a wrong one. It
+          is V1's own now.
+
+          Every future V1 release must match this. Once members have installed,
+          an APK signed with any other key cannot update them: Android refuses,
+          and uninstalling to fix it loses their local state. The keystore is
+          gitignored, so it lives on one machine and nowhere else unless
+          somebody backs it up.
         */
-        const EXPECTED_SIGNER = process.env.GS_EXPECTED_SIGNER || '';
+        const EXPECTED_SIGNER = process.env.GS_EXPECTED_SIGNER
+            || 'ccfdd9a8f5d856d1f0b4bcc8890635237b801bedd47018fd9c555dd245addbd9';
         const apksigner = aapt.replace(/aapt(\.exe)?$/, (m) => (m.endsWith('.exe') ? 'apksigner.bat' : 'apksigner'));
 
         /*
