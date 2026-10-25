@@ -62,7 +62,11 @@ export default function AppUpdateNotice() {
         let alive = true;
         (async () => {
             try {
-                const res = await fetch('/api/app-version', { cache: 'no-store' });
+                // The route serves this `public, s-maxage=1800, stale-while-revalidate=3600`
+                // because the answer is the same for everyone and changes only when a
+                // release ships. `no-store` threw that away and sent every app launch
+                // to origin for a number that moves a few times a year.
+                const res = await fetch('/api/app-version');
                 const data = await res.json().catch(() => ({}));
                 const latest = data?.android;
                 if (!alive || !latest?.versionCode) return;

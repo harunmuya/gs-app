@@ -145,7 +145,10 @@ export default function MembersPage() {
         }
         try {
             const separator = query ? '&' : '';
-            const res = await fetch(`/api/members?${query}${separator}page=${pageNumber}&per_page=${MEMBERS_PAGE_SIZE}`, { cache: 'no-store' });
+            // See the note in discover/page.js: the route sets `private, max-age=15`
+            // and `no-store` here would override it, re-fetching the directory from
+            // origin on every mount and every page of the infinite scroll.
+            const res = await fetch(`/api/members?${query}${separator}page=${pageNumber}&per_page=${MEMBERS_PAGE_SIZE}`);
             const data = res ? await res.json().catch(() => ({})) : {};
             const rows = data.members || [];
             setMembers((current) => {

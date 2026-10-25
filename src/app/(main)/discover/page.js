@@ -371,7 +371,13 @@ export default function DiscoverPage() {
                 const memberParams = new URLSearchParams({ per_page: String(DECK_PAGE_SIZE), page: String(pageNumber) });
                 if (label !== 'all') memberParams.set('label', label);
                 if (user?.id) memberParams.set('viewer_id', user.id);
-                const res = await fetch(`/api/members?${memberParams.toString()}`, { cache: 'no-store' });
+                // No `cache: 'no-store'`: that forced a network trip on every mount
+                // regardless of headers. The route marks this response `private,
+                // max-age=15`, so the browser — and only this browser — may reuse a
+                // deck page across a tab switch or a back navigation. Swipe history
+                // is applied client-side, so a page a few seconds old deals the same
+                // cards.
+                const res = await fetch(`/api/members?${memberParams.toString()}`);
                 return res.json().catch(() => ({}));
             }));
             const incoming = payloads.flatMap((payload) => payload.members || [])

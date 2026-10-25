@@ -1066,7 +1066,25 @@ export async function GET(request) {
     // are private even when the URL looks anonymous, because entitlement now comes
     // from cookies rather than the query string.
     const privateLookup = Boolean(viewer || searchParams.get('id') || searchParams.get('username'));
-    const cacheControl = privateLookup ? 'private, no-cache, max-age=0' : 'public, s-maxage=15, stale-while-revalidate=30';
+    /*
+      `private` keeps a personalised response out of every shared cache, which is
+      the rule above and is not negotiable. What it does not have to do is forbid
+      the member's own browser from reusing it.
+
+      `no-cache, max-age=0` did forbid exactly that, so moving between Discover,
+      Members and Matches — or coming back with the back button — re-fetched a
+      240-row page from origin every time, for a list that cannot meaningfully
+      change in the seconds a tab switch takes. `private, max-age=15` keeps it in
+      that one browser and nowhere else, and the deck filters its own swipe
+      history client-side, so a list a few seconds old renders identically.
+
+      stale-while-revalidate lets the next navigation paint from the cached copy
+      while a fresh one is fetched behind it, so the saving costs no freshness
+      that a member can perceive.
+    */
+    const cacheControl = privateLookup
+        ? 'private, max-age=15, stale-while-revalidate=30'
+        : 'public, s-maxage=15, stale-while-revalidate=30';
     const requestedPage = Math.max(parseInt(searchParams.get('page') || '1', 10), 1);
     const perPage = Math.min(Math.max(parseInt(searchParams.get('per_page') || String(DEFAULT_PER_PAGE), 10), 1), MAX_PER_PAGE);
     const requestedLabel = searchParams.get('label')?.trim();
