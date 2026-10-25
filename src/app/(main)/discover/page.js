@@ -792,7 +792,19 @@ export default function DiscoverPage() {
     const currentDistanceText = current.distanceText || profileDistanceText(geo || user, current);
 
     return (
-        <div className="px-4 py-4 pb-28 space-y-4">
+        /*
+          A column that fills what is left of the screen, rather than a stack
+          that grows past it.
+
+          The card was a fixed 3:4 box in normal flow with the stories strip,
+          the live rail, the boosted rail and the filter pills stacked above it.
+          Every one of those pushed it down, so on a phone the card ran past the
+          fold and the like and pass buttons under it went off screen - the
+          strips were eating the deck. The card now takes the height that is
+          actually left and keeps its ratio inside that, so however much sits
+          above it the deck and its buttons stay on screen.
+        */
+        <div className="flex min-h-[calc(100dvh-3.25rem)] flex-col gap-4 px-4 py-4 pb-28">
             {/* The accuracy choice, shown before the OS prompt rather than after
                 a refusal has already been recorded. Declining falls back to the
                 IP-based area so Nearby still does something useful. */}
@@ -844,7 +856,11 @@ export default function DiscoverPage() {
                     <LocateFixed size={13} /> Use Location
                 </button>
             </section>
-            <div className="relative w-full max-w-sm mx-auto" style={{ aspectRatio: '3/4' }}>
+            {/* flex-1 min-h-0 takes the leftover height; the card keeps 3:4
+                inside it and shrinks rather than overflowing. min-h keeps it
+                usable on a short screen even if that means scrolling. */}
+            <div className="flex min-h-0 flex-1 items-center justify-center">
+            <div className="relative w-full max-w-sm mx-auto" style={{ aspectRatio: '3/4', maxHeight: '100%', minHeight: '15rem' }}>
                 <AnimatePresence mode="wait">
                     <motion.article key={current.swipeKey} className="absolute inset-0 rounded-[22px] overflow-hidden card-shadow bg-white touch-pan-y cursor-pointer" onTap={handleView} onDoubleClick={handleView} style={{ x, rotate }} drag="x" dragConstraints={{ left: 0, right: 0 }} dragElastic={0.32} onDragEnd={(_, info) => { if (Math.abs(info.offset.x) < 140) { x.set(0); return; } if (info.offset.x > 0) handleLike(); else handlePass(); }} initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ x: direction === 'right' ? 260 : direction === 'left' ? -260 : 0, opacity: 0, transition: { duration: 0.22 } }}>
                         {/* The card on top is the largest thing on the screen and the
@@ -872,8 +888,9 @@ export default function DiscoverPage() {
                     </motion.article>
                 </AnimatePresence>
             </div>
+            </div>
 
-            <div className="flex items-end justify-center gap-3 max-w-sm mx-auto pb-2 pt-1">
+            <div className="flex shrink-0 items-end justify-center gap-3 max-w-sm mx-auto pb-2 pt-1">
                 <button onClick={handlePass} className="action-circle" style={{ background: 'rgba(220,38,38,0.08)' }}>
                     <X size={22} className="text-danger" />
                     <span className="action-circle-label text-danger">Pass</span>
