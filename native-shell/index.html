@@ -22,8 +22,8 @@
         html, body {
             margin: 0;
             height: 100%;
-            background: #14101A;
-            color: #F7F4F9;
+            background: #07100F;
+            color: #F2F7F7;
             font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         }
         .wrap {
@@ -41,12 +41,20 @@
         .spinner {
             width: 26px;
             height: 26px;
-            border: 3px solid rgba(247, 244, 249, 0.25);
-            border-top-color: #E8477C;
+            border: 3px solid rgba(242, 247, 247, 0.25);
+            border-top-color: #5FD3DC;
             border-radius: 50%;
             animation: spin 0.9s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        /* The site follows the system theme, so the moment before it loads
+           should too, or a light-mode user gets a dark flash. These are the
+           --color-bg-dark / --color-text-primary / --color-primary tokens from
+           globals.css, light branch, so the two cannot drift apart silently. */
+        @media (prefers-color-scheme: light) {
+            html, body { background: #F8FAFA; color: #101718; }
+            .spinner { border-color: rgba(16, 23, 24, 0.2); border-top-color: #0D5C63; }
+        }
         /* Respect a system preference for less motion rather than spinning
            regardless; the message alone still says the app is working. */
         @media (prefers-reduced-motion: reduce) {

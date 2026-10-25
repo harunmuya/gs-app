@@ -59,8 +59,8 @@ android {
           remote URL, so the web layer updates itself on next launch. An APK is
           only needed when the manifest or MainActivity changes.
         */
-        versionCode 2
-        versionName "1.1"
+        versionCode 3
+        versionName "1.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

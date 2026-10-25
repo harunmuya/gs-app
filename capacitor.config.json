@@ -3,7 +3,7 @@
   "appName": "Genuine Sugar Mummies Kenya",
   "webDir": "native-shell",
   "server": {
-    "url": "https://genuine-sugarmummies-app.vercel.app",
+    "url": "https://app.genuinesugarmummies.co.ke",
     "cleartext": false
   },
   "android": {
