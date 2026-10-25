@@ -295,6 +295,35 @@ export async function POST(request) {
         return NextResponse.json({ ok: true, email: result });
     }
 
+    /*
+      Close out a member report. This only records the decision — it does not
+      suspend or ban anyone, because the existing moderation actions already do
+      that and an administrator should choose them deliberately rather than
+      have a status change do it as a side effect.
+    */
+    if (body.action === 'resolve_report') {
+        const reportId = clean(body.reportId);
+        const status = clean(body.status, 'reviewing');
+        if (!reportId) return jsonError('A report is required.', 400);
+        if (!['open', 'reviewing', 'actioned', 'dismissed'].includes(status)) {
+            return jsonError('Unknown report status.', 400);
+        }
+
+        const { error } = await supabase
+            .from('user_reports')
+            .update({
+                status,
+                admin_note: clean(body.note).slice(0, 2000),
+                reviewed_at: new Date().toISOString(),
+                reviewed_by: clean(process.env.ADMIN_EMAIL),
+            })
+            .eq('id', reportId);
+        if (error) return jsonError('Could not update this report.', 500);
+
+        await writeLog(supabase, 'resolve_report', { reportId, status });
+        return NextResponse.json({ ok: true, reportId, status });
+    }
+
     if (body.action === 'approve_user') {
         const { tier, plan: fallbackPlan } = planFor(body.subscriptionTier || body.tier, 'basic');
         const plan = await packagePlanDetails(supabase, tier, fallbackPlan);
@@ -850,6 +879,19 @@ export async function GET(request) {
     if (giftCatalog.error) {
         giftCatalog = await safeSelect(supabase, 'gift_catalog', 'id, name, category, gif_url, icon_url, credit_cost, money_cost_ksh, is_active, sort_order, created_at', { order: { column: 'sort_order', ascending: true }, limit: 150 });
     }
+    /*
+      Member reports. Open ones first, because a queue sorted purely by date
+      buries the thing still waiting on somebody under everything already dealt
+      with. safeSelect tolerates the table being absent, so an administrator on
+      a deployment that has not run the blocking migration sees an empty list
+      rather than a broken page.
+    */
+    const reports = await safeSelect(
+        supabase,
+        'user_reports',
+        'id, reporter_id, reported_id, reason, detail, status, admin_note, reviewed_at, created_at',
+        { order: { column: 'created_at', ascending: false }, limit: 200 }
+    );
     const logs = await safeSelect(supabase, 'admin_logs', 'id, action, details, created_at', { order: { column: 'created_at', ascending: false }, limit: 150 });
     // The live entitlement configuration that lib/packageAccess reads.
     const packageTierResult = await safeSelect(supabase, 'package_tiers', '*', { order: { column: 'sort_order', ascending: true }, limit: 20 });
@@ -986,6 +1028,20 @@ export async function GET(request) {
         walletTransactions: walletRows,
         giftCatalog: giftCatalog.data,
         logs: logs.data,
+        /*
+          Sorted with the unreviewed first. The names are resolved here from the
+          accounts already loaded above rather than by joining, so a report
+          whose reporter has since deleted their account still lists — the row
+          keeps a null reporter_id by design, and losing the report when
+          somebody leaves would be the wrong way to lose it.
+        */
+        reports: (reports.data || [])
+            .map((row) => ({
+                ...row,
+                reporterName: usersById.get(row.reporter_id)?.display_name || 'Deleted account',
+                reportedName: usersById.get(row.reported_id)?.display_name || 'Unknown member',
+            }))
+            .sort((a, b) => Number(b.status === 'open') - Number(a.status === 'open')),
         tableErrors: {
             users: users.error,
             messages: messages.error,

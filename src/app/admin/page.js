@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import UserModeration, { UserStateBadges } from './UserModeration';
 import {
     Activity,
+    AlertTriangle,
     Ban,
     BarChart3,
     Bell,
@@ -34,6 +35,9 @@ const TABS = [
     { id: 'finance', label: 'Finance', icon: Crown },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'tickets', label: 'Tickets', icon: MessageCircle },
+    // Member reports. Next to Tickets because both are a queue of things a
+    // person has raised and somebody has to answer.
+    { id: 'reports', label: 'Reports', icon: AlertTriangle },
     { id: 'broadcast', label: 'Broadcast', icon: Megaphone },
     { id: 'limits', label: 'Ads & Limits', icon: SlidersHorizontal },
     { id: 'logs', label: 'Logs', icon: Activity },
@@ -527,6 +531,51 @@ export default function AdminPage() {
             )}
 
             {activeTab === 'logs' && <ActionList title="Logs, Messages & Gifts" items={[...(data.messages || []).map((m) => ({ ...m, type: 'message' })), ...(data.gifts || []).map((g) => ({ ...g, type: 'gift' })), ...(data.callRequests || []).map((c) => ({ ...c, type: 'call' })), ...(data.emailOutbox || []).map((e) => ({ ...e, type: 'email' })), ...(data.notifications || []).map((n) => ({ ...n, type: 'account message' })), ...(data.logs || []).map((l) => ({ ...l, type: 'log' }))]} empty="No logs yet." render={(item) => <><p className="text-xs font-semibold text-primary">{item.type}</p><p className="text-sm text-text-primary">{item.body || item.gift_name || item.action || `${item.call_type || ''} call request`}</p>{item.attachment_type === 'image' && item.attachment_url && <img src={item.attachment_url} alt={item.attachment_name || 'Attachment'} className="mt-2 w-24 h-24 rounded-xl object-cover"  loading="lazy" decoding="async" />}{item.attachment_type === 'gif' && <p className="mt-2 inline-flex rounded-xl tint-warning text-warning px-3 py-1 text-xs font-semibold">GIF {item.attachment_name || 'reaction'}</p>}{item.voice_url && <audio src={item.voice_url} controls className="mt-2 w-full" />}<p className="text-xs text-text-muted">{item.sender_name || item.requester_name || item.to_email || item.sender_key || item.requester_key || ''} {dateText(item.created_at)}</p>{item.type === 'message' && !item.is_read && <button onClick={() => adminAction({ action: 'mark_message_read', messageId: item.id }, 'Message marked read')} className="min-h-[38px] mt-2 rounded-xl px-3 py-2 text-xs font-semibold bg-primary/10 text-primary">Mark Read</button>}{item.type === 'call' && item.status === 'pending' && <div className="mt-2 flex gap-2"><button onClick={() => adminAction({ action: 'approve_call_request', callId: item.id }, 'Call request approved')} className="min-h-[38px] rounded-xl px-3 py-2 text-xs font-semibold text-white bg-success">Approve Call</button><button onClick={() => adminAction({ action: 'reject_call_request', callId: item.id }, 'Call request rejected')} className="min-h-[38px] rounded-xl px-3 py-2 text-xs font-semibold text-white bg-danger">Reject</button></div>}</>} />}
+            {activeTab === 'reports' && (
+                <ActionList
+                    title="Member Reports"
+                    items={data.reports || []}
+                    empty="No reports. If this stays empty after members start reporting, the blocking migration has not been applied."
+                    render={(item) => (
+                        <>
+                            <p className="text-xs font-semibold text-primary">{item.reason}</p>
+                            <p className="text-sm text-text-primary">
+                                <span className="font-bold">{item.reporterName}</span> reported{' '}
+                                <span className="font-bold">{item.reportedName}</span>
+                            </p>
+                            {item.detail && <p className="mt-1 text-sm text-text-secondary">{item.detail}</p>}
+                            <p className="text-xs text-text-muted">
+                                {item.status} · {dateText(item.created_at)}
+                            </p>
+                            {item.admin_note && (
+                                <p className="mt-1 text-xs text-text-muted">Note: {item.admin_note}</p>
+                            )}
+                            {item.status === 'open' && (
+                                /*
+                                  Only the decision is recorded here. Suspending or
+                                  banning stays in the Users tab, so moderation is
+                                  always a deliberate act rather than something a
+                                  status change does on the way past.
+                                */
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    <button
+                                        onClick={() => adminAction({ action: 'resolve_report', reportId: item.id, status: 'actioned' }, 'Report marked actioned')}
+                                        className="min-h-[38px] rounded-xl px-3 py-2 text-xs font-semibold text-white bg-success"
+                                    >
+                                        Actioned
+                                    </button>
+                                    <button
+                                        onClick={() => adminAction({ action: 'resolve_report', reportId: item.id, status: 'dismissed' }, 'Report dismissed')}
+                                        className="min-h-[38px] rounded-xl px-3 py-2 text-xs font-semibold bg-primary/10 text-primary"
+                                    >
+                                        Dismiss
+                                    </button>
+                                </div>
+                            )}
+                        </>
+                    )}
+                />
+            )}
         </main>
     );
 }
