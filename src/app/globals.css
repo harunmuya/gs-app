@@ -152,6 +152,19 @@
      as the surface behind it. */
   background: rgba(15, 26, 26, 0.92);
 }
+
+/* The wordmark ships in both inks and the theme picks one. See Logo.js for why
+   this is CSS and not state. */
+.gs-logo-ink-light {
+  display: none;
+}
+:root[data-theme="dark"] .gs-logo-ink-dark {
+  display: none;
+}
+:root[data-theme="dark"] .gs-logo-ink-light {
+  display: inline-block;
+}
+
 /* ---- Theme utility classes ---- */
 @layer utilities {
   .bg-primary {

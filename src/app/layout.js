@@ -72,9 +72,17 @@ export const metadata = {
         description: 'Sugar mummy listings from across Kenya',
     },
     manifest: '/manifest.json',
+    /*
+      Both of these pointed at the wordmark, which is close to 13:1 and was
+      being squeezed into a square tab and a square home-screen tile. The
+      square mark is what those slots are for; the wordmark stays in the header.
+    */
     icons: {
-        icon: '/gs-logo.png',
-        apple: '/gs-logo.png',
+        icon: [
+            { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+            { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+        ],
+        apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
     },
     appleWebApp: {
         capable: true,
