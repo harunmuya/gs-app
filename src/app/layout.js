@@ -19,9 +19,22 @@ export const viewport = {
 };
 
 export const metadata = {
-    title: 'Genuine Sugar Mummies - Find Your Perfect Match',
-    description: 'The #1 premium dating app for genuine sugar mummy connections. Swipe, match, and connect with verified profiles worldwide. Safe, secure, and real.',
-    keywords: ['sugar mummy', 'dating app', 'connections', 'match', 'verified profiles', 'genuine sugar mummies'],
+    /*
+      Three claims used to sit here and none of them could be backed up: "The #1
+      premium dating app" (nothing ranks this), "verified profiles worldwide"
+      (every listing is Kenyan - the pricing page's international tier takes
+      requests from outside Kenya, which is not a worldwide roster) and "Safe,
+      secure, and real" (an assurance with nothing behind it).
+
+      What replaces them is the checkable version of the same thing, and it is
+      taken from text already live on the website so the two cannot drift apart:
+      the consent line at the top of every listing, and the "What the desk has
+      confirmed" block. Nothing stands in for "#1" or "worldwide" because
+      nothing true would fit there.
+    */
+    title: 'Genuine Sugar Mummies — Sugar Mummy Listings in Kenya',
+    description: 'Sugar mummy listings from across Kenya. Every listing is published at the request of the person it describes, and her name, ID, phone number and location are checked before it goes live.',
+    keywords: ['sugar mummy', 'sugar mummies kenya', 'dating', 'listings', 'nairobi', 'genuine sugar mummies'],
     authors: [{ name: 'Genuine Sugar Mummies' }],
     creator: 'Genuine Sugar Mummies',
     metadataBase: new URL('https://genuinesugarmummies.co.ke'),
@@ -46,8 +59,8 @@ export const metadata = {
         googleBot: { index: false, follow: false },
     },
     openGraph: {
-        title: 'Genuine Sugar Mummies - Find Your Perfect Match',
-        description: 'The premium dating app for genuine sugar mummy connections. Swipe, match, and connect with verified profiles.',
+        title: 'Genuine Sugar Mummies — Sugar Mummy Listings in Kenya',
+        description: 'Sugar mummy listings from across Kenya, each one published at the request of the person it describes.',
         url: 'https://genuinesugarmummies.co.ke',
         siteName: 'Genuine Sugar Mummies',
         locale: 'en_US',
@@ -56,7 +69,7 @@ export const metadata = {
     twitter: {
         card: 'summary_large_image',
         title: 'Genuine Sugar Mummies',
-        description: 'Premium dating app for genuine connections',
+        description: 'Sugar mummy listings from across Kenya',
     },
     manifest: '/manifest.json',
     icons: {
