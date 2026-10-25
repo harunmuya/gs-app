@@ -10035,7 +10035,22 @@ export function localSeedRows() {
         member_category: profile.profile_label,
         phone: '',
         phone_number: '',
-        verification_status: profile.verified ? 'verified' : 'unsubmitted',
+        /*
+          A seeded profile is never verification-badged.
+
+          The generator emits `verified` on each record and 212 of the 303 say
+          true, which this used to map to verification_status 'verified'. That
+          badge reads "Identity checked by our team", and no identity was ever
+          checked, because there is nobody behind the profile to check. The
+          members route refuses the badge for seeded rows too, so this and that
+          would both have to be undone to bring it back.
+
+          admin_approved stays tied to the generated flag: it is internal
+          moderation state, not a claim shown to members, and visibility is
+          governed by show_in_public just below.
+        */
+        verified: false,
+        verification_status: 'unsubmitted',
         admin_approved: profile.verified,
         phone_reveal_plan: profile.subscription_tier === 'silver' ? 'silver' : profile.subscription_tier === 'basic' ? 'basic' : 'free',
         show_in_public: true,

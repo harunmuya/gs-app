@@ -337,6 +337,8 @@ export default function ProfileDetailPage({ params }) {
                                             src={c.avatar_url}
                                             alt={c.author_name}
                                             className="w-8 h-8 rounded-full object-cover shrink-0"
+                                            loading="lazy"
+                                            decoding="async"
                                             onError={(e) => { e.target.style.display = 'none'; }}
                                         />
                                     ) : (

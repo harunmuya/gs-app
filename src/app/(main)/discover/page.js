@@ -840,7 +840,7 @@ export default function DiscoverPage() {
                         const host = stream.host || {};
                         const photo = host.avatar_url || host.photos?.[0] || '';
                         return <Link key={stream.id} href={`/live/${stream.id}`} className="min-w-[148px] rounded-2xl p-2 text-white transition-all active:scale-[0.97]" style={{ background: '#1a1625' }}>
-                            <div className="relative h-24 rounded-xl overflow-hidden bg-primary/20">{photo ? <img src={photo} alt="" className="h-full w-full object-cover" onError={(event) => useProfileImageFallback(event, host.display_name || 'Live')} /> : <UserAvatar name={host.display_name || 'Live'} size={52} />}<span className="absolute left-2 top-2 rounded-full px-2.5 py-0.5 text-[9px] font-semibold pulse-glow" style={{ background: '#DC2626' }}>LIVE</span></div>
+                            <div className="relative h-24 rounded-xl overflow-hidden bg-primary/20">{photo ? <img src={photo} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" onError={(event) => useProfileImageFallback(event, host.display_name || 'Live')} /> : <UserAvatar name={host.display_name || 'Live'} size={52} />}<span className="absolute left-2 top-2 rounded-full px-2.5 py-0.5 text-[9px] font-semibold pulse-glow" style={{ background: '#DC2626' }}>LIVE</span></div>
                             <p className="mt-2 truncate text-[11px] font-semibold">{stream.title || 'GS Live'}</p>
                             <p className="text-[10px] text-white/60">{stream.viewer_count || 0} watching · {liveDuration(stream.started_at)}</p>
                         </Link>;
@@ -865,7 +865,12 @@ export default function DiscoverPage() {
             <div className="relative w-full max-w-sm mx-auto" style={{ aspectRatio: '3/4' }}>
                 <AnimatePresence mode="wait">
                     <motion.article key={current.swipeKey} className="absolute inset-0 rounded-[22px] overflow-hidden card-shadow bg-white touch-pan-y cursor-pointer" onTap={handleView} onDoubleClick={handleView} style={{ x, rotate }} drag="x" dragConstraints={{ left: 0, right: 0 }} dragElastic={0.32} onDragEnd={(_, info) => { if (Math.abs(info.offset.x) < 140) { x.set(0); return; } if (info.offset.x > 0) handleLike(); else handlePass(); }} initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ x: direction === 'right' ? 260 : direction === 'left' ? -260 : 0, opacity: 0, transition: { duration: 0.22 } }}>
-                        <img src={getProfileImageSrc(current)} alt={current.name} className="absolute inset-0 w-full h-full object-cover" onError={(event) => useProfileImageFallback(event, current.name, current.profileLabel, current.isSeedProfile)} />
+                        {/* The card on top is the largest thing on the screen and the
+                            one the member is waiting for, so it is fetched eagerly and
+                            at high priority. Stated rather than left to the default:
+                            every other image on this page is explicitly lazy, and an
+                            unmarked one here would read as an oversight. */}
+                        <img src={getProfileImageSrc(current)} alt={current.name} className="absolute inset-0 w-full h-full object-cover" loading="eager" fetchPriority="high" decoding="async" onError={(event) => useProfileImageFallback(event, current.name, current.profileLabel, current.isSeedProfile)} />
                         <div className="absolute inset-0 swipe-card-gradient" />
                         <motion.div className="absolute top-7 left-5 px-5 py-2.5 rounded-2xl border-[3px] border-success text-success font-black text-2xl -rotate-12" style={{ opacity: likeOpacity, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(5,150,105,0.3)' }}>LIKE ✓</motion.div>
                         <motion.div className="absolute top-7 right-5 px-5 py-2.5 rounded-2xl border-[3px] border-danger text-danger font-black text-2xl rotate-12" style={{ opacity: nopeOpacity, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(220,38,38,0.3)' }}>PASS ✗</motion.div>

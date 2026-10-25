@@ -37,12 +37,22 @@ export const PROFILE_KIND = {
 
   The wording stays honest about the route. It does not claim the person is
   online, and it does not promise a reply.
+
+  What it did not say was that this is the only route. "Introduced by our team"
+  reads as one option among several, so a member could reasonably expect a
+  direct message to work as well, try it, and find it missing. Naming the limit
+  in the label is what stops that, and "only" is the whole of the change: the
+  service still comes first, in both the label and the notice, and the sentence
+  that follows says plainly what is not there. Leading with the help and
+  finishing with the limit keeps the reasoning above intact while leaving
+  nothing for a member to discover the hard way.
 */
-export const FACILITATION_LABEL = 'Introduced by our team';
+export const FACILITATION_LABEL = 'Introductions only';
 
 export const FACILITATION_NOTICE =
-    'Messages to this member go through our team rather than straight to an inbox. '
-    + 'Ask for an introduction and we pass yours on, then come back to you either way.';
+    'Our team introduces you to this member and carries your first message, then comes '
+    + 'back to you either way. That is the only route to them: there is no inbox behind '
+    + 'this profile, so direct messages, calls and gifts are not available here.';
 
 /** Determine provenance from a `users` row. */
 export function profileKindFor(member = {}) {

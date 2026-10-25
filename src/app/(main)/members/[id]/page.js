@@ -412,7 +412,9 @@ export default function MemberProfilePage({ params }) {
                 </div>
             </div>}
             <section className="relative min-h-[330px] bg-primary/5 overflow-hidden">
-                <img src={getProfileImageSrc(member)} alt={member.name} className="absolute inset-0 w-full h-full object-cover" onError={(event) => useProfileImageFallback(event, member.name, member.profileLabel, member.isSeedProfile)} />
+                {/* The hero fills the first screen of this page, so it is the LCP
+                    element and is fetched eagerly at high priority. */}
+                <img src={getProfileImageSrc(member)} alt={member.name} className="absolute inset-0 w-full h-full object-cover" loading="eager" fetchPriority="high" decoding="async" onError={(event) => useProfileImageFallback(event, member.name, member.profileLabel, member.isSeedProfile)} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/25 to-black/35" />
                 <button onClick={() => router.back()} className="absolute top-4 left-4 w-11 h-11 rounded-full flex items-center justify-center bg-black/55 text-white" aria-label="Back"><ArrowLeft size={21} /></button>
                 <div className="absolute bottom-0 left-0 right-0 p-5 text-white space-y-2">

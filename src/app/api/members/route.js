@@ -9,7 +9,7 @@ import { accountRestrictionMessage, accountStatus, activeTierId, canUseFeature, 
 import { getLocalSeedMember, localSeedRows } from '@/lib/localSeedMembers';
 import { coordinatesForProfile, displayDistanceKm, distanceKm } from '@/lib/geo';
 import { fallbackProfileImageSrc } from '@/lib/profileImages';
-import { facilitationFields, profileKindFor } from '@/lib/profileKind';
+import { facilitationFields, profileKindFor, requiresFacilitation } from '@/lib/profileKind';
 import { notifyMember } from '@/lib/notifyMember';
 import { getSessionMember, provisionAuthUser, signInWithPassword } from '@/lib/authSession';
 import { displayMatchPercent, interleave, scoreMember } from '@/lib/discoveryRanking';
@@ -676,7 +676,24 @@ async function uploadMessageAsset(supabase, rawUrl, { ownerId, type, name }) {
 
 function normalizeMember(member, { canViewPhone = false, includeEmail = false, viewer = null } = {}) {
     const phone = member.phone_number || member.phone || '';
-    const verified = Boolean(member.verified || member.verification_status === 'verified');
+    /*
+      Provenance decides this, not the stored column.
+
+      VerifiedBadge means "identity checked by our team", and its own contract is
+      that it is never shown for anything but a genuine verification. The
+      generated seed roster set verified: true on 212 of its 303 profiles, and
+      localSeedRows mapped that straight to verification_status 'verified'.
+      Nobody checked an identity on a profile with no person behind it, so the
+      badge was vouching for 212 people who do not exist.
+
+      Deriving it here rather than only mending the seed data is deliberate:
+      this is the boundary every screen reads, so a regenerated roster, a
+      WordPress import or a row edited by hand cannot put the badge back. A
+      seeded or imported profile is structurally incapable of carrying it.
+    */
+    const kind = profileKindFor(member);
+    const verified = !requiresFacilitation(kind)
+        && Boolean(member.verified || member.verification_status === 'verified');
     // Real recorded activity only. Presence is never synthesised — a fabricated
     // "last active" makes an unattended profile look reachable to a paying member.
     const lastSeenAt = recentDisplayTime(member);
@@ -694,7 +711,6 @@ function normalizeMember(member, { canViewPhone = false, includeEmail = false, v
         ? (expectedLookingFor || storedLookingFor || '')
         : (storedLookingFor && isValidLookingFor(storedLookingFor, profileLabel) ? storedLookingFor : (expectedLookingFor || storedLookingFor || ''));
     const displayName = getDisplayName(member);
-    const kind = profileKindFor(member);
     const coords = coordinatesForProfile(member);
     const viewerCoords = coordinatesForProfile(viewer);
     const awayKm = displayDistanceKm(viewerCoords, coords);
@@ -731,7 +747,10 @@ function normalizeMember(member, { canViewPhone = false, includeEmail = false, v
         bodyType: member.body_type || '',
         subscriptionTier: member.subscription_tier || 'free',
         verified,
-        verificationStatus: member.verification_status || (verified ? 'verified' : 'unsubmitted'),
+        // Not member.verification_status: that column still reads 'verified' on a
+        // seeded row, and a screen reading the status rather than the boolean
+        // would show the badge again through the back door.
+        verificationStatus: verified ? (member.verification_status || 'verified') : 'unsubmitted',
         showInPublic: member.show_in_public !== false,
         isBanned: Boolean(member.is_banned),
         isSuspended: Boolean(member.is_suspended),
