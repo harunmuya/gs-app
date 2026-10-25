@@ -56,16 +56,26 @@ export default function SafetyPage() {
                     <p>We encourage all members to verify their identity through our verification system. Verified members have submitted a selfie and a government ID that was reviewed by our admin team. While verification doesn&apos;t guarantee someone&apos;s character, it does confirm they are who they say they are.</p>
                     <p>Look for the verified badge when browsing profiles. Unverified members can still be genuine, but always be more cautious.</p>
 
-                    <h2 className="text-base font-black text-text-primary pt-2">Reporting Problems</h2>
-                    <p>If you encounter any of the following, report it immediately through the Support section in your profile:</p>
+                    {/*
+                      This section used to send members to Support and leave them
+                      waiting on a human. Blocking and reporting are now in the app
+                      itself, so it describes those instead — and says plainly which
+                      one is instant and which one waits for review, because a
+                      member deciding whether they are safe needs to know that.
+                    */}
+                    <h2 className="text-base font-black text-text-primary pt-2">Blocking and Reporting</h2>
+                    <p>Every profile has <strong>Block</strong> and <strong>Report</strong> at the bottom.</p>
+                    <p><strong>Blocking is immediate and needs nobody&apos;s approval.</strong> You and that member stop appearing to each other anywhere in the app, and neither of you can message the other. They are not told. You can undo it at any time.</p>
+                    <p><strong>Reporting sends the account to our moderation queue</strong> for a person to review. Report anything like:</p>
                     <ul className="list-disc pl-5 space-y-1">
                         <li>Scam attempts or requests for money</li>
                         <li>Harassment, threats, or abusive messages</li>
-                        <li>Fake profiles or impersonation</li>
-                        <li>Anyone claiming to be under 18</li>
-                        <li>Suspicious behavior or content that makes you uncomfortable</li>
+                        <li>Fake profiles, stolen photos, or impersonation</li>
+                        <li>Anyone who appears to be under 18</li>
+                        <li>Unwanted explicit content</li>
                     </ul>
-                    <p>Our team reviews all reports and takes appropriate action, including banning accounts that violate our guidelines.</p>
+                    <p>You do not have to choose between them. The report form offers to block the member at the same time, and it is ticked by default.</p>
+                    <p>Reports are reviewed by our admin team, who can suspend or ban an account. Reporting someone does not block them on its own, so block as well if you want them gone straight away.</p>
 
                     <h2 className="text-base font-black text-text-primary pt-2">Use Official Channels Only</h2>
                     <p>All package purchases, verifications, and support requests should be handled through the Platform. Do not trust anyone who contacts you outside the app claiming to be an admin or offering special deals. Official communications from our team will always come through your in-app inbox or your registered email address.</p>

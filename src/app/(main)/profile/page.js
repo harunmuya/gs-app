@@ -23,6 +23,7 @@ import { unreadMessageValue } from '@/lib/inboxCounts';
 import { SUPPORT } from '@/lib/support';
 import { AGE_RANGE, NAME_REQUIRED, PHONE_REQUIRED } from '@/lib/copy';
 import { compressImageFile } from '@/lib/imageFile';
+import BlockedMembers from '@/components/BlockedMembers';
 
 const PREFERENCE_LABELS = {
     sugar_mummy_looking_for_toyboy: 'Sugar Mummy seeking Sugar Guy / Toyboy',
@@ -811,6 +812,18 @@ export default function ProfilePage() {
             {/* Account termination lives at the foot of Settings, where destructive
                 options belong — not on the landing screen next to everyday actions.
                 Signing out is offered from the menu, so it is not repeated here. */}
+            {/*
+              Blocking tells the member they can undo it in Settings, so Settings
+              has to be able to. Above sign-out and delete, since those end the
+              session and anything below them is effectively unreachable.
+            */}
+            {isLoggedIn && show('settings') && (
+                <section className="space-y-2 pt-2">
+                    <h3 className="type-caption font-semibold text-text-secondary">Blocked members</h3>
+                    <BlockedMembers />
+                </section>
+            )}
+
             {isLoggedIn && show('settings') && (
                 <div className="space-y-2 pt-2">
                     <button onClick={handleSignOut} disabled={signingOut}

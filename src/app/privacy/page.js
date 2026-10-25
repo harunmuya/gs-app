@@ -1,4 +1,6 @@
 import PolicyBackLink from '@/components/PolicyBackLink';
+// One definition of the address; see the note in terms/page.js.
+import { SUPPORT } from '@/lib/support';
 
 export const metadata = {
     title: 'Privacy Policy | Genuine Sugar Mummies',
@@ -75,7 +77,7 @@ export default function PrivacyPage() {
                     <p>We may update this Privacy Policy from time to time. Changes will be posted on this page with an updated date. Continued use of the Platform after changes means you accept the updated policy.</p>
 
                     <h2 className="text-base font-black text-text-primary pt-2">11. Contact Us</h2>
-                    <p>For privacy questions or concerns, contact us through the Support section in your profile or email <span className="text-primary font-bold">support@genuinesugarmummies.com</span>.</p>
+                    <p>For privacy questions or concerns, contact us through the Support section in your profile or email <span className="text-primary font-bold">{SUPPORT.email.address}</span>.</p>
                 </div>
             </section>
         </main>

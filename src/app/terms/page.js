@@ -1,5 +1,9 @@
 import Link from 'next/link';
 import PolicyBackLink from '@/components/PolicyBackLink';
+// The address is defined once in lib/support. Written out by hand it drifted to
+// the wrong top-level domain, which is how these Terms came to name a domain
+// the business does not own.
+import { SUPPORT } from '@/lib/support';
 
 export const metadata = {
     title: 'Terms and Conditions | Genuine Sugar Mummies',
@@ -14,7 +18,7 @@ export default function TermsPage() {
                 <p className="text-xs text-text-muted">Last updated: July 2025</p>
 
                 <div className="space-y-4 text-sm leading-relaxed text-text-secondary">
-                    <p>Welcome to Genuine Sugar Mummies. By accessing or using our platform at genuinesugarmummies.com and any associated mobile applications (collectively, the &quot;Platform&quot;), you agree to be bound by these Terms and Conditions. Please read them carefully before creating an account or using any of our services.</p>
+                    <p>Welcome to Genuine Sugar Mummies. By accessing or using our platform at genuinesugarmummies.co.ke and any associated mobile applications (collectively, the &quot;Platform&quot;), you agree to be bound by these Terms and Conditions. Please read them carefully before creating an account or using any of our services.</p>
 
                     <h2 className="text-base font-black text-text-primary pt-2">1. Eligibility</h2>
                     <p>You must be at least 18 years old to create an account or use this Platform. By registering, you confirm that you are of legal adult age in your country of residence. We do not knowingly accept registrations from anyone under 18. If we discover that a minor has created an account, that account will be terminated immediately without notice.</p>
@@ -77,7 +81,7 @@ export default function TermsPage() {
                     <p>We may update these Terms and Conditions from time to time. When we make changes, we will update the &quot;Last updated&quot; date at the top of this page. Continued use of the Platform after changes are posted constitutes your acceptance of the updated Terms.</p>
 
                     <h2 className="text-base font-black text-text-primary pt-2">13. Contact Us</h2>
-                    <p>If you have questions about these Terms, need support, or want to report a violation, reach out to us through the Support section in your profile or email us at <span className="text-primary font-bold">support@genuinesugarmummies.com</span>.</p>
+                    <p>If you have questions about these Terms or need support, reach out through the Support section in your profile or email us at <span className="text-primary font-bold">{SUPPORT.email.address}</span>. To report a member, use the Report button at the bottom of their profile — that reaches the moderation queue directly.</p>
                 </div>
             </section>
         </main>
