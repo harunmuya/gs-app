@@ -1,5 +1,6 @@
 import { apiError, apiOk, ERROR_CODES } from '@/lib/apiContract';
 import { createServerSupabaseClient, getServerSupabaseConfig } from '@/lib/supabaseAdmin';
+import { adminAuthConfigured } from '@/lib/adminSession';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +11,19 @@ export async function GET() {
             supabaseUrl: Boolean(config.url),
             anonKey: Boolean(config.anonKey),
             serviceRoleKey: Boolean(config.serviceRoleKey),
+            /*
+              Whether admin login can work at all on this deployment.
+
+              Admin sign-in needs ADMIN_EMAIL, a password hash and a session
+              signing secret. When one is missing the login endpoint answers
+              503, which from the admin screen is indistinguishable from the
+              server being down — so "admin is broken" had no way to be told
+              apart from "admin was never configured here".
+
+              This is a presence check only. No value is read back, and it
+              reports no more than the Supabase lines above already do.
+            */
+            adminAuth: adminAuthConfigured(),
         },
         database: {
             reachable: false,

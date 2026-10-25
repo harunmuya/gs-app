@@ -14,6 +14,7 @@ import { getProfileImageSrc, useProfileImageFallback } from '@/lib/profileImages
 import { distanceText as profileDistanceText } from '@/lib/geo';
 import { QUICK_REPLIES, REACTION_REPLIES } from '@/lib/quickReplies';
 import { MIC_BLOCKED, QUOTA_EXHAUSTED, VOICE_UNSUPPORTED } from '@/lib/copy';
+import SafetyActions from '@/components/SafetyActions';
 
 const GIFTS = [
     { name: 'Rose', label: 'Rose', icon_url: '/gifts/rose.webp', credit_cost: 1 },
@@ -490,6 +491,22 @@ export default function MemberProfilePage({ params }) {
                 )}
 
                 {member.verified && <section className="rounded-2xl p-4 flex items-center gap-3" style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.18)' }}><Shield size={20} className="text-sky-500" /><p className="text-sm font-bold text-text-primary">Verified adult member</p></section>}
+
+                {/*
+                  Last on the profile, after everything a member came here to read.
+                  Blocking and reporting have to exist on the profile itself — the
+                  moment somebody needs them is the moment they are looking at the
+                  person — but they are not what this page is for, so they sit at
+                  the end rather than competing with the profile above.
+
+                  Blocking sends the member back to the directory, because the
+                  profile they are standing on is the one that just disappeared.
+                */}
+                <SafetyActions
+                    memberId={member.id}
+                    memberName={member.name}
+                    onBlocked={() => router.push('/members')}
+                />
             </div>
         </div>
     );

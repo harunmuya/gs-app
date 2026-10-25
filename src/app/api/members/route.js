@@ -14,6 +14,7 @@ import { notifyMember } from '@/lib/notifyMember';
 import { getSessionMember, provisionAuthUser, signInWithPassword } from '@/lib/authSession';
 import { displayMatchPercent, interleave, scoreMember } from '@/lib/discoveryRanking';
 import { consumeQuota } from '@/lib/entitlementGuard';
+import { blockedIdsFor } from '@/lib/blocks';
 import { TELEGRAM_MENTION } from '@/lib/support';
 import { ACCOUNT_RESTRICTED, AGE_RANGE, GIF_NEEDS_SILVER, IMAGE_NEEDS_BASIC, LIKE_BACK_PROMPT, MATCH_BOTH_LIKED, MEDIA_NEEDS_SILVER, MEMBER_UNAVAILABLE, NAME_REQUIRED, RESET_CODE_REQUIRED, SESSION_USER_MISSING, VOICE_NOTES_NEED_SILVER, WELCOME_TITLE } from '@/lib/copy';
 
@@ -1196,7 +1197,31 @@ export async function GET(request) {
             const km = distanceKm(coordinatesForProfile(viewer), coordinatesForProfile(member));
             return km === null ? true : km <= radiusKm;
         });
-    let publicRows = rows;
+    /*
+      Blocking is applied here, before paging, so a blocked member is gone from
+      every listing this route serves — the deck, the directory, and a direct
+      profile lookup by id, which would otherwise still open.
+
+      It is read in both directions: blocking somebody has to remove you from
+      their listings too, or it only half works.
+
+      If the blocks cannot be read, this stops rather than serving the listing.
+      An empty block list and a failed read look identical downstream, and the
+      failure mode of guessing wrong is showing somebody the person they asked
+      never to see again.
+    */
+    let hiddenIds;
+    try {
+        hiddenIds = await blockedIdsFor(supabase, viewer?.id);
+    } catch {
+        return NextResponse.json(
+            { error: 'Could not load your blocked list, so member listings are unavailable right now.' },
+            { status: 503, headers: { 'Cache-Control': 'no-store' } }
+        );
+    }
+    const notBlocked = (member) => !hiddenIds.has(String(member.id));
+
+    let publicRows = hiddenIds.size ? rows.filter(notBlocked) : rows;
 
     if (!directLookup && searchParams.get('boosted') !== '1') {
         const existingIds = new Set(publicRows.map((member) => String(member.id)));
@@ -1205,7 +1230,10 @@ export async function GET(request) {
         const supplements = localSeedRows()
             .filter((member) => !existingIds.has(String(member.id)) && !existingEmails.has(String(member.email || '').toLowerCase()))
             .filter((member) => !existingSeedKeys.has(seedIdentityKey(member)))
-            .filter((member) => localSeedMatchesFilters(member, searchParams));
+            .filter((member) => localSeedMatchesFilters(member, searchParams))
+            // The supplements join after the database rows were filtered, so
+            // they need the same check or a blocked profile returns here.
+            .filter(notBlocked);
         const mixedRows = mixedMemberRows(
             await applyMemberPrivacySettings(supabase, [...publicRows, ...supplements]),
             { feedMode, seed: mixSeed, viewer: usePreferenceMix ? viewer : null }

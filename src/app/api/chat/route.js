@@ -4,6 +4,7 @@ import { accountRestrictionMessage, canUseFeature, dailyLimitForFeature, getUser
 import { requireMember } from '@/lib/authSession';
 import { notifyMember } from '@/lib/notifyMember';
 import { consumeQuota } from '@/lib/entitlementGuard';
+import { isBlockedBetween } from '@/lib/blocks';
 import { FACILITATION_NOTICE, profileKindFor, requiresFacilitation } from '@/lib/profileKind';
 import { ADMIN_ENV_MISSING, GIF_NEEDS_SILVER, IMAGE_NEEDS_BASIC, MEDIA_NEEDS_SILVER, MEMBER_UNAVAILABLE, SESSION_USER_MISSING, VOICE_NOTES_NEED_SILVER } from '@/lib/copy';
 
@@ -157,6 +158,12 @@ export async function GET(request) {
     const [user, peer] = await Promise.all([Promise.resolve(viewer), getUser(supabase, peerId)]);
     if (!user?.id || !peer?.id) return jsonError('User or member was not found.', 404);
     if (isAccountRestricted(peer)) return jsonError(MEMBER_UNAVAILABLE, 404);
+    /*
+      Either direction closes the thread. The same 404 as an unavailable member
+      is deliberate: a distinct "you are blocked" message would tell somebody
+      they had been blocked, which is exactly what makes blocking unsafe to use.
+    */
+    if (await isBlockedBetween(supabase, userId, peerId)) return jsonError(MEMBER_UNAVAILABLE, 404);
     const conversation = await ensureConversation(supabase, userId, peerId);
     if (conversation.error) return jsonError(conversation.error.message);
     const { data: messages, error } = await supabase
@@ -196,6 +203,9 @@ export async function POST(request) {
     if (!user?.id || !peer?.id) return jsonError('User or member was not found.', 404);
     if (isAccountRestricted(user)) return jsonError(accountRestrictionMessage(user) || 'Your account cannot send messages.', 403);
     if (isAccountRestricted(peer)) return jsonError(MEMBER_UNAVAILABLE, 404);
+    // Blocking stops the message itself, not just the listing, and says no more
+    // than "unavailable" so a block is never disclosed. See the GET handler.
+    if (await isBlockedBetween(supabase, userId, peerId)) return jsonError(MEMBER_UNAVAILABLE, 404);
     // Server-side half of the facilitation rule. The UI hides the composer for
     // seeded and imported profiles, but the endpoint has to refuse as well —
     // nobody is behind these accounts to read the message.
