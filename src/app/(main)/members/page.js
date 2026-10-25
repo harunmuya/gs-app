@@ -450,6 +450,13 @@ export default function MembersPage() {
                                         onError={(event) => useProfileImageFallback(event, member.name, member.profileLabel, member.isSeedProfile)}
                                     />
                                     <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/75 to-transparent text-white">
+                                        {/* In the flow above the name rather than absolutely
+                                            positioned over it: the chip and this block both sat in
+                                            the bottom-left of the same box, so the chip covered the
+                                            age/summary line on every facilitation profile. One
+                                            shared chip, so the wording on the grid, the deck and
+                                            the profile cannot drift apart. */}
+                                        {member.requiresFacilitation && <FacilitationChip className="mb-1" />}
                                         {/* Name is the one element that earns weight here; everything
                                             below it steps down so the eye has an order to follow. */}
                                         <div className="flex items-center gap-1 min-w-0"><h2 className="type-body-strong truncate">{member.name}</h2><VerifiedBadge verified={member.verified} size={15} /></div>
@@ -458,11 +465,6 @@ export default function MembersPage() {
                                     <span className="absolute top-2 left-2 px-2 py-1 rounded-full type-micro text-white bg-black/55 backdrop-blur-sm">{labelText(member.profileLabel)}</span>
                                     {String(member.id) === String(user?.id || '') && <span className="absolute top-2 left-1/2 -translate-x-1/2 px-2 py-1 rounded-full type-micro text-white gradient-primary shadow-sm">YOU</span>}
                                     {member.isBoosted && <span className="absolute left-2 top-9 rounded-full bg-secondary px-2 py-1 type-micro text-white shadow-sm">BOOSTED</span>}
-                                    {/* One shared chip, so the wording on the grid, the
-                                        deck and the profile cannot drift apart. */}
-                                    {member.requiresFacilitation && (
-                                        <FacilitationChip className="absolute left-2 bottom-2" />
-                                    )}
                                     {/* PresenceDot renders nothing for a listing — see lib/presence. */}
                                     <PresenceDot member={member} size={14} className="absolute top-2 right-2 ring-4 ring-white/80" />
                                 </div>
