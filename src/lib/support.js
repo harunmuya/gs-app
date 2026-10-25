@@ -19,8 +19,8 @@ export const SUPPORT = {
         detail: 'Fastest reply, usually within the hour',
     },
     whatsapp: {
-        number: '+254738871048',
-        url: 'https://wa.me/254738871048',
+        number: '+254739154302',
+        url: 'https://wa.me/254739154302',
         label: 'WhatsApp',
         detail: 'For payments and account questions',
     },
@@ -31,8 +31,8 @@ export const SUPPORT = {
         detail: 'For anything that needs a record',
     },
     sms: {
-        number: '+254738871048',
-        url: 'sms:+254738871048',
+        number: '+254739154302',
+        url: 'sms:+254739154302',
         label: 'SMS',
         detail: 'If you have no data',
     },
