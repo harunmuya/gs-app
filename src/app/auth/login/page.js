@@ -442,7 +442,15 @@ export default function LoginPage() {
                     </h1>
                     <p className="type-body text-text-secondary">
                         {isSignIn && 'Sign in to continue to your matches.'}
-                        {isSignUp && 'A verified community for adults over 18.'}
+                        {/*
+                          Was "A verified community for adults over 18." The app's
+                          own data contradicts it: the introduction listings carry
+                          no badge and say so, and a member's badge only appears
+                          after an admin reviews their ID and selfie. Claiming the
+                          community is already verified is the kind of promise that
+                          costs trust the moment somebody checks.
+                        */}
+                        {isSignUp && 'For adults over 18. Badges are given only after an admin checks your ID.'}
                         {isReset && 'We will email you a 6-digit code.'}
                     </p>
                 </header>
