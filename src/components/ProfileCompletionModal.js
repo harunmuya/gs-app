@@ -10,11 +10,24 @@ import {
 } from '@/components/icons';
 import { AGE_RANGE, PHONE_REQUIRED } from '@/lib/copy';
 
+/*
+  Four roles, four hues, picked to be told apart rather than to decorate.
+
+  The previous set does not survive the teal palette: #0F766E was a teal now
+  indistinguishable from the brand colour, #F59E0B was amber and #E11D48 rose,
+  and the product is deliberately neither orange nor pink any more. #0EA5E9 went
+  too, because it gives 2.77:1 on a white card — under the 3:1 a non-text
+  indicator needs (SC 1.4.11), and the same reason it was dropped from the alert
+  accents.
+
+  These four are checked by scripts/check-contrast.mjs and clear 3:1 on the light
+  card, and none is the brand teal, so a role chip never reads as a status.
+*/
 const LOOKING_FOR_OPTIONS = [
-    { value: 'sugar_mummy_looking_for_toyboy', label: 'I am a Sugar Mummy', desc: 'Looking for a sugar guy / toyboy', color: '#E11D48' },
-    { value: 'sugar_daddy_looking_for_mistress', label: 'I am a Sugar Daddy', desc: 'Looking for an adult mistress', color: '#0EA5E9' },
-    { value: 'mistress_looking_for_sugar_daddy', label: 'I am a Mistress', desc: 'Looking for a sugar daddy', color: '#0F766E' },
-    { value: 'toyboy_looking_for_sugar_mummy', label: 'I am a Sugar Guy / Toyboy', desc: 'Looking for a sugar mummy', color: '#F59E0B' },
+    { value: 'sugar_mummy_looking_for_toyboy', label: 'I am a Sugar Mummy', desc: 'Looking for a sugar guy / toyboy', color: '#6D28D9' },
+    { value: 'sugar_daddy_looking_for_mistress', label: 'I am a Sugar Daddy', desc: 'Looking for an adult mistress', color: '#0369A1' },
+    { value: 'mistress_looking_for_sugar_daddy', label: 'I am a Mistress', desc: 'Looking for a sugar daddy', color: '#4D7C0F' },
+    { value: 'toyboy_looking_for_sugar_mummy', label: 'I am a Sugar Guy / Toyboy', desc: 'Looking for a sugar mummy', color: '#475569' },
 ];
 
 function cleanPhone(value) {
@@ -138,7 +151,7 @@ export default function ProfileCompletionModal() {
             title: 'How old are you?',
             subtitle: 'Age must be 18 or above',
             icon: Calendar,
-            color: '#E11D48',
+            color: 'var(--color-primary)',
         },
         {
             key: 'location',
@@ -159,7 +172,7 @@ export default function ProfileCompletionModal() {
             title: 'What are you looking for?',
             subtitle: 'Describe the kind of connection you want',
             icon: Heart,
-            color: '#F59E0B',
+            color: 'var(--color-primary)',
         },
         {
             key: 'looking_for',

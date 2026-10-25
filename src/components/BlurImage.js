@@ -22,8 +22,20 @@ export default function BlurImage({
     const [error, setError] = useState(false);
     const imgRef = useRef(null);
 
-    // Purple-tinted placeholder for .com branding
-    const placeholderBg = 'linear-gradient(135deg, #ede9fe 0%, #f3e8ff 50%, #fce7f3 100%)';
+    /*
+      The shape of an image before it arrives.
+
+      This was a violet-to-pink ramp commented "for .com branding" — artwork
+      carried over from the sister project. It is also the first thing on a card
+      to paint, so every image slot flashed pink on a product that is now teal.
+      Tinted from --color-surface instead, the panel colour the card already
+      uses, so a loading slot reads as empty surface rather than as a coloured
+      element of its own.
+
+      Literal values rather than var(): this string goes straight into an inline
+      style and has to be right on first paint.
+    */
+    const placeholderBg = 'linear-gradient(135deg, #EDF4F4 0%, #F4FAFA 50%, #E3EFEF 100%)';
 
     if (error || !src) {
         const member = { name: alt || 'Profile', avatarUrl: '', isSeedProfile: isSeed, profileLabel: label };

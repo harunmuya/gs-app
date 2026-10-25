@@ -13,7 +13,7 @@
 
 import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join, extname } from 'node:path';
-import { ICONS, STROKE_DEFAULTS } from './icons/icon-set.mjs';
+import { ICONS, STROKE_DEFAULTS, MATERIAL_DEFAULTS, MATERIAL_ICONS, VIEWBOX } from './icons/icon-set.mjs';
 
 const SRC = join(process.cwd(), 'src');
 const OUT_DIR = join(process.cwd(), 'public', 'icons');
@@ -59,10 +59,27 @@ export function toPascal(kebab) {
     return String(kebab).split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join('');
 }
 
-const attrs = Object.entries(STROKE_DEFAULTS).map(([k, v]) => `${k}="${v}"`).join(' ');
+/*
+  Paint and grid are per symbol, not per sprite.
+
+  Material Symbols are solid shapes on a 0 -960 960 960 grid; the hand-drawn gs-*
+  glyphs are 1.75 strokes on 0 0 24 24. A single set of attributes on the root
+  <svg> cannot serve both — stroke defaults applied to a filled path give a
+  visibly bolder, smudged glyph, and the wrong viewBox renders it off-canvas or
+  invisible. Putting both on each <symbol> lets the two families coexist, and
+  <use> inherits whichever one it points at.
+*/
+function attrsFor(name) {
+    const defaults = MATERIAL_ICONS.has(name) ? MATERIAL_DEFAULTS : STROKE_DEFAULTS;
+    return Object.entries(defaults).map(([k, v]) => `${k}="${v}"`).join(' ');
+}
+
+function viewBoxFor(name) {
+    return MATERIAL_ICONS.has(name) ? VIEWBOX.material : VIEWBOX.stroke;
+}
 
 const symbols = Object.entries(ICONS)
-    .map(([name, body]) => `<symbol id="${name}" viewBox="0 0 24 24" ${attrs}>${body}</symbol>`)
+    .map(([name, body]) => `<symbol id="${name}" viewBox="${viewBoxFor(name)}" ${attrsFor(name)}>${body}</symbol>`)
     .join('\n');
 
 const sprite = `<svg xmlns="http://www.w3.org/2000/svg" style="display:none">\n${symbols}\n</svg>\n`;

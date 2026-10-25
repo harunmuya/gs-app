@@ -2,10 +2,22 @@
 
 /* ---- GS clean social dating theme ---- */
 /* ---- Palette -----------------------------------------------------------
-   Reworked from the original plum + marigold scheme.
+   Reworked from the original plum + marigold scheme, then again to deep teal.
    What changed and why:
-     - Primary moved to a deeper, cooler berry. The old #9B2C5E sat between
-       pink and purple and read closer to a template default than a brand.
+     - Primary is deep teal. It was a berry (#C21E56, and #9B2C5E before that),
+       which is the hue every dating product reaches for first — and on a
+       product whose business is being believed, that reads as the template it
+       came from. Teal carries the opposite signal, and it was the one family
+       not already spoken for here: blue is links and verification, green is
+       success, red is danger, gold is premium, violet is social.
+     - The neutrals moved with it. They carried a pink cast chosen to sit under
+       the old brand colour, which would fight teal on every card, so they are
+       tinted from the new family instead.
+     - Two semantic accents had to move out of the way. --accent-match was pink
+       and --accent-support was already teal (#0F766E), which would have been
+       indistinguishable from the new primary. Match now carries the brand teal,
+       since a mutual match is the product's headline event, and support moved
+       to slate, which reads as neutral help rather than another brand colour.
      - Gold demoted. It was a co-primary in gradients and on ordinary chrome,
        which cheapens it. It is now reserved for premium tiers, so "gold"
        actually signals something in the product.
@@ -14,24 +26,32 @@
        the old design. Gradients are now single-family depth ramps.
      - Neutrals de-tinted. The old surfaces carried a heavy peach cast that
        fought with the brand colour on every card.
-   All text pairings below clear WCAG AA (4.5:1) on their intended surface.
+   All text pairings below clear WCAG AA (4.5:1) on their intended surface, and
+   scripts/check-contrast.mjs recomputes every one of them rather than trusting
+   the numbers in these comments.
    ---------------------------------------------------------------------- */
 :root {
-  --color-primary: #C21E56;
-  --color-primary-light: #F2A8C0;
-  --color-primary-dark: #8B1340;
+  /* 7.70:1 on white as text, and white on it is the same 7.70:1, so one token
+     serves both here — unlike in the dark theme below. */
+  --color-primary: #0D5C63;
+  --color-primary-light: #8FC9CE;
+  --color-primary-dark: #08454A;
   /* Was #A67C2E — 3.79:1 on white, below AA for text. Still unmistakably gold. */
   --color-secondary: #8A6620;
   --color-accent: #2563EB;
-  --color-bg-dark: #FBF9FA;
+  /* Tinted from the brand family now, not pink. Each is a hair off neutral so
+     cards read as a set rather than as grey boxes. */
+  --color-bg-dark: #F8FAFA;
   --color-bg-card: #ffffff;
-  --color-bg-input: #F7F2F4;
-  --color-surface: #F3EEF0;
-  --color-surface-light: #FCF4F7;
-  --color-text-primary: #14101A;
-  --color-text-secondary: #4B4350;
-  /* Was #7D7488 — 4.44:1 on white, just under AA. */
-  --color-text-muted: #756C80;
+  --color-bg-input: #F1F6F6;
+  --color-surface: #EDF4F4;
+  --color-surface-light: #F4FAFA;
+  --color-text-primary: #101718;
+  --color-text-secondary: #3F4A4B;
+  /* 5.08:1 on white and 4.56:1 on --color-surface, which is the tighter of the
+     two and the one that sets this value. The previous pink-grey was tuned the
+     same way for the same reason. */
+  --color-text-muted: #64716F;
   --color-gold: #8A6620;
   /* The text that sits on a gold or silver badge. Both flip with the theme,
      so the readable pairing has to be declared per theme, not per component. */
@@ -49,79 +69,88 @@
   --color-danger-text: #C81E1E;
   /* Same split for the brand colour: .text-primary may be lifted in dark mode,
      .bg-primary must stay dark enough to carry white text. */
-  --color-primary-fill: #C21E56;
+  --color-primary-fill: #0D5C63;
   --color-verified: #1D4ED8;
   /* Alert category accents.
      These were literal hexes in the alerts KIND map, so they could not change
      with the theme: #1D4ED8 gave 2.80:1 on the dark card and #0EA5E9 gave 2.77:1
      on the light one — both below the 3:1 an icon needs (SC 1.4.11). Tokenised
      so each theme gets a value that reads on its own surface. */
-  --accent-match: #C2185B;
+  /* Match carries the brand colour: it is the one event the product exists to
+     produce. Support moved off teal so it is not mistaken for it. */
+  --accent-match: #0D5C63;
   --accent-social: #7C3AED;
   --accent-gift: #8A6620;
   --accent-verify: #1D4ED8;
-  --accent-support: #0F766E;
+  --accent-support: #475569;
   --accent-call: #0369A1;
   --radius-lg: 16px;
   --radius-xl: 24px;
-  --shadow-card: 0 4px 24px rgba(20, 16, 26, 0.06), 0 1px 3px rgba(20, 16, 26, 0.04);
-  --shadow-lg: 0 20px 50px rgba(139, 19, 64, 0.13);
+  --shadow-card: 0 4px 24px rgba(16, 23, 24, 0.06), 0 1px 3px rgba(16, 23, 24, 0.04);
+  --shadow-lg: 0 20px 50px rgba(8, 69, 74, 0.13);
   /* Single-family depth ramp rather than a hue journey. */
-  --gradient-primary: linear-gradient(135deg, #C21E56 0%, #8B1340 100%);
+  --gradient-primary: linear-gradient(135deg, #0D5C63 0%, #08454A 100%);
   --gradient-secondary: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
-  --gradient-accent: linear-gradient(135deg, #8B1340 0%, #C21E56 100%);
+  --gradient-accent: linear-gradient(135deg, #08454A 0%, #0D5C63 100%);
   /* Reserved for premium tiers only. */
   --gradient-gold: linear-gradient(135deg, #D9B45F 0%, #A67C2E 100%);
-  --gradient-growth-orange: linear-gradient(135deg, #C21E56 0%, #8B1340 100%);
+  /* Named for a growth banner that has not been orange for two palettes now.
+     Kept because call sites reference it; it is the primary ramp. */
+  --gradient-growth-orange: linear-gradient(135deg, #0D5C63 0%, #08454A 100%);
   --app-bg:
-    radial-gradient(ellipse at 12% -5%, rgba(194, 30, 86, 0.05), transparent 45%),
-    linear-gradient(180deg, #FBF9FA 0%, #FFFFFF 55%, #FCF4F7 100%);
-  --card-border: 1px solid rgba(20, 16, 26, 0.07);
+    radial-gradient(ellipse at 12% -5%, rgba(13, 92, 99, 0.05), transparent 45%),
+    linear-gradient(180deg, #F8FAFA 0%, #FFFFFF 55%, #F4FAFA 100%);
+  --card-border: 1px solid rgba(16, 23, 24, 0.07);
 }
 
 
 :root[data-theme="dark"] {
   /* Near-neutral ink base. The old dark theme was heavily purple-tinted, which
      left the brand colour with nowhere to stand out against. */
-  --color-bg-dark: #0B0910;
-  --color-bg-card: #141019;
-  --color-bg-input: #1B1622;
-  --color-surface: #1B1622;
-  --color-surface-light: #251E2E;
-  --color-text-primary: #F7F4F9;
-  --color-text-secondary: #D3CBDA;
-  --color-text-muted: #948CA0;
-  /* Lifted so it keeps AA contrast against the dark surface — but that makes it
-     too light to carry white text, so .bg-primary uses the fill token below.
-     White on #E8477C is 3.73:1; on the fill it is 5.81:1. */
-  --color-primary: #E8477C;
-  --color-primary-fill: #C21E56;
-  --color-primary-light: #F7B9CE;
+  --color-bg-dark: #07100F;
+  --color-bg-card: #0F1A1A;
+  --color-bg-input: #152222;
+  --color-surface: #152222;
+  --color-surface-light: #1E2E2E;
+  --color-text-primary: #F2F7F7;
+  --color-text-secondary: #C8D4D4;
+  --color-text-muted: #8A9A9A;
+  /* Lifted so it keeps AA contrast against the dark surface — 10.01:1 on the
+     card — but that makes it far too light to carry white text, so .bg-primary
+     uses the fill token below, where white reads at 7.70:1. */
+  --color-primary: #5FD3DC;
+  --color-primary-fill: #0D5C63;
+  --color-primary-light: #A9E4E9;
   --color-secondary: #D2A758;
   --color-gold: #D2A758;
   --color-on-gold: #2A1E05;
-  --color-on-silver: #14101A;
+  --color-on-silver: #101718;
   /* Lifted for the same reason as --color-primary above. The fill tokens stay
      dark so white text on a success or danger button still reads. */
   --color-success-text: #34D399;
   --color-danger-text: #F87171;
-  /* Lifted to clear 3:1 on #141019. */
-  --accent-match: #F472B6;
+  /* Lifted to clear 3:1 on #0F1A1A. Match tracks the brand colour here as it
+     does in the light theme, and support stays on slate so the two remain
+     distinguishable on a dark surface too. */
+  --accent-match: #5FD3DC;
   --accent-social: #A78BFA;
   --accent-gift: #D2A758;
   --accent-verify: #7EA6FF;
-  --accent-support: #2DD4BF;
+  --accent-support: #94A3B8;
   --accent-call: #38BDF8;
   --app-bg:
-    radial-gradient(ellipse at 15% -5%, rgba(232, 71, 124, 0.10), transparent 40%),
-    linear-gradient(180deg, #0B0910 0%, #141019 60%, #0B0910 100%);
-  --card-border: 1px solid rgba(247, 244, 249, 0.10);
+    radial-gradient(ellipse at 15% -5%, rgba(95, 211, 220, 0.10), transparent 40%),
+    linear-gradient(180deg, #07100F 0%, #0F1A1A 60%, #07100F 100%);
+  --card-border: 1px solid rgba(242, 247, 247, 0.10);
   --shadow-card: 0 2px 16px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.55);
 }
 
 :root[data-theme="dark"] .glass {
-  background: rgba(22, 14, 24, 0.92);
+  /* Was rgba(22, 14, 24, …), a purple-black left over from the berry palette.
+     Matched to the new card colour so a glass panel reads as the same material
+     as the surface behind it. */
+  background: rgba(15, 26, 26, 0.92);
 }
 /* ---- Theme utility classes ---- */
 @layer utilities {

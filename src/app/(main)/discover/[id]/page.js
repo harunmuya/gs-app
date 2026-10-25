@@ -233,7 +233,7 @@ export default function ProfileDetailPage({ params }) {
                         disabled={liked}
                         className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-white transition-all active:scale-95 ${liked ? 'opacity-70' : 'shadow-lg'}`}
                         style={{
-                            background: liked ? '#F472B6' : 'var(--gradient-primary)',
+                            background: liked ? 'var(--accent-match)' : 'var(--gradient-primary)',
                             backgroundImage: liked ? 'none' : 'var(--gradient-primary)',
                             boxShadow: liked ? 'none' : '0 4px 20px rgba(124,58,237,0.3)',
                         }}

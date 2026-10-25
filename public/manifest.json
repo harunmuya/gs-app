@@ -5,7 +5,7 @@
     "start_url": "/discover",
     "display": "standalone",
     "background_color": "#ffffff",
-    "theme_color": "#FF8A00",
+    "theme_color": "#0D5C63",
     "orientation": "portrait",
     "scope": "/",
     "icons": [

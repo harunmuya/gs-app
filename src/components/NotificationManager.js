@@ -224,7 +224,7 @@ export default function NotificationManager() {
                             title,
                             body: body || '',
                             largeIcon: icon || '/icons/icon-192.png',
-                            iconColor: '#0F766E',
+                            iconColor: '#0D5C63',
                             extra: { url: '/alerts', count: badgeCount, label: formatBadge(badgeCount) },
                         }],
                     }).catch(() => {});
