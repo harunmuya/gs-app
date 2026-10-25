@@ -1,10 +1,19 @@
 -- The match trigger, corrected.
 --
--- Run this INSTEAD of 20260808_070. Do not run 070 as well: see below.
+-- This header used to read "Run this INSTEAD of 20260808_070. Do not run 070
+-- as well." That was written while 070 was the live definition, and following
+-- it now would mean deliberately skipping a migration in an ordered set —
+-- exactly the habit that leaves two databases that claim the same schema
+-- version holding different schemas.
 --
--- =============================================================================
--- WHY NOT JUST RUN 070
--- =============================================================================
+-- Run the set in order. 20260809 sorts after 20260808, so this file is applied
+-- last and wins on every count: it adds the is_super_match column 070 expected
+-- and 20260809_010 omitted, it replaces 070's handle_member_like in place
+-- (same name, CREATE OR REPLACE), and it drops and recreates
+-- trg_member_like_match on member_likes. The end state is this file's, whether
+-- or not 070 ran first.
+--
+-- What 070 got wrong, and why this supersedes it:
 --
 -- Two problems, both introduced by me, both caught before this ran.
 --
