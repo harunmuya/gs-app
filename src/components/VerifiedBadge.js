@@ -1,17 +1,18 @@
+import { Verified } from '@/components/icons';
+
 /**
  * The verification mark.
  *
- * This was a copy of the Twitter check, scalloped edge and all, filled with
- * their exact #1D9BF0. Two things wrong with that. It is visibly another
- * platform's mark, which makes a badge meant to signal "we checked this person"
- * read as borrowed decoration instead. And the hardcoded blue ignores the theme
- * entirely, so on the dark surface it sat as a bright spot with nothing else on
- * the screen near it.
+ * It began as a copy of the Twitter check, scalloped edge and their exact
+ * #1D9BF0, which made a badge meaning "we checked this person" read as another
+ * platform's furniture and ignored the theme besides. It was then drawn by hand
+ * as a shield: honest, but a one-off shape maintained here while every other
+ * icon in the app came from the Material set.
  *
- * The replacement is a plain shield with a check, in the app's own success
- * colour, which is the shape people already read as "checked" outside of social
- * media. It carries a title so hovering explains it, and a real accessible name
- * rather than the word "Verified" floating with no context.
+ * It is Google's own `verified` glyph now, from the same pinned Material
+ * Symbols release and the same self-hosted sprite as the rest
+ * (scripts/icons/fetch-material.mjs), so it is a real icon rather than an
+ * approximation of one, and it inherits the theme through currentColor.
  *
  * Only 2 of 149 accounts carry this. It has to mean something, so it is never
  * shown for anything other than a genuine verification_status of 'verified'.
@@ -20,29 +21,13 @@ export default function VerifiedBadge({ size = 18, className = '', verified = tr
     if (!verified) return null;
 
     return (
-        <svg
-            width={size}
-            height={size}
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            role="img"
-            aria-label="Verified member"
-            className={`inline-block shrink-0 ${className}`}
-        >
-            <title>{title}</title>
-            <path
-                d="M12 2.2 4.6 5v6.3c0 4.5 3 8.7 7.4 10.5 4.4-1.8 7.4-6 7.4-10.5V5L12 2.2Z"
-                fill="var(--color-success)"
-            />
-            <path
-                d="M8.4 12.1 11 14.7l4.7-5.2"
-                stroke="#FFFFFF"
-                strokeWidth="2.1"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-        </svg>
+        // `title` is what Icon turns into the accessible name, so the badge is
+        // announced as what it means rather than as the word "verified".
+        <Verified
+            size={size}
+            title={title}
+            className={`inline-block shrink-0 text-success ${className}`}
+        />
     );
 }
 

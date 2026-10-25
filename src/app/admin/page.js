@@ -285,7 +285,7 @@ export default function AdminPage() {
     if (!authed) {
         return (
             <main className="min-h-dvh flex items-center justify-center px-5" style={{ background: 'linear-gradient(180deg,#f5f3ff,#fff)' }}>
-                <form onSubmit={login} className="w-full max-w-sm rounded-2xl p-5 space-y-4" style={{ background: 'white', border: '1px solid rgba(124,58,237,.15)' }}>
+                <form onSubmit={login} className="w-full max-w-sm rounded-2xl p-5 space-y-4" style={{ background: 'white', border: '1px solid color-mix(in srgb, var(--color-primary) 15%, transparent)' }}>
                     <Logo size={48} />
                     <h1 className="text-xl font-black text-text-primary">Admin Login</h1>
                     <input className="w-full rounded-xl px-3 py-3" style={{ border: '1px solid #ddd' }} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" autoComplete="username" />

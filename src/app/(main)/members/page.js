@@ -63,14 +63,16 @@ function planText(plan) {
     return 'Free';
 }
 
-function lookingTone(member) {
-    const text = `${member.lookingFor || ''} ${member.profileLabel || ''}`.toLowerCase();
-    if (text.includes('sugar mummy')) return 'from-rose-500 to-pink-500';
-    if (text.includes('sugar daddy')) return 'from-sky-500 to-indigo-500';
-    if (text.includes('mistress')) return 'from-teal-500 to-emerald-500';
-    if (text.includes('toyboy') || text.includes('sugar guy')) return 'from-amber-500 to-orange-500';
-    return 'from-primary to-secondary';
-}
+/*
+  The "Looking for" pill used to carry one of four hard-coded gradients picked
+  by matching the text — rose/pink for sugar mummy, sky/indigo for sugar daddy,
+  and so on. None of them were brand colours, the pink read as a different
+  product altogether, and the colour was telling the member nothing the pill
+  does not already say in words directly beside it.
+
+  One brand treatment instead, matching the plan chip above it, so a card is
+  the teal palette throughout rather than a row of unrelated gradients.
+*/
 
 function lookingLabel(member) {
     return member.lookingFor || labelText(member.profileLabel);
@@ -477,7 +479,10 @@ export default function MembersPage() {
                                     <div className="flex items-center gap-1.5 type-caption text-text-muted">
                                         <PresenceLine member={member} />
                                     </div>
-                                    <div className={`inline-flex max-w-full rounded-full bg-gradient-to-r ${lookingTone(member)} px-2 py-1 type-micro text-white shadow-sm`}>
+                                    <div
+                                        className="inline-flex max-w-full rounded-full px-2 py-1 type-micro font-semibold text-primary"
+                                        style={{ background: 'color-mix(in srgb, var(--color-primary) 12%, transparent)' }}
+                                    >
                                         <span className="truncate">Looking for {lookingLabel(member)}</span>
                                     </div>
                                 </div>

@@ -18,26 +18,80 @@ function clientIp(request) {
     return ip;
 }
 
+/**
+ * Approximate location from the edge, with no outbound request.
+ *
+ * Vercel attaches these headers to every request it serves. They cost nothing,
+ * cannot be rate limited, and are already there before any handler runs, which
+ * is why they are tried first.
+ *
+ * The header value is percent-encoded, because a city name may contain
+ * characters that are not legal in a header.
+ */
+function edgeLocation(request) {
+    const header = (name) => {
+        const raw = request.headers.get(name);
+        if (!raw) return '';
+        try { return decodeURIComponent(raw).trim(); } catch { return raw.trim(); }
+    };
+    const latitude = Number(header('x-vercel-ip-latitude'));
+    const longitude = Number(header('x-vercel-ip-longitude'));
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    if (!latitude && !longitude) return null;
+    const city = [header('x-vercel-ip-city'), header('x-vercel-ip-country-region'), header('x-vercel-ip-country')]
+        .filter(Boolean)
+        .join(', ');
+    return { latitude, longitude, accuracy: 25000, source: 'ip', city, ip: clientIp(request) };
+}
+
+/**
+ * Approximate location from the member's IP.
+ *
+ * This used to call ipapi.co alone. Its free tier is a shared quota and it
+ * answers 429 once that is spent, so in production this returned null and the
+ * caller fell back to the offline table of towns — a member in Nakuru could be
+ * told they were somewhere else entirely, with nothing on screen admitting it
+ * was a guess.
+ *
+ * So: the edge headers first, then two independent providers, and null only
+ * when all of them fail. ipwho.is needs no key and does not share one quota
+ * across every caller, which is what went wrong with the previous choice.
+ */
 async function ipLocation(request) {
+    const fromEdge = edgeLocation(request);
+    if (fromEdge) return fromEdge;
+
     const ip = clientIp(request);
-    const url = ip ? `https://ipapi.co/${encodeURIComponent(ip)}/json/` : 'https://ipapi.co/json/';
-    try {
-        const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(3500) });
-        const data = await res.json().catch(() => ({}));
-        const latitude = Number(data.latitude);
-        const longitude = Number(data.longitude);
-        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-        return {
-            latitude,
-            longitude,
-            accuracy: 25000,
-            source: 'ip',
-            city: [data.city, data.region, data.country_name].filter(Boolean).join(', '),
-            ip: ip || data.ip || '',
-        };
-    } catch {
-        return null;
+    const providers = [
+        {
+            url: ip ? `https://ipwho.is/${encodeURIComponent(ip)}` : 'https://ipwho.is/',
+            read: (d) => (d && d.success !== false
+                ? { lat: d.latitude, lon: d.longitude, city: [d.city, d.region, d.country].filter(Boolean).join(', ') }
+                : null),
+        },
+        {
+            url: ip ? `https://ipapi.co/${encodeURIComponent(ip)}/json/` : 'https://ipapi.co/json/',
+            read: (d) => (d && !d.error
+                ? { lat: d.latitude, lon: d.longitude, city: [d.city, d.region, d.country_name].filter(Boolean).join(', ') }
+                : null),
+        },
+    ];
+
+    for (const provider of providers) {
+        try {
+            const res = await fetch(provider.url, { cache: 'no-store', signal: AbortSignal.timeout(3500) });
+            if (!res.ok) continue;
+            const parsed = provider.read(await res.json().catch(() => null));
+            const latitude = Number(parsed?.lat);
+            const longitude = Number(parsed?.lon);
+            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+            return { latitude, longitude, accuracy: 25000, source: 'ip', city: parsed.city || '', ip };
+        } catch {
+            // Try the next one; a provider being down is not an error worth
+            // reporting to the member, only worth routing around.
+        }
     }
+    return null;
 }
 
 async function saveLocation(supabase, userId, location) {

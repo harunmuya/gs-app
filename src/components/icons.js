@@ -8,6 +8,7 @@
 
 import Icon from '@/components/Icon';
 
+export const Verified = (props) => <Icon name="verified" {...props} />;
 export const ArrowLeft = (props) => <Icon name="arrow-left" {...props} />;
 export const ArrowRight = (props) => <Icon name="arrow-right" {...props} />;
 export const ChevronRight = (props) => <Icon name="chevron-right" {...props} />;

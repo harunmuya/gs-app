@@ -24,6 +24,7 @@ import { SUPPORT } from '@/lib/support';
 import { AGE_RANGE, NAME_REQUIRED, PHONE_REQUIRED } from '@/lib/copy';
 import { compressImageFile } from '@/lib/imageFile';
 import BlockedMembers from '@/components/BlockedMembers';
+import AppVersionFooter from '@/components/AppVersionFooter';
 
 const PREFERENCE_LABELS = {
     sugar_mummy_looking_for_toyboy: 'Sugar Mummy seeking Sugar Guy / Toyboy',
@@ -475,7 +476,7 @@ export default function ProfilePage() {
                         <button
                             onClick={() => setShowPreferencePicker(true)}
                             className="mt-1 inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold text-primary"
-                            style={{ background: 'rgba(124,58,237,0.08)' }}
+                            style={{ background: 'color-mix(in srgb, var(--color-primary) 8%, transparent)' }}
                         >
                             {PREFERENCE_LABELS[preference] || preference} <Edit3 size={10} />
                         </button>
@@ -610,7 +611,7 @@ export default function ProfilePage() {
                                 disabled={photoBusy}
                                 onClick={() => fileInputRef.current?.click()}
                                 className="aspect-square rounded-xl flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-60"
-                                style={{ background: 'var(--color-surface)', border: '2px dashed rgba(124,58,237,0.2)' }}
+                                style={{ background: 'var(--color-surface)', border: '2px dashed color-mix(in srgb, var(--color-primary) 20%, transparent)' }}
                             >
                                 <Plus size={20} className="text-primary" />
                                 <span className="text-[10px] text-text-muted font-medium">{photoBusy ? 'Saving' : 'Add'}</span>
@@ -638,7 +639,7 @@ export default function ProfilePage() {
                         <Shield size={16} className="text-primary" /> Manual Verification
                     </h3>
                     {effectiveVerificationStatus === 'pending_admin' ? (
-                        <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(124,58,237,0.08)' }}>
+                        <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'color-mix(in srgb, var(--color-primary) 8%, transparent)' }}>
                             <Clock size={24} className="text-primary" />
                             <div className="flex-1">
                                 <p className="text-sm font-bold text-primary">Waiting for Admin Review</p>
@@ -676,7 +677,7 @@ export default function ProfilePage() {
             {/* ===== PROFILE INFO (editable) ===== */}
             {isLoggedIn && show('profile') && (
                 <div id="profile-info" className="rounded-2xl overflow-hidden" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                    <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(124,58,237,0.08)' }}>
+                    <div className="px-4 py-3" style={{ borderBottom: '1px solid color-mix(in srgb, var(--color-primary) 8%, transparent)' }}>
                         <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
                             <Edit3 size={16} className="text-primary" /> Profile Info
                         </h3>
@@ -780,7 +781,7 @@ export default function ProfilePage() {
             {/* ===== SETTINGS ===== */}
             {isLoggedIn && show('settings') && (
                 <div id="privacy" className="rounded-2xl overflow-hidden" style={{ background: 'var(--color-bg-card)', border: 'var(--card-border)' }}>
-                    <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(124,58,237,0.08)' }}>
+                    <div className="px-4 py-3" style={{ borderBottom: '1px solid color-mix(in srgb, var(--color-primary) 8%, transparent)' }}>
                         <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
                             <Settings size={16} className="text-primary" /> Settings
                         </h3>
@@ -873,6 +874,7 @@ export default function ProfilePage() {
                     >
                         <Trash size={16} /> Delete account
                     </button>
+                    <AppVersionFooter />
                 </div>
             )}
 
@@ -966,8 +968,8 @@ export default function ProfilePage() {
                                     }}
                                     className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl transition-all"
                                     style={{
-                                        background: preference === key ? 'rgba(124,58,237,0.08)' : 'transparent',
-                                        border: `2px solid ${preference === key ? '#7C3AED' : 'rgba(0,0,0,0.06)'}`,
+                                        background: preference === key ? 'color-mix(in srgb, var(--color-primary) 8%, transparent)' : 'transparent',
+                                        border: `2px solid ${preference === key ? 'var(--color-primary)' : 'rgba(0,0,0,0.06)'}`,
                                     }}
                                 >
                                     <span className="text-sm font-semibold text-text-primary">{label}</span>

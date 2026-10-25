@@ -24,7 +24,7 @@ export default function BottomNav() {
     const totalUnread = unreadAlerts + unreadMessages;
 
     return (
-        <nav aria-label="Primary" className="fixed bottom-0 left-0 right-0 z-50 glass" style={{ borderTop: '1px solid rgba(155,44,94,0.08)' }}>
+        <nav aria-label="Primary" className="fixed bottom-0 left-0 right-0 z-50 glass" style={{ borderTop: '1px solid color-mix(in srgb, var(--color-primary) 12%, transparent)' }}>
             <div className="app-main flex items-center justify-around py-1.5 px-2">
                 {navItems.map((item) => {
                     const isActive = pathname?.startsWith(item.href);

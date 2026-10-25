@@ -45,6 +45,7 @@ const BASE = `https://cdn.jsdelivr.net/npm/@material-symbols/svg-400@${VERSION}/
   for a checked person. Keeping both ids means no call site has to change.
 */
 const NAME_MAP = {
+    verified: 'verified',
     'arrow-left': 'arrow_back',
     'arrow-right': 'arrow_forward',
     'chevron-right': 'chevron_right',

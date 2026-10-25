@@ -193,7 +193,7 @@ export default function ProfileCompletionModal() {
             title: 'Choose your category',
             subtitle: 'Which type of member are you?',
             icon: Target,
-            color: '#7C3AED',
+            color: 'var(--color-primary)',
         },
     ];
 

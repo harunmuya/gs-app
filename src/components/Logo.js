@@ -17,7 +17,14 @@
     state because the theme is an attribute on <html>: reading it in JS would
     render the wrong ink first and flip after hydration.
 */
-export default function Logo({ size = 32, className = '' }) {
+/*
+  `maxWidth` defaults to 82vw, which suits a logo standing alone on a sign-in
+  screen. In a header it has to be the space actually left over beside the
+  icons, not a share of the whole viewport: 82vw plus two 36px buttons does not
+  fit a 375px phone, and the row wrapped. The caller knows which case it is in,
+  so the caller says.
+*/
+export default function Logo({ size = 32, className = '', maxWidth = '82vw' }) {
     const common = {
         alt: 'Genuine Sugar Mummies',
         width: 718,
@@ -25,7 +32,7 @@ export default function Logo({ size = 32, className = '' }) {
         decoding: 'async',
         // In the header on first paint, so not a candidate for lazy loading.
         loading: 'eager',
-        style: { maxHeight: size, maxWidth: '82vw', width: 'auto', height: 'auto' },
+        style: { maxHeight: size, maxWidth, width: 'auto', height: 'auto' },
     };
 
     return (

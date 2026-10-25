@@ -12,9 +12,9 @@ export default function ContactButtons({ profileName }) {
     const helpMsg = encodeURIComponent(`Hi, I need help from the app regarding ${name}`);
 
     return (
-        <div className="w-full rounded-2xl bg-bg-card overflow-hidden" style={{ border: '1px solid rgba(124,58,237,0.12)' }}>
+        <div className="w-full rounded-2xl bg-bg-card overflow-hidden" style={{ border: '1px solid color-mix(in srgb, var(--color-primary) 12%, transparent)' }}>
             {/* Title */}
-            <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(124,58,237,0.08)' }}>
+            <div className="px-4 py-3" style={{ borderBottom: '1px solid color-mix(in srgb, var(--color-primary) 8%, transparent)' }}>
                 <p className="text-sm font-semibold text-text-primary leading-snug">
                     To Hookup or Connect with <span className="text-gradient">{name}</span>,
                     request connection from admin <span className="text-text-primary font-bold">Mary G</span>
@@ -78,7 +78,7 @@ export default function ContactButtons({ profileName }) {
                 <a
                     href={`mailto:genuinesugarmummies@gmail.com?subject=Connection Request&body=${helpMsg}`}
                     className="group flex items-center gap-2.5 px-3.5 py-3 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
-                    style={{ backgroundColor: '#7C3AED', color: 'white' }}
+                    style={{ backgroundColor: 'var(--color-primary)', color: 'white' }}
                 >
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
                         <rect width="20" height="16" x="2" y="4" rx="2" />

@@ -202,7 +202,7 @@ export default function ProfileDetailPage({ params }) {
                     </button>
                     <button onClick={handleSave}
                         className="w-11 h-11 rounded-full flex items-center justify-center shadow-lg"
-                        style={{ background: saved ? 'rgba(124,58,237,0.8)' : 'rgba(0,0,0,0.6)' }}
+                        style={{ background: saved ? 'color-mix(in srgb, var(--color-primary) 80%, transparent)' : 'rgba(0,0,0,0.6)' }}
                     >
                         {saved ? <BookmarkCheck size={20} className="text-white" /> : <Bookmark size={20} className="text-white" />}
                     </button>
@@ -235,7 +235,7 @@ export default function ProfileDetailPage({ params }) {
                         style={{
                             background: liked ? 'var(--accent-match)' : 'var(--gradient-primary)',
                             backgroundImage: liked ? 'none' : 'var(--gradient-primary)',
-                            boxShadow: liked ? 'none' : '0 4px 20px rgba(124,58,237,0.3)',
+                            boxShadow: liked ? 'none' : '0 4px 20px color-mix(in srgb, var(--color-primary) 30%, transparent)',
                         }}
                     >
                         <Heart size={20} fill={liked ? 'white' : 'none'} />
@@ -304,7 +304,7 @@ export default function ProfileDetailPage({ params }) {
                 <button
                     onClick={handleRequestConnection}
                     className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-white gradient-primary shadow-lg transition-all active:scale-[0.98]"
-                    style={{ boxShadow: '0 4px 20px rgba(124,58,237,0.3)' }}
+                    style={{ boxShadow: '0 4px 20px color-mix(in srgb, var(--color-primary) 30%, transparent)' }}
                 >
                     <ExternalLink size={20} />
                     Request Connection on Telegram
@@ -371,7 +371,7 @@ export default function ProfileDetailPage({ params }) {
                 {profile.link && (
                     <a href={profile.link} target="_blank" rel="noopener noreferrer"
                         className="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium text-primary transition-all hover:bg-primary/5"
-                        style={{ border: '1px solid rgba(124,58,237,0.15)' }}
+                        style={{ border: '1px solid color-mix(in srgb, var(--color-primary) 15%, transparent)' }}
                     >
                         <ExternalLink size={16} /> View on Website
                     </a>

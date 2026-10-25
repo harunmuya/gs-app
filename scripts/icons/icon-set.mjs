@@ -9,7 +9,7 @@
  * paint attributes so they do not interfere:
  *
  *   Material Symbols (outlined, weight 400, v0.47.0) — filled paths on a
- *   0 -960 960 960 grid. 95 of them, fetched from the published
+ *   0 -960 960 960 grid. 96 of them, fetched from the published
  *   package rather than redrawn, so they are the real glyphs.
  *
  *   gs-* — 8 hand-drawn composites for things only this product has
@@ -42,6 +42,7 @@ export const VIEWBOX = {
 
 /** Which ids use Material artwork; everything else is drawn here. */
 export const MATERIAL_ICONS = new Set([
+    "verified",
     "arrow-left",
     "arrow-right",
     "chevron-right",
@@ -140,6 +141,7 @@ export const MATERIAL_ICONS = new Set([
 ]);
 
 export const ICONS = {
+    verified: "<path d=\"m346-60-76-130-151-31 17-147-96-112 96-111-17-147 151-31 76-131 134 62 134-62 77 131 150 31-17 147 96 111-96 112 17 147-150 31-77 130-134-62-134 62Zm27-79 107-45 110 45 67-100 117-30-12-119 81-92-81-94 12-119-117-28-69-100-108 45-110-45-67 100-117 28 12 119-81 94 81 92-12 121 117 28 70 100Zm107-341Zm-43 133 227-225-45-41-182 180-95-99-46 45 141 140Z\"/>",
     'arrow-left': "<path d=\"m274-450 248 248-42 42-320-320 320-320 42 42-248 248h526v60H274Z\"/>",
     'arrow-right': "<path d=\"M686-450H160v-60h526L438-758l42-42 320 320-320 320-42-42 248-248Z\"/>",
     'chevron-right': "<path d=\"M530-481 332-679l43-43 241 241-241 241-43-43 198-198Z\"/>",
