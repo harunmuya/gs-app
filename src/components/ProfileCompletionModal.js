@@ -9,6 +9,7 @@ import {
     ArrowRight, ArrowLeft, Check, X, Target, Star,
 } from '@/components/icons';
 import { AGE_RANGE, PHONE_REQUIRED } from '@/lib/copy';
+import { DEFAULT_COUNTRY, countryCodeFromName, countryOf, isValidPhone, toE164 } from '@/lib/phone';
 
 /*
   Four roles, four hues, picked to be told apart rather than to decorate.
@@ -31,7 +32,20 @@ const LOOKING_FOR_OPTIONS = [
 ];
 
 function cleanPhone(value) {
-    return String(value || '').replace(/[^\d+]/g, '').slice(0, 18);
+    return String(value || '').replace(/[^\d+\s-]/g, '').slice(0, 24);
+}
+
+/*
+  Which country to read a typed number as. The member's saved country comes
+  first; failing that, the country of a number they already have; failing both,
+  Kenya. Without this the modal would read every number as Kenyan, so a member
+  who signed up from Uganda would have their number silently rewritten to a
+  Kenyan one the first time they completed their profile.
+*/
+function phoneCountryFor(profile) {
+    return countryCodeFromName(profile?.country)
+        || countryOf(profile?.phone_number || profile?.phone)
+        || DEFAULT_COUNTRY;
 }
 
 function getMissingSteps(profile, preference) {
@@ -221,7 +235,7 @@ export default function ProfileCompletionModal() {
                 if (location.trim().length < 2) return 'Add your city or area.';
                 break;
             case 'phone':
-                if (cleanPhone(phone).replace(/\D/g, '').length < 7) return PHONE_REQUIRED;
+                if (!isValidPhone(phone, phoneCountryFor(profile))) return PHONE_REQUIRED;
                 break;
             case 'wants':
                 if (wants.trim().length < 3) return 'Describe what you\'re looking for.';
@@ -251,8 +265,8 @@ export default function ProfileCompletionModal() {
                     patch.city = location.trim();
                     break;
                 case 'phone':
-                    patch.phone_number = cleanPhone(phone);
-                    patch.phone = cleanPhone(phone);
+                    patch.phone_number = toE164(phone, phoneCountryFor(profile));
+                    patch.phone = patch.phone_number;
                     break;
                 case 'wants':
                     patch.wants = wants.trim();
@@ -421,7 +435,7 @@ export default function ProfileCompletionModal() {
                                             type="tel"
                                             value={phone}
                                             onChange={(e) => { setPhone(e.target.value); setError(''); }}
-                                            placeholder="e.g. 0712345678"
+                                            placeholder="e.g. 0739 154 302"
                                             autoFocus
                                             className="w-full rounded-2xl p-4 text-sm outline-none transition-all"
                                             style={{ background: '#f8f9fa', border: '2px solid transparent' }}

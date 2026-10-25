@@ -12,6 +12,9 @@ import { labelFromCoordinates } from '@/lib/geo';
 import { SUPPORT } from '@/lib/support';
 import { AGE_RANGE } from '@/lib/copy';
 import { compressImageFile } from '@/lib/imageFile';
+import {
+    COUNTRIES, DEFAULT_COUNTRY, callingCode, countryCodeFromName, countryName, isValidPhone, toE164,
+} from '@/lib/phone';
 
 /**
  * Authentication — one page, three modes.
@@ -59,8 +62,13 @@ function makeUsername(value) {
         .slice(0, 24);
 }
 
+/*
+  Only strips what can never be part of a number. Spaces and dashes survive so
+  the member can type "0739 154 302" and still see what they are typing; the
+  stored value is built by toE164 at submit, not from this.
+*/
 function cleanPhone(value) {
-    return String(value || '').replace(/[^\d+]/g, '').slice(0, 20);
+    return String(value || '').replace(/[^\d+\s-]/g, '').slice(0, 24);
 }
 
 function cleanResetCode(value) {
@@ -130,6 +138,9 @@ export default function LoginPage() {
     const [profilePhoto, setProfilePhoto] = useState('');
     const [age, setAge] = useState('');
     const [location, setLocation] = useState('');
+    // ISO code. Drives how the phone number is read, and is stored as the
+    // member's country, so the two can never disagree.
+    const [country, setCountry] = useState(DEFAULT_COUNTRY);
     const [phone, setPhone] = useState('');
     const [bio, setBio] = useState('');
     const [wants, setWants] = useState('');
@@ -190,7 +201,14 @@ export default function LoginPage() {
             errors.age = AGE_RANGE;
         }
         if (location.trim().length < 2) errors.location = 'Enter your city or area.';
-        if (cleanPhone(phone).replace(/\D/g, '').length < 7) errors.phone = 'Enter a reachable phone number.';
+        /*
+          Checked against the selected country's real numbering rules rather
+          than a minimum digit count. "1234567" passed the old test and is not
+          a phone number anywhere.
+        */
+        if (!isValidPhone(phone, country)) {
+            errors.phone = `Enter a valid ${countryName(country)} number, or type it with + and its country code.`;
+        }
         if (bio.trim().length < 12) errors.bio = `A short bio is required (${bio.trim().length}/12 characters).`;
         if (!agreedTerms) errors.terms = 'You must accept the terms to continue.';
 
@@ -240,8 +258,10 @@ export default function LoginPage() {
                 age: age.trim(),
                 location: location.trim(),
                 city: location.trim(),
-                phone: cleanPhone(phone),
-                phone_number: cleanPhone(phone),
+                country: countryName(country),
+                // E.164, so a number is dialable without knowing who typed it.
+                phone: toE164(phone, country),
+                phone_number: toE164(phone, country),
                 bio: bio.trim(),
                 latitude: detectedGeo?.latitude,
                 longitude: detectedGeo?.longitude,
@@ -355,6 +375,14 @@ export default function LoginPage() {
             );
             const data = await res.json().catch(() => ({}));
             const label = data?.label || labelFromCoordinates(latitude, longitude);
+
+            /*
+              The fix already told us which country they are in, so the phone
+              field stops reading a foreign number as Kenyan. Only applied when
+              the name is recognised; an unknown one leaves their choice alone.
+            */
+            const detectedCountry = countryCodeFromName(data?.country);
+            if (detectedCountry) setCountry(detectedCountry);
 
             if (label) {
                 setLocation(label);
@@ -622,15 +650,52 @@ export default function LoginPage() {
                                             className={inputClass} style={inputStyle(fieldErrors.age)}
                                         />
                                     </Field>
-                                    <Field icon={Phone} label="Phone" htmlFor="su-phone" error={fieldErrors.phone}>
+                                    <Field icon={MapPin} label="Country" htmlFor="su-country">
+                                        <select
+                                            id="su-country" autoComplete="country"
+                                            value={country}
+                                            onChange={(e) => setCountry(e.target.value)}
+                                            className={inputClass} style={inputStyle(false)}
+                                        >
+                                            {COUNTRIES.map((c) => (
+                                                <option key={c.code} value={c.code}>
+                                                    {c.name} (+{c.callingCode})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </Field>
+                                </div>
+
+                                {/*
+                                  The dial code is shown rather than typed. It tells the member
+                                  which country the digits will be read as, which is the one thing
+                                  a bare phone box cannot say — and it stays correct when they
+                                  change the country above. Typing a full +… number still works and
+                                  wins over the selection.
+                                */}
+                                <Field
+                                    icon={Phone}
+                                    label="Phone"
+                                    htmlFor="su-phone"
+                                    error={fieldErrors.phone}
+                                    hint={`Read as ${countryName(country)}. Enter a number from elsewhere with + and its country code.`}
+                                >
+                                    <div className="flex items-stretch gap-2">
+                                        <span
+                                            aria-hidden="true"
+                                            className="flex shrink-0 items-center rounded-2xl px-3 type-caption font-semibold text-text-secondary"
+                                            style={{ background: 'var(--color-surface)' }}
+                                        >
+                                            +{callingCode(country)}
+                                        </span>
                                         <input
                                             id="su-phone" type="tel" autoComplete="tel" inputMode="tel"
                                             value={phone} onChange={(e) => setPhone(cleanPhone(e.target.value))}
-                                            placeholder="07xx xxx xxx"
+                                            placeholder="0739 154 302"
                                             className={inputClass} style={inputStyle(fieldErrors.phone)}
                                         />
-                                    </Field>
-                                </div>
+                                    </div>
+                                </Field>
 
                                 <Field icon={MapPin} label="City or area" htmlFor="su-location" error={fieldErrors.location}>
                                     <div className="flex gap-2">
