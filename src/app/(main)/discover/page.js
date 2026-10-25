@@ -109,43 +109,41 @@ function userProfileLabel(user) {
 }
 
 /*
-  Labels that are browsable but never dealt into the swipe deck.
+  Toyboy profiles used to be kept out of the swipe deck, on the reasoning that
+  a deck card arrives unasked while the members page is browsed deliberately.
 
-  Toyboy profiles stay listed on the members page, where someone goes looking
-  deliberately, and are kept out of the swipe deck, where cards arrive unasked.
-  Keeping the rule as a set rather than deleting the label from the pairings
-  below means the pairings still describe who matches with whom, which is what
-  the members page and the match trigger rely on — only the deck is narrowed.
+  That broke the pairing it sat next to. A sugar mummy's primary target IS
+  toyboy, so excluding the label left her deck with nothing to deal; the code
+  below compensated by promoting her secondary, and she was dealt sugar daddies
+  — other sugar mummies' matches, never hers. The same promotion gave a
+  mistress sugar daddies only, with her secondary gone.
 
-  Everything that builds the deck runs through `allowedInDeck`, and the deck
-  selector filters by it a second time on the members it has actually received.
-  That second pass is the one that matters: the fetch is driven by labels, but
-  an empty label list falls back to requesting 'all', and a member whose label
-  is inferred from free text can come back as a toyboy however it was asked for.
+  A member states who they are looking for and the deck now deals that, which
+  is the whole of what a deck is for. Nothing replaces `allowedInDeck`: the
+  pairings in `targetLabelsForUser` are the only rule, so there is no second
+  list that can disagree with them.
 */
-const SWIPE_EXCLUDED_LABELS = new Set(['toyboy']);
 
-function allowedInDeck(label) {
-    return !SWIPE_EXCLUDED_LABELS.has(String(label || '').toLowerCase());
-}
+/*
+  Who each label is shown. One target each, and they are reciprocal: whoever
+  you are dealt is dealt you back.
+
+  There used to be a "secondary" target as well, worth one card in five. Every
+  one of them paired a label with its own side — a sugar mummy with a sugar
+  daddy, a toyboy with a mistress — so the fifth card was reliably somebody
+  with nothing to offer the person looking at it. A deck of four right answers
+  and one wrong one is not more variety, it is a wrong answer at a fixed rate.
+*/
+const DECK_TARGET = {
+    sugar_mummy: 'toyboy',
+    toyboy: 'sugar_mummy',
+    sugar_daddy: 'mistress',
+    mistress: 'sugar_daddy',
+};
 
 function targetLabelsForUser(user) {
-    const label = userProfileLabel(user);
-    let targets = null;
-    if (label === 'sugar_mummy') targets = ['toyboy', 'sugar_daddy'];
-    else if (label === 'toyboy') targets = ['sugar_mummy', 'mistress'];
-    else if (label === 'sugar_daddy') targets = ['mistress', 'sugar_mummy'];
-    else if (label === 'mistress') targets = ['sugar_daddy', 'toyboy'];
-    if (!targets) return null;
-
-    const deckTargets = targets.filter(allowedInDeck);
-    /*
-      Returning an empty set here would be read as "no targeting" by the caller
-      and fall back to requesting every label, which is exactly how an excluded
-      label would get back in. Null says the same thing honestly, and the deck
-      filter below still holds the line.
-    */
-    return deckTargets.length ? new Set(deckTargets) : null;
+    const target = DECK_TARGET[userProfileLabel(user)];
+    return target ? new Set([target]) : null;
 }
 
 function targetLabelArrayForUser(user) {
@@ -154,29 +152,10 @@ function targetLabelArrayForUser(user) {
 }
 
 function preferenceMixForUser(user) {
-    const label = userProfileLabel(user);
-    const pattern = ['primary', 'primary', 'primary', 'primary', 'secondary'];
-    let mix = null;
-    if (label === 'toyboy') mix = { primary: 'sugar_mummy', secondary: 'mistress' };
-    else if (label === 'sugar_mummy') mix = { primary: 'toyboy', secondary: 'sugar_daddy' };
-    else if (label === 'sugar_daddy') mix = { primary: 'mistress', secondary: 'sugar_mummy' };
-    else if (label === 'mistress') mix = { primary: 'sugar_daddy', secondary: 'toyboy' };
-    if (!mix) return null;
-
-    /*
-      Drop whichever side of the mix is excluded from the deck. If it is the
-      primary that goes, the secondary is promoted rather than left as a
-      secondary, otherwise the weighting pattern would spend four of every five
-      slots looking for a label that is never dealt and the deck would read as
-      empty for a sugar mummy, whose primary target is the excluded one.
-    */
-    const primaryAllowed = allowedInDeck(mix.primary);
-    const secondaryAllowed = allowedInDeck(mix.secondary);
-
-    if (primaryAllowed && secondaryAllowed) return { ...mix, pattern };
-    if (primaryAllowed) return { primary: mix.primary, secondary: null, pattern };
-    if (secondaryAllowed) return { primary: mix.secondary, secondary: null, pattern };
-    return null;
+    const primary = DECK_TARGET[userProfileLabel(user)];
+    if (!primary) return null;
+    // One target, so there is no mix left to weight: every slot is the primary.
+    return { primary, secondary: null, pattern: ['primary'] };
 }
 
 function weightedPreferenceDeck(items, user) {
@@ -562,8 +541,6 @@ export default function DiscoverPage() {
     const available = useMemo(() => {
         const compatible = members
             .filter((member) => member.swipeKey !== `member:${user?.id}`)
-            // Excluded labels never reach a card, whatever the fetch returned.
-            .filter((member) => allowedInDeck(effectiveMemberLabel(member)))
             .filter((member) => profileFitsUser(member, user))
             .filter((member) => {
                 if (filter === 'online') return member.isOnline || (member.lastSeenAt && Date.now() - new Date(member.lastSeenAt).getTime() < 5 * 60 * 1000);
@@ -578,13 +555,12 @@ export default function DiscoverPage() {
             })
             .filter((member) => !dismissedSwipeKeys.has(member.swipeKey))
             .filter((member) => !isProfileSwiped(member.swipeKey));
-        // Fallback: if no compatible profiles after all filters, relax non-gender filters but KEEP gender filtering
-        // The excluded-label gate is NOT relaxed here. This branch exists to widen
-        // a deck that filtered itself empty, and an exclusion that a fallback can
-        // undo is not an exclusion — running out of cards is the correct outcome.
+        // Fallback: if no compatible profiles after all filters, relax the
+        // non-gender filters. profileFitsUser is NOT relaxed — running out of
+        // cards is the correct outcome, and dealing somebody the wrong
+        // orientation to keep the deck full is not.
         const pool = compatible.length ? compatible : members
             .filter((member) => member.swipeKey !== `member:${user?.id}`)
-            .filter((member) => allowedInDeck(effectiveMemberLabel(member)))
             .filter((member) => profileFitsUser(member, user))
             .filter((member) => !dismissedSwipeKeys.has(member.swipeKey))
             .filter((member) => !isProfileSwiped(member.swipeKey));

@@ -32,6 +32,17 @@ const PREFERENCE_LABELS = {
     toyboy_looking_for_sugar_mummy: 'Sugar Guy / Toyboy seeking Sugar Mummy',
 };
 
+// Who each preference is looking for. The same four pairings the deck uses
+// (discover/page.js#DECK_TARGET) and the same wording the API derives
+// (api/members#defaultLookingFor), so a member's card and their deck cannot
+// describe two different people.
+const LOOKING_FOR_BY_PREFERENCE = {
+    sugar_mummy_looking_for_toyboy: 'Sugar Guy / Toyboy',
+    sugar_daddy_looking_for_mistress: 'Mistress',
+    mistress_looking_for_sugar_daddy: 'Sugar Daddy',
+    toyboy_looking_for_sugar_mummy: 'Sugar Mummy',
+};
+
 const SECTION_TITLES = {
     profile: 'Edit profile',
     photos: 'My photos',
@@ -679,7 +690,6 @@ export default function ProfilePage() {
                         { key: 'wants', label: 'What I want', value: profile?.wants },
                         { key: 'needed_qualities', label: 'Needed qualities', value: profile?.needed_qualities },
                         { key: 'age_range_preference', label: 'Preferred age range', value: profile?.age_range_preference },
-                        { key: 'looking_for', label: 'Looking for', value: profile?.looking_for },
                     ].map((field) => (
                         <div key={field.key}
                             className="flex items-center justify-between px-4 py-3 cursor-pointer transition-colors hover:bg-primary/5"
@@ -693,6 +703,32 @@ export default function ProfilePage() {
                             <ChevronRight size={16} className="text-text-muted" />
                         </div>
                     ))}
+                    {/*
+                      "Looking for" used to be a free-text row in the list above,
+                      editable independently of the preference picked below it.
+                      Nothing kept the two in agreement, so a member could be a
+                      Sugar Mummy seeking a Sugar Guy and still have "Looking
+                      for: Sugar Mummy" printed on her own card — and the deck,
+                      which pairs on the preference, would deal her something her
+                      profile contradicted.
+
+                      It is one fact, so it is stored in one place. This row
+                      shows what the preference means and opens the picker.
+                    */}
+                    <button
+                        type="button"
+                        onClick={() => setShowPreferencePicker(true)}
+                        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-primary/5"
+                        style={{ borderBottom: '1px solid rgba(0,0,0,0.04)' }}
+                    >
+                        <div>
+                            <p className="text-xs text-text-muted font-medium">Looking for</p>
+                            <p className="text-sm text-text-primary font-medium">
+                                {LOOKING_FOR_BY_PREFERENCE[preference] || 'Set your preference'}
+                            </p>
+                        </div>
+                        <ChevronRight size={16} className="text-text-muted" />
+                    </button>
                 </div>
             )}
 

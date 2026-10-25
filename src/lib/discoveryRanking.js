@@ -41,12 +41,20 @@ const NO_PHOTO_PENALTY = 0.4;
  */
 const MAX_DISTANCE_KM = 1200;
 
-/** Reciprocal pairings: who a given profile type is shown. */
-const PREFERENCE_RULES = {
-    mistress: { primary: 'sugar_daddy', secondary: 'toyboy' },
-    sugar_mummy: { primary: 'toyboy', secondary: 'sugar_daddy' },
-    toyboy: { primary: 'sugar_mummy', secondary: 'mistress' },
-    sugar_daddy: { primary: 'mistress', secondary: 'sugar_mummy' },
+/**
+ * Reciprocal pairings: who a given profile type is shown. One each, and they
+ * are symmetric — if A is dealt B then B is dealt A.
+ *
+ * The "secondary" target that used to sit beside each of these paired a label
+ * with its own side of the arrangement (a sugar mummy with a sugar daddy, a
+ * toyboy with a mistress), so it scored a profile that could not be a match at
+ * better than half of a real one.
+ */
+export const PREFERENCE_RULES = {
+    mistress: 'sugar_daddy',
+    sugar_mummy: 'toyboy',
+    toyboy: 'sugar_mummy',
+    sugar_daddy: 'mistress',
 };
 
 function clamp01(value) {
@@ -65,19 +73,20 @@ function jitterFor(id, seed) {
 }
 
 /**
- * 1.0 for the viewer's primary match, 0.55 for secondary, 0.15 otherwise.
+ * 1.0 for the viewer's match, 0 for anyone else.
  *
- * The old code interleaved on a fixed 4:1 primary/secondary pattern regardless of
- * how good the individual profiles were, so a distant, inactive primary always
- * outranked a nearby, active secondary. Scoring lets a strong secondary compete.
+ * This used to return 0.15 rather than 0, which made orientation a weight
+ * instead of a rule: preference is 30 of the ~92 points on offer, so a nearby,
+ * active, verified profile of the wrong orientation scored around 66 and beat
+ * a distant, quiet one of the right orientation at around 46. The deck filters
+ * on orientation now, but a scorer that can still rank a non-match above a
+ * match is a trap for the next caller, so it scores zero here too.
  */
 export function preferenceScore(profileLabel, viewerLabel) {
     if (!viewerLabel) return 0.5;
-    const rule = PREFERENCE_RULES[viewerLabel];
-    if (!rule) return 0.5;
-    if (profileLabel === rule.primary) return 1;
-    if (profileLabel === rule.secondary) return 0.55;
-    return 0.15;
+    const target = PREFERENCE_RULES[viewerLabel];
+    if (!target) return 0.5;
+    return profileLabel === target ? 1 : 0;
 }
 
 /**
