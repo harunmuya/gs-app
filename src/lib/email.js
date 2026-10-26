@@ -1,8 +1,27 @@
+/*
+  Where a mail's links and its logo point.
+
+  Both defaulted to genuinesugarmummies.co.ke, which is the WordPress
+  marketing site and not this app. Two things were broken by that whenever the
+  environment variables were not set:
+
+  - every link was built as that host plus an app path, and the site has no
+    such pages, so "open your messages" went to a 404 (checked: /messages is
+    404 there and 200 here);
+  - the header logo was fetched from that host too, which does not serve
+    /gs-logo.png, so the image at the top of every email was a broken one
+    (checked: 404 there, 200 here).
+
+  The app's own host serves both, and it is the thing the mail is asking
+  people to open, so it is the default now. The environment variables still
+  win, which is what makes a preview deployment mail its own URLs.
+*/
+const APP_ORIGIN = 'https://app.genuinesugarmummies.co.ke';
+
 const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL || 'Genuine Sugar Mummies <feedback@genuinesugarmummies.co.ke>';
-const BRAND_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://genuinesugarmummies.co.ke';
-const PUBLIC_ASSET_URL = process.env.NEXT_PUBLIC_ASSET_URL || 'https://genuinesugarmummies.co.ke';
+const PUBLIC_ASSET_URL = process.env.NEXT_PUBLIC_ASSET_URL || APP_ORIGIN;
 const LOGO_URL = process.env.EMAIL_LOGO_URL || `${PUBLIC_ASSET_URL.replace(/\/$/, '')}/gs-logo.png`;
-const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || PUBLIC_ASSET_URL || BRAND_URL).replace(/\/$/, '');
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || PUBLIC_ASSET_URL || APP_ORIGIN).replace(/\/$/, '');
 
 function escapeHtml(value = '') {
     return String(value)

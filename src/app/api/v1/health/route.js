@@ -24,6 +24,17 @@ export async function GET() {
               reports no more than the Supabase lines above already do.
             */
             adminAuth: adminAuthConfigured(),
+            /*
+              Whether this deployment could send mail at all.
+
+              Nothing reported it, so a deployment missing the key looked
+              identical to a working one until somebody noticed an email that
+              never arrived. Like the lines above, this is presence only: no
+              key is read back, and whether the provider accepts it is a
+              different question, which /api/diag/email answers by asking the
+              provider.
+            */
+            email: Boolean(process.env.RESEND_API_KEY),
         },
         database: {
             reachable: false,
