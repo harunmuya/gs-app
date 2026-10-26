@@ -55,6 +55,13 @@ const nextConfig = {
         // content-specific and the files are replaced by name, never edited.
         // Without this they are served with a revalidating cache policy, so every
         // card view costs a request against ~51 MB of assets.
+        //
+        // icons/sprite.svg was the exception and this header did not know it:
+        // the build rewrites that one in place at a fixed path, so a year-long
+        // immutable cache meant a new icon never arrived. It is requested with
+        // its content hash in the query string now (components/Icon.js), which
+        // makes the claim true for it as well - a changed sprite is a different
+        // URL, and this header is correct for both.
         source: '/:dir(seed|gifts|icons)/:path*',
         headers: [
           {

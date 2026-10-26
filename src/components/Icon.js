@@ -16,7 +16,16 @@
  *   <button><Icon name="send" title="Send message" /></button>   named
  */
 
-const SPRITE = '/icons/sprite.svg';
+import { SPRITE_VERSION } from '@/components/spriteVersion';
+
+/*
+  The version is the sprite's own content hash, written by
+  scripts/build-icons.mjs. /icons/* is served immutable for a year, and this
+  file - unlike the artwork beside it - is rewritten in place at a fixed path,
+  so without a changing URL a new icon never reached anyone who had already
+  loaded the old sprite.
+*/
+const SPRITE = `/icons/sprite.svg?v=${SPRITE_VERSION}`;
 
 export default function Icon({
     name,
