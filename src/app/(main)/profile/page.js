@@ -44,6 +44,70 @@ const LOOKING_FOR_BY_PREFERENCE = {
     toyboy_looking_for_sugar_mummy: 'Sugar Mummy',
 };
 
+/*
+  What each field is asking for, in the words a member would use.
+
+  The edit sheet opened on an empty box titled "Edit bio" and said nothing
+  else: no prompt, no example, and no mention of the twelve-character minimum
+  that saving would enforce. People fill in a dating profile badly when nobody
+  tells them what a good one looks like, and the app knew and did not say.
+
+  Kept beside the sheet rather than in a copy file because it is read in one
+  place and belongs with the thing it describes.
+*/
+const BIO_MIN_LENGTH = 12;
+
+const LONG_TEXT_FIELDS = new Set(['bio', 'wants', 'needed_qualities']);
+
+const FIELD_GUIDE = {
+    display_name: {
+        title: 'Your name',
+        help: 'The name other members see. A first name is plenty.',
+        placeholder: 'e.g. Mary',
+        autoComplete: 'given-name',
+    },
+    bio: {
+        title: 'About you',
+        help: 'A couple of honest lines. What you do, what your days look like, what you enjoy.',
+        placeholder: 'e.g. I run a salon in Westlands, I cook a lot, and I would rather be out of the city at weekends.',
+    },
+    age: {
+        title: 'Your age',
+        help: 'You must be 18 or over to use this app.',
+        placeholder: 'e.g. 34',
+        type: 'number',
+        inputMode: 'numeric',
+    },
+    location: {
+        title: 'Where you are',
+        help: 'Your town or area. This is what the nearby matching uses.',
+        placeholder: 'e.g. Westlands, Nairobi',
+    },
+    phone_number: {
+        title: 'Your phone number',
+        help: 'Only members on Silver or above can see this.',
+        placeholder: 'e.g. 0739154302',
+        type: 'tel',
+        inputMode: 'tel',
+        autoComplete: 'tel',
+    },
+    wants: {
+        title: 'What you are looking for',
+        help: 'What you want out of this, in your own words.',
+        placeholder: 'e.g. Someone steady to spend weekends with. No games.',
+    },
+    needed_qualities: {
+        title: 'What matters to you',
+        help: 'The qualities that count. Separate them with commas.',
+        placeholder: 'e.g. Honest, generous with time, makes me laugh',
+    },
+    age_range_preference: {
+        title: 'Preferred age range',
+        help: 'The ages you would like to be shown.',
+        placeholder: 'e.g. 28-45',
+    },
+};
+
 const SECTION_TITLES = {
     profile: 'Edit profile',
     photos: 'My photos',
@@ -396,8 +460,8 @@ export default function ProfilePage() {
             setEditStatus(PHONE_REQUIRED);
             return;
         }
-        if (editField === 'bio' && value.length < 12) {
-            setEditStatus('Write at least 12 characters so members know you are real.');
+        if (editField === 'bio' && value.length < BIO_MIN_LENGTH) {
+            setEditStatus(`Write at least ${BIO_MIN_LENGTH} characters so members know you are real.`);
             return;
         }
         setEditBusy(true);
@@ -890,17 +954,38 @@ export default function ProfilePage() {
                             style={{ background: 'var(--color-bg-card)' }}
                             onClick={(e) => e.stopPropagation()}
                         >
-                            <h3 className="text-lg font-bold text-text-primary capitalize">Edit {editField.replace('_', ' ')}</h3>
-                            {editField === 'bio' || editField === 'wants' ? (
+                            <h3 className="text-lg font-bold text-text-primary">{FIELD_GUIDE[editField]?.title || `Edit ${editField.replace(/_/g, ' ')}`}</h3>
+                            {FIELD_GUIDE[editField]?.help && (
+                                <p className="type-caption text-text-muted">{FIELD_GUIDE[editField].help}</p>
+                            )}
+                            {LONG_TEXT_FIELDS.has(editField) ? (
                                 <textarea value={editValue} onChange={(e) => setEditValue(e.target.value)} rows={4}
+                                    placeholder={FIELD_GUIDE[editField]?.placeholder || ''}
                                     className="w-full rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
                                     style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }} autoFocus
                                 />
                             ) : (
-                                <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                                <input
+                                    // Age and phone are digits. As type="text" a phone
+                                    // keyboard opened on letters and the member had to
+                                    // switch layouts to type their own age.
+                                    type={FIELD_GUIDE[editField]?.type || 'text'}
+                                    inputMode={FIELD_GUIDE[editField]?.inputMode}
+                                    autoComplete={FIELD_GUIDE[editField]?.autoComplete}
+                                    placeholder={FIELD_GUIDE[editField]?.placeholder || ''}
+                                    value={editValue} onChange={(e) => setEditValue(e.target.value)}
                                     className="w-full rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
                                     style={{ background: 'var(--color-surface)', border: 'var(--card-border)' }} autoFocus
                                 />
+                            )}
+                            {/* The bio minimum was enforced on save and announced
+                                nowhere, so the first a member heard of it was a
+                                rejection. It counts up to the minimum, then stops
+                                nagging. */}
+                            {editField === 'bio' && String(editValue || '').trim().length < BIO_MIN_LENGTH && (
+                                <p className="type-caption text-text-muted">
+                                    {BIO_MIN_LENGTH - String(editValue || '').trim().length} more characters needed
+                                </p>
                             )}
                             {editField === 'location' && (
                                 <button
