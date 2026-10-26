@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseAdmin';
-import { accountRestrictionMessage, activeTierId, isAccountRestricted } from '@/lib/packageAccess';
+import { accountRestrictionMessage, activeTierId, getPackageTier, isAccountRestricted } from '@/lib/packageAccess';
 import { getSessionMember, requireMember } from '@/lib/authSession';
 import { uploadStoryMedia } from '@/lib/storyMedia';
 import { ADMIN_ENV_MISSING } from '@/lib/copy';
@@ -15,8 +15,34 @@ function isMissingSchema(error) {
     return ['42P01', '42703', 'PGRST204', 'PGRST205'].includes(error?.code) || String(error?.message || '').includes('schema cache');
 }
 
-function canUseActivity(user) {
+/*
+  Stories and profile boost are sold from Silver up, and there is no column
+  describing either, so the tier set is the rule for them.
+
+  It used to be the rule for the "who liked you" / "who viewed you" lists too,
+  under this same name. Those do have columns - can_see_who_liked and
+  can_see_who_viewed - which the admin package editor offers as switches and
+  which /api/v1/entitlements reports to the client. Nothing here read them, so
+  turning either switch off in admin changed what the app advertised and left
+  the data flowing anyway, and turning one on for Basic advertised a feature
+  this route would still refuse. The values happen to agree today, which is
+  exactly why it would have gone unnoticed.
+*/
+function canPostStories(user) {
     return SILVER_PLUS.has(activeTierId(user));
+}
+
+function canBoostProfile(user) {
+    return SILVER_PLUS.has(activeTierId(user));
+}
+
+/** The two lists, each governed by its own column on the member's tier. */
+async function activityVisibility(supabase, user) {
+    const tier = await getPackageTier(supabase, activeTierId(user));
+    return {
+        likes: Boolean(tier?.can_see_who_liked),
+        views: Boolean(tier?.can_see_who_viewed),
+    };
 }
 
 async function getUser(supabase, userId) {
@@ -141,7 +167,13 @@ async function listStories(supabase, viewerId) {
 
 async function activityOverview(supabase, user) {
     const userId = user.id;
-    if (!canUseActivity(user)) {
+    const visible = await activityVisibility(supabase, user);
+    /*
+      Locked only when neither list is included. A tier that carries one and
+      not the other now returns the one it paid for instead of nothing, which
+      the single silver-or-nothing gate could not express.
+    */
+    if (!visible.likes && !visible.views) {
         return { locked: true, tier: activeTierId(user), likes: [], views: [], followers: [], following: [], boosts: [], stories: [] };
     }
 
@@ -183,8 +215,13 @@ async function activityOverview(supabase, user) {
     return {
         locked: false,
         tier: activeTierId(user),
-        likes: normalizeRows(likes, 'liker'),
-        views: normalizeRows(views, 'viewer'),
+        // Withheld per list, by the column that sells it. Fetched either way
+        // above because both come from one Promise.all; the gate is here so a
+        // tier with only one of them cannot receive the other.
+        likes: visible.likes ? normalizeRows(likes, 'liker') : [],
+        views: visible.views ? normalizeRows(views, 'viewer') : [],
+        canSeeWhoLiked: visible.likes,
+        canSeeWhoViewed: visible.views,
         followers: normalizeRows(followers, 'follower'),
         following: normalizeRows(following, 'following'),
         boosts: boosts.data || [],
@@ -233,7 +270,7 @@ export async function POST(request) {
     if (isAccountRestricted(user)) return jsonError(accountRestrictionMessage(user), 403);
 
     if (action === 'create_story') {
-        if (!canUseActivity(user)) return jsonError('Stories require Silver package or higher.', 402, { redirectTo: '/packages' });
+        if (!canPostStories(user)) return jsonError('Stories require Silver package or higher.', 402, { redirectTo: '/packages' });
         const mediaType = String(body.mediaType || 'image').slice(0, 20);
         const upload = await uploadStoryMedia(
             supabase.storage.from('story-media'),
@@ -305,7 +342,7 @@ export async function POST(request) {
     }
 
     if (action === 'boost_profile') {
-        if (!canUseActivity(user)) return jsonError('Profile boost requires Silver package or higher.', 402, { redirectTo: '/packages' });
+        if (!canBoostProfile(user)) return jsonError('Profile boost requires Silver package or higher.', 402, { redirectTo: '/packages' });
         const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
         const startedAt = new Date().toISOString();
         const boost = await supabase
