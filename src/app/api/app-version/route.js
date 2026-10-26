@@ -36,8 +36,8 @@ export const dynamic = 'force-dynamic';
   deployment.
 */
 const CURRENT = {
-    versionCode: 2,
-    versionName: '1.1',
+    versionCode: 3,
+    versionName: '1.2',
     /*
       Served from the VPS, on a different host from the app, and it has to stay
       that way for now.
@@ -64,15 +64,20 @@ const CURRENT = {
       five minutes on this wants to know what stops working if they do not.
     */
     notes: [
-        'Camera, microphone and location now work, so calls, going live and nearby matches work.',
-        'The app asks for each one when you use it, rather than all at once on opening.',
+        'The app now loads from app.genuinesugarmummies.co.ke, this project’s own address, instead of the hosting provider’s.',
+        'The opening screen and the app icon match the rest of the app, in both light and dark mode.',
     ],
     /*
-      Required, because a shell without the permission bridge cannot reach the
-      camera, the microphone or location at all. Calls, going live and nearby
-      are broken on it.
+      Not required. Version 2 already carries the permission bridge, and the
+      address baked into it still reaches this same deployment, so nothing is
+      broken on it - what changes is the app's own domain and its appearance.
+
+      Version 2 was required because without that bridge the camera, the
+      microphone and location were unreachable, which is a different situation
+      from this one. Saying "required" when it is not teaches people to dismiss
+      the prompt, and then it does not work the time it matters.
     */
-    required: true,
+    required: false,
 };
 
 export async function GET() {
