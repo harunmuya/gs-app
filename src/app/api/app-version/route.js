@@ -36,8 +36,8 @@ export const dynamic = 'force-dynamic';
   deployment.
 */
 const CURRENT = {
-    versionCode: 3,
-    versionName: '1.2',
+    versionCode: 4,
+    versionName: '1.3',
     /*
       Served from the VPS, on a different host from the app, and it has to stay
       that way for now.
@@ -56,6 +56,10 @@ const CURRENT = {
 
       /base-release.apk on this deployment serves the same file, byte for byte,
       and is the link to share outside the app where a normal browser handles it.
+      That had quietly stopped being true - public/downloads held an August build
+      while the VPS served a newer one - so the two are re-synced here. Copy the
+      APK into public/downloads in the same commit that moves these numbers, or
+      the claim rots again.
     */
     url: 'https://genuinesugarmummies.co.ke/app/genuine-sugar-mummies.apk',
     /*
@@ -64,8 +68,7 @@ const CURRENT = {
       five minutes on this wants to know what stops working if they do not.
     */
     notes: [
-        'The app now loads from app.genuinesugarmummies.co.ke, this project’s own address, instead of the hosting provider’s.',
-        'The opening screen and the app icon match the rest of the app, in both light and dark mode.',
+        'The app is now called Genuine Sugar Mummies on your home screen, matching the website.',
     ],
     /*
       Not required. Version 2 already carries the permission bridge, and the
