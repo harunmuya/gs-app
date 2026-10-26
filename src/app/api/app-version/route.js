@@ -32,12 +32,12 @@ export const dynamic = 'force-dynamic';
 
   This was null for a while, because the APK in that folder was the V2 app and
   offering it as an update to V1 would have put people in the other product. It
-  is a real V1 build now: ke.co.genuinesugarmummies.app, signed, loading this
+  is a real V1 build now: ke.co.genuinesugarmummies.mobile, signed, loading this
   deployment.
 */
 const CURRENT = {
-    versionCode: 4,
-    versionName: '1.3',
+    versionCode: 5,
+    versionName: '1.4',
     /*
       Served from the VPS, on a different host from the app, and it has to stay
       that way for now.
@@ -68,7 +68,7 @@ const CURRENT = {
       five minutes on this wants to know what stops working if they do not.
     */
     notes: [
-        'The app is now called Genuine Sugar Mummies on your home screen, matching the website.',
+        'This version installs under a new package name, so it no longer clashes with the very first build, which was signed with a key we no longer have. It installs alongside whatever you already have rather than replacing it - once it is working, remove the old icon.',
     ],
     /*
       Not required. Version 2 already carries the permission bridge, and the

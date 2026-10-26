@@ -4,7 +4,9 @@ The current Android app is a Capacitor wrapper pointing at `https://genuine-suga
 
 ## Implemented Now
 
-1. Android package: `ke.co.genuinesugarmummies.app`.
+1. Android package: `ke.co.genuinesugarmummies.mobile` (was
+   `ke.co.genuinesugarmummies.app`; changed because the first published build
+   was signed with a lost key and blocked every later install).
 2. Capacitor entry activity: `ke.co.genuinesugarmummies.app.MainActivity`.
 3. Manifest permissions: internet, notifications, camera, microphone, audio settings, coarse location, and fine location.
 

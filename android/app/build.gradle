@@ -27,7 +27,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "ke.co.genuinesugarmummies.app"
+    namespace = "ke.co.genuinesugarmummies.mobile"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
         /*
@@ -41,9 +41,15 @@ android {
           shipped V1 under V2's identity and replaced V2 on every phone that had
           it.
 
-          Two apps, two identities. This one is ke.co.genuinesugarmummies.app.
+          Three identities now. This one is ke.co.genuinesugarmummies.mobile: it
+          was ke.co.genuinesugarmummies.app until the first published build
+          turned out to be signed with a key we no longer have, which left
+          every phone carrying it unable to install anything since. A new
+          applicationId is a different package, so there is nothing left to
+          conflict with. Never reuse .app: a build under it still cannot
+          replace those installs.
         */
-        applicationId "ke.co.genuinesugarmummies.app"
+        applicationId "ke.co.genuinesugarmummies.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         /*
@@ -59,8 +65,8 @@ android {
           remote URL, so the web layer updates itself on next launch. An APK is
           only needed when the manifest or MainActivity changes.
         */
-        versionCode 4
-        versionName "1.3"
+        versionCode 5
+        versionName "1.4"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

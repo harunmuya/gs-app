@@ -1,4 +1,4 @@
-package ke.co.genuinesugarmummies.app;
+package ke.co.genuinesugarmummies.mobile;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
